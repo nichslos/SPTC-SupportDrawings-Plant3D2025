@@ -871,6 +871,36 @@ jobs:
           if ($reader -match 'SetProperties|ExecuteNonQuery|AddPnPDrawingFile') {
             throw 'REV22.28 scanner must be read-only'
           }
+      - name: Verify REV22.29 compact XREF pipe callout and Update View audit
+        shell: pwsh
+        run: |
+          $prior=Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewXrefPipeAnnotationsTest.cs' -Raw
+          $new=Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewCompactXrefPipeAnnotationsTest.cs' -Raw
+          $labels=Get-Content 'src/SPTC.SupportDrawings/SupportOrthoPipeCallout29.cs' -Raw
+          $audit=Get-Content 'src/SPTC.SupportDrawings/SupportOrthoUpdateAudit29.cs' -Raw
+          if(-not $prior.Contains('SPTC_ORTHO22_28_XREF_AUTO_TEST')) { throw 'REV22.28 fallback removed' }
+          if(-not $new.Contains('SPTC_ORTHO22_29_XREF_COMPACT_TEST')) { throw 'REV22.29 separate command missing' }
+          foreach($token in @('SupportOrthoPipeCallout29.Compose','visibleCallouts',
+              'pipeByHandle','foreach(var label in visibleCallouts)',
+              'REV22_29_PIPE_LABEL_FORMAT','STEP10_PIPE_BOP_LABEL_COUNT',
+              'STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True',
+              'STEP5_PAPER_POINT_CLICKS_REQUIRED=0')) {
+            if(-not $new.Contains($token)) { throw "REV22.29 new command invariant missing: $token" }
+          }
+          if(-not $labels.Contains('"LINE NO: "+tag')) { throw 'Compact first label line missing' }
+          if(-not $labels.Contains('"\n"+bop')) { throw 'Native BOP must remain on second line' }
+          if(-not $audit.Contains('SPTC_ORTHO22_29_AUDIT_UPDATE')) { throw 'Read-only Update View audit command missing' }
+          foreach($token in @('STEP10_MEMBER_LABEL=','PIPE_BOP=True',
+              'REV22_29_UPDATE_AUDIT=','OpenMode.ForRead',
+              'XREF_PROPERTY_FRESHNESS=NOT_VERIFIED',
+              'NATIVE_VIEW_GEOMETRY_ALIGNMENT=NOT_VERIFIED')) {
+            if(-not $audit.Contains($token)) { throw "Post-update audit requirement missing: $token" }
+          }
+          if($audit.Contains('OpenMode.ForWrite') -or $audit.Contains('PLANTORTHOUPDATE') -and $audit.Contains('Editor.Command(')) {
+            throw 'Post-update audit must never mutate DWG or launch unsupported updates'
+          }
+      - name: Test REV22.29 compact label formatting
+        run: dotnet run --project tests/Rev229LabelSmokeTests/Rev229LabelSmokeTests.csproj -c Release
       - name: Compile SPTC Support Drawings
         run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release
       - name: Verify compiled DLL
@@ -882,7 +912,7 @@ jobs:
       - name: Upload DLL artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_28
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_29
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
