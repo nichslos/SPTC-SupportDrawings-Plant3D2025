@@ -3,6 +3,8 @@ name: Build SPTC Support Drawings DLL
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -844,6 +846,31 @@ jobs:
           if(-not $planner.Contains('PipeBopSource') -or -not $planner.Contains('PipeBopText') -or -not $planner.Contains('BopLines')) { throw 'REV22.27 BOP must be distinct from existing TOS' }
           if(-not $planner.Contains('bool isPipe=member.PipeBopSource!=null;')) { throw 'Explicit pipe BOP eligibility missing' }
           if(-not $new.Contains('new DBText') -or -not $new.Contains('GeometricExtents')) { throw 'Native nonwrapping label rendering missing' }
+      - name: Verify REV22.28 native and nested-XREF pipe discovery is isolated
+        shell: pwsh
+        run: |
+          $old = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewPipeAnnotationsTest.cs' -Raw
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewXrefPipeAnnotationsTest.cs' -Raw
+          $reader = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoPipeDiscovery28.cs' -Raw
+          if ($old -notmatch 'SPTC_ORTHO22_27_PIPE_BOP_TEST') { throw 'REV22.27 fallback must remain' }
+          if ($new -notmatch 'SPTC_ORTHO22_28_XREF_AUTO_TEST') { throw 'REV22.28 command missing' }
+          if ($new -match 'Select native Pipe objects for Line Number Tag') { throw 'Manual pipe selection persists' }
+          foreach ($token in @('SupportOrthoPipeDiscovery28.Scan','SupportOrthoPipeDiscovery28.ReadXrefs',
+                'SupportOrthoPlantPipe27.Read','SupportFocusedCubePlanner.BuildAutomatic',
+                'STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True',
+                'STEP5_PAPER_POINT_CLICKS_REQUIRED=0')) {
+            if (-not $new.Contains($token)) { throw "REV22.28 command regression: $token" }
+          }
+          foreach ($token in @('IsFromExternalReference','IsFromOverlayReference','GetXrefDatabase(false)',
+                'BlockTransform','Extents3d','TransformBy(toHost)','FindAcPpRowId',
+                'GetAllProperties','XREF_PIPE_METADATA_UNAVAILABLE',
+                'XREF_BOP_TRANSFORM_UNSUPPORTED','Math.Abs(o.Z-x.Z)',
+                'XREF_CYCLE_SKIPPED')) {
+            if (-not $reader.Contains($token)) { throw "REV22.28 XREF guard missing: $token" }
+          }
+          if ($reader -match 'SetProperties|ExecuteNonQuery|AddPnPDrawingFile') {
+            throw 'REV22.28 scanner must be read-only'
+          }
       - name: Compile SPTC Support Drawings
         run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release
       - name: Verify compiled DLL
@@ -855,7 +882,7 @@ jobs:
       - name: Upload DLL artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_27
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_28
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
