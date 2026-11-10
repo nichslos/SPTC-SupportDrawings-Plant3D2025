@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportSheetMath.cs" Link="SupportSheetMath.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportEntityClassifier.cs" Link="SupportEntityClassifier.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/Support2DMath.cs" Link="Support2DMath.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoLayout.cs" Link="NativeOrthoLayout.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoRegistrationNames.cs" Link="NativeOrthoRegistrationNames.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoTopViewPlan.cs" Link="NativeOrthoTopViewPlan.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoThreeViewPlan.cs" Link="NativeOrthoThreeViewPlan.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoOneClickPlan.cs" Link="NativeOrthoOneClickPlan.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoTenViewPlan.cs" Link="NativeOrthoTenViewPlan.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoTenViewAutoPlacement26.cs" Link="NativeOrthoTenViewAutoPlacement26.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoIsoViewType.cs" Link="NativeOrthoIsoViewType.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoEditorPreset.cs" Link="NativeOrthoEditorPreset.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoViewportPaperGuard.cs" Link="NativeOrthoViewportPaperGuard.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoIsoTwistGuard.cs" Link="NativeOrthoIsoTwistGuard.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoIsoReferenceMath.cs" Link="NativeOrthoIsoReferenceMath.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoIsoFramingGuard.cs" Link="NativeOrthoIsoFramingGuard.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoAxialEditorPreset.cs" Link="NativeOrthoAxialEditorPreset.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoAxialHalfTurnGuard.cs" Link="NativeOrthoAxialHalfTurnGuard.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportFocusedCubePlanner.cs" Link="SupportFocusedCubePlanner.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoViewTitlePlan.cs" Link="NativeOrthoViewTitlePlan.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberMetadata.cs" Link="SupportOrthoMemberMetadata.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoCalloutPlan.cs" Link="SupportOrthoCalloutPlan.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoSelection15.cs" Link="SupportOrthoSelection15.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoSummaryPanel15.cs" Link="SupportOrthoSummaryPanel15.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan17.cs" Link="SupportOrthoMemberCalloutPlan17.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoVerticalMember18.cs" Link="SupportOrthoVerticalMember18.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan18.cs" Link="SupportOrthoMemberCalloutPlan18.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoHorizontalMember19.cs" Link="SupportOrthoHorizontalMember19.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan19.cs" Link="SupportOrthoMemberCalloutPlan19.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan20.cs" Link="SupportOrthoMemberCalloutPlan20.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan21.cs" Link="SupportOrthoMemberCalloutPlan21.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan23.cs" Link="SupportOrthoMemberCalloutPlan23.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoSupportLabel24.cs" Link="SupportOrthoSupportLabel24.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoSupportTos25.cs" Link="SupportOrthoSupportTos25.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan25.cs" Link="SupportOrthoMemberCalloutPlan25.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoPipeLabel27.cs" Link="SupportOrthoPipeLabel27.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan27.cs" Link="SupportOrthoMemberCalloutPlan27.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberMText22.cs" Link="SupportOrthoMemberMText22.cs" />
+  </ItemGroup>
+</Project>

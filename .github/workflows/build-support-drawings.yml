@@ -1,0 +1,865 @@
+name: Build SPTC Support Drawings DLL
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/SPTC.SupportDrawings/**'
+      - 'tests/SupportSheetSmokeTests/**'
+      - '.github/workflows/build-support-drawings.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout
+      - uses: actions/setup-dotnet@v4
+        name: Install .NET 8 SDK
+        with:
+          dotnet-version: '8.0.x'
+      - name: Test support sheet sizing calculations
+        run: dotnet run --project tests/SupportSheetSmokeTests/SupportSheetSmokeTests.csproj -c Release
+      - name: Verify REV06 cross-database layer regression fix
+        shell: pwsh
+        run: |
+          $src = Get-Content 'src/SPTC.SupportDrawings/Support2DExporter.cs' -Raw
+          if ($src -notmatch 'line\.LayerId\s*=\s*layerId\s*;') { throw 'REV06 LayerId assignment missing' }
+          if ($src -match '\{\s*Layer\s*=\s*layer\s*\}') { throw 'REV05 detached Layer name assignment remains' }
+      - name: Verify REV08 native Plant 3D Ortho command handoff
+        shell: pwsh
+        run: |
+          $src = Get-Content 'src/SPTC.SupportDrawings/SupportDrawingCommands.cs' -Raw
+          if ($src -notmatch 'CommandMethod\("SPTC_SUPPORT2D"') { throw 'Native Ortho command entry missing' }
+          if ($src -notmatch 'SendStringToExecute\("_.PLANTORTHOCREATE ') { throw 'Native Ortho handoff missing' }
+          if ($src -notmatch 'CommandMethod\("SPTC_SUPPORT2DLINEWORK"') { throw 'Legacy linework command missing' }
+          if ($src -notmatch 'CommandMethod\("SPTC_SUPPORT2DBATCH"') { throw 'Legacy batch command missing' }
+      - name: Verify REV09 native Ortho API probe is read-only
+        shell: pwsh
+        run: |
+          $src = Get-Content 'src/SPTC.SupportDrawings/SupportNativeOrthoProbe.cs' -Raw
+          if ($src -notmatch 'CommandMethod\("SPTC_ORTHOAUTOPROBE"') { throw 'Ortho API probe command missing' }
+          if ($src -match 'SendStringToExecute|\.Explode\(|\.SaveAs\(') { throw 'Probe must not mutate or queue Ortho commands' }
+      - name: Verify REV10 source-model plan is read-only
+        shell: pwsh
+        run: |
+          $src = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoStagingCommands.cs' -Raw
+          if ($src -notmatch 'CommandMethod\("SPTC_ORTHOAUTOPLAN"') { throw 'Ortho plan command missing' }
+          if ($src -match 'SendStringToExecute|\.SaveAs\(|\.Explode\(') { throw 'Ortho plan must not modify Plant project DWG' }
+      - name: Verify REV11 per-axis cube and read-only registration check
+        shell: pwsh
+        run: |
+          $layout = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoLayout.cs' -Raw
+          if ($layout -notmatch 'double padY\s*=') { throw 'Per-axis narrow support clearance missing' }
+          $check = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoProjectCheck.cs' -Raw
+          if ($check -notmatch 'IsValid3dDrawing') { throw 'Native source registration API check missing' }
+          if ($check -match 'AddPnPDrawingFile\(') { throw 'Preflight must never add project drawings' }
+      - name: Verify REV12 Piping project registration API fix
+        shell: pwsh
+        run: |
+          $check = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoProjectCheck.cs' -Raw
+          if ($check -notmatch 'new object\[\] \{ "Piping" \}') { throw 'Piping project part lookup missing' }
+          if ($check -notmatch 'object\?\[\] parameters = \{sourceDwg, piping, ""\};') { throw 'IsValid3dDrawing must receive Piping part' }
+          if ($check -match 'IsInstanceOfType\(project\)') { throw 'Old PlantProject type mismatch still present' }
+          if ($check -match 'AddPnPDrawingFile\(') { throw 'Validation must not mutate project registration' }
+          $stage = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoStagingCommands.cs' -Raw
+          if ($stage -notmatch 'NativeValidationApiSignature') { throw 'Validation method signature not reported in JSON' }
+      - name: Verify REV13 model-agnostic source and report naming
+        shell: pwsh
+        run: |
+          $code = Get-ChildItem 'src/SPTC.SupportDrawings' -Filter '*.cs' -File |
+            ForEach-Object { Get-Content $_.FullName -Raw }
+          foreach ($fixed in @('TOSHIBA', 'TEST3.dwg', 'SAMPLE_2ND STAGE.dwg',
+                               '8D1', '8D2', '3EC', '3EA')) {
+            foreach ($file in $code) {
+              if ($file.Contains($fixed)) { throw "Hard-coded source-model detail found: $fixed" }
+            }
+          }
+          $plan = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoStagingCommands.cs' -Raw
+          if ($plan -notmatch 'SuggestedPlanFileName\(drawing, handles, "REV13"\)') {
+            throw 'JSON report naming must depend on active source model and selected handles'
+          }
+          if ($plan -notmatch 'SourceSelectionMode') { throw 'Dynamic selection mode must be recorded' }
+          $native = Get-Content 'src/SPTC.SupportDrawings/SupportDrawingCommands.cs' -Raw
+          if ($native -notmatch 'NativeOrthoProjectCheck.Inspect\(doc.Database.Filename\)') {
+            throw 'SPTC_SUPPORT2D must inspect current active model'
+          }
+      - name: Verify REV14 native project registration safety
+        shell: pwsh
+        run: |
+          $reg = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoRegistrationTest.cs' -Raw
+          if ($reg -notmatch 'CommandMethod\("SPTC_ORTHO14REGISTER_TEST"') { throw 'Separate test-only command missing' }
+          if ($reg -notmatch 'NativeOrthoProjectCheck.Inspect\(model\)') { throw 'Current source registration check missing' }
+          if ($reg -notmatch 'TEST PROJECT') { throw 'Explicit backup-project confirmation missing' }
+          if ($reg -notmatch 'SetOrthoDwgVersion') { throw 'Native Ortho version API integration missing' }
+          if ($reg -notmatch 'AddPnPDrawingFile') { throw 'Native Ortho drawing registration API missing' }
+          if ($reg -notmatch 'IsValidOrthoDrawing') { throw 'Native Ortho validation API missing' }
+          if ($reg -match 'GenerateOrthos\(|\.ExecuteNonQuery\(|SQLiteConnection') { throw 'No internal generation or raw DCF writes allowed in test' }
+          $old = Get-Content 'src/SPTC.SupportDrawings/SupportDrawingCommands.cs' -Raw
+          if ($old -notmatch 'CommandMethod\("SPTC_SUPPORT2D"') { throw 'Existing production command must remain available' }
+      - name: Verify REV15 wizard-seed clone test is isolated
+        shell: pwsh
+        run: |
+          $seed = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoSeedCloneTest.cs' -Raw
+          if ($seed -notmatch 'CommandMethod\("SPTC_ORTHO15CLONE_TEST"') { throw 'REV15 seed clone test command missing' }
+          if ($seed -notmatch 'NATIVE ORTHO TEST') { throw 'Backup project confirmation missing' }
+          if ($seed -notmatch 'IsValidOrthoDrawing') { throw 'Native Ortho project validation missing' }
+          if ($seed -notmatch 'AddPnPDrawingFile') { throw 'Native Ortho registration missing' }
+          if ($seed -notmatch 'File.Exists\(dest\)') { throw 'Existing output overwrite guard missing' }
+          if ($seed -match 'SetOrthoDwgVersion|GenerateOrthos\(|SQLiteConnection|ExecuteNonQuery') {
+            throw 'REV15 must not use unverified version setter or internal generator or edit DCF directly'
+          }
+          $base = Get-Content 'src/SPTC.SupportDrawings/SupportDrawingCommands.cs' -Raw
+          if ($base -notmatch 'CommandMethod\("SPTC_SUPPORT2D"') { throw 'SPTC_SUPPORT2D must remain available' }
+      - name: Verify REV16 native Ortho seed folder and empty-view safeguards
+        shell: pwsh
+        run: |
+          $src = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoSeedCloneTest.cs' -Raw
+          if ($src -notmatch 'CommandMethod\("SPTC_ORTHO16CLONE_TEST"') { throw 'Corrected REV16 test command missing' }
+          if ($src -notmatch 'CommandMethod\("SPTC_ORTHO15CLONE_TEST"') { throw 'Legacy test alias missing' }
+          if ($src -notmatch 'IsInsideProjectDirectory\(seed, info.OrthoFolder\)') { throw 'Native Ortho subfolder guard missing' }
+          if ($src -notmatch 'Path.GetDirectoryName\(seed\)!') { throw 'Clone must be saved beside original native Ortho seed' }
+          if ($src -notmatch 'GetAllViewNamesInOrthoDwgByGuid') { throw 'Read-only native Ortho view list preflight missing' }
+          if ($src -notmatch 'NO_VIEWS_FOUND') { throw 'Unknown or occupied seed must stop clone test' }
+          if ($src -match 'SetOrthoDwgVersion|GenerateOrthos\(|SQLiteConnection|ExecuteNonQuery') {
+            throw 'Unverified version setter, non-public generation or direct project database mutation forbidden'
+          }
+      - name: Verify REV17 TOP view preflight never generates or overwrites project Ortho
+        shell: pwsh
+        run: |
+          $probe = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTopPreflight.cs' -Raw
+          if ($probe -notmatch 'CommandMethod\("SPTC_ORTHO17_TOP_PREFLIGHT"') { throw 'REV17 TOP probe command missing' }
+          if ($probe -notmatch 'NativeOrthoProjectCheck.Inspect\(source\)') { throw 'Must inspect current registered source' }
+          if ($probe -notmatch 'IsInsideProjectDirectory\(target, part.OrthoRoot\)') { throw 'Must validate target Ortho folder' }
+          if ($probe -notmatch 'ReadPaper\(target\)') { throw 'Must inspect actual native sheet size' }
+          if ($probe -notmatch 'NativeOrthoTopViewPlan.Build') { throw 'Must plan actual paper-based TOP placement' }
+          if ($probe -match '\.SaveAs\(|SendStringToExecute|SQLiteConnection|ExecuteNonQuery|\.Invoke\([^\n]*GenerateOrthos') {
+            throw 'REV17 may not save native drawings, drive UI or call unsupported generators'
+          }
+          $layout = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTopViewPlan.cs' -Raw
+          if ($layout -notmatch 'PROPOSED_ONLY:') { throw 'Candidate placement must not be advertised as verified' }
+      - name: Verify REV18 public TOP generation test backup safety
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTopGenerationTest.cs' -Raw
+          if ($code -notmatch 'CommandMethod\("SPTC_ORTHO18_TOP_API_TEST"') { throw 'REV18 isolated command missing' }
+          if ($code -notmatch 'NativeOrthoProjectCheck.Inspect\(model\)') { throw 'Source Piping registration check missing' }
+          if ($code -notmatch 'EMPTY_REGISTERED_ORTHO') { throw 'Empty registered Ortho target safeguard missing' }
+          if ($code -notmatch '_ORTHO_R16CLONE_') { throw 'Test only on new REV16 cloned drawing' }
+          if ($code -notmatch 'InitializeCube') { throw 'Real native OrthoCube initialization missing' }
+          if ($code -notmatch 'MakeCubeCopy') { throw 'Native 3D cube Solid extraction missing' }
+          if ($code -notmatch 'TOP API TEST') { throw 'Explicit copied-project write confirmation missing' }
+          if ($code -notmatch 'STEP5_PUBLIC_CREATEORTHOS_ENTERED') { throw 'Public CreateOrthos test missing' }
+          if ($code -notmatch 'PUBLIC_API_STILL_INTERACTIVE=TRUE') { throw 'Viewport placement must not be reported unattended' }
+          if ($code -match 'BindingFlags.NonPublic|GetMethod\("GenerateOrthos"|SendStringToExecute|SQLiteConnection|ExecuteNonQuery') {
+            throw 'No private Ortho generation, UI script or direct project database edits in REV18'
+          }
+          $prev = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoSeedCloneTest.cs' -Raw
+          if ($prev -notmatch 'CommandMethod\("SPTC_ORTHO16CLONE_TEST"') { throw 'Working REV16 clone command must remain' }
+      - name: Verify REV19 one-command native TOP cloned-drawing safety
+        shell: pwsh
+        run: |
+          $src = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTopOneCommandTest.cs' -Raw
+          if ($src -notmatch 'CommandMethod\("SPTC_ORTHO19_TOP_ONECMD_TEST"') { throw 'REV19 isolated command missing' }
+          if ($src -notmatch 'CommandFlags.Session') { throw 'Cross-document command requires session context' }
+          if ($src -notmatch 'NativeOrthoProjectCheck.Inspect\(source\)') { throw 'Must verify active model is registered' }
+          if ($src -notmatch 'NativeOrthoRegistrationNames.IsInsideProjectDirectory\(seed, part.OrthoFolder\)') { throw 'Native empty Ortho seed location guard missing' }
+          if ($src -notmatch 'EMPTY_REGISTERED_ORTHO') { throw 'Native view catalog empty check missing' }
+          if ($src -notmatch 'IsNativeOrthoValid\(part.OrthoPart, dest\)') { throw 'New project drawing validation missing' }
+          if ($src -notmatch 'REV19 TEST') { throw 'Explicit backup-project test consent missing' }
+          if ($src -notmatch 'DocumentManager.Open\(dest, false\)') { throw 'New Ortho document activation missing' }
+          if ($src -notmatch 'InitializeCube') { throw 'Native OrthoCube init missing' }
+          if ($src -notmatch 'MakeCubeCopy') { throw 'Native OrthoCube solid missing' }
+          if ($src -notmatch 'CreateOrthos') { throw 'Public native TOP generation missing' }
+          if ($src -match 'BindingFlags.NonPublic|GetMethod\("GenerateOrthos"|SetOrthoDwgVersion|SendStringToExecute|SQLiteConnection|ExecuteNonQuery') {
+            throw 'REV19 may not call private generation, write DCF, or automate UI'
+          }
+          $legacy = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTopGenerationTest.cs' -Raw
+          if ($legacy -notmatch 'CommandMethod\("SPTC_ORTHO18_TOP_API_TEST"') { throw 'Working REV18 command must remain unchanged' }
+      - name: Verify REV19.1 eFileSharingViolation native DWG clone fix
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTopOneCommandTest.cs' -Raw
+          if ($code -notmatch 'ReadDwgFile\(seed, FileOpenMode.OpenForReadAndAllShare, true, null\)') { throw 'Native seed clone must use Autodesk all-share FileOpenMode' }
+          if ($code -notmatch 'db.CloseInput\(true\)') { throw 'Clone must close lazy-loaded source input' }
+          if ($code -notmatch 'db.SaveAs\(dest, DwgVersion.Current\)') { throw 'Clone must still be saved as native DWG' }
+          if ($code -match 'db.ReadDwgFile\(seed, FileShare.Read,') { throw 'FileShare.Read overload caused REV19 sharing violation' }
+      - name: Verify REV19.3 native Ortho document-context handoff
+        shell: pwsh
+        run: |
+          $src = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTopOneCommandTest.cs' -Raw
+          if ($src -notmatch 'public async void Run\(\)') { throw 'REV19.3 Session command must yield to target document context' }
+          if ($src -notmatch 'ExecuteInCommandContextAsync') { throw 'Target command-context handoff missing' }
+          if ($src -notmatch 'HostApplicationServices.WorkingDatabase') { throw 'Working DB diagnostic missing' }
+          if ($src -notmatch 'STEP5_TARGET_CONTEXT_ACTIVE_DOC_MATCH') { throw 'Document context identity check missing' }
+          if ($src -notmatch 'STEP5_TARGET_CONTEXT_WORKING_DB_MATCH') { throw 'Working DB identity check missing' }
+          if ($src -notmatch 'STEP5_NATIVE_CUBE_EXTENTS_MATCHED') { throw 'Native cube must remain strictly verified' }
+          if ($src -notmatch 'NATIVE_DOCUMENT_CONTEXT_ERROR') { throw 'Native delegate must catch and log errors' }
+          if ($src -match 'GetMethod\("GenerateOrthos"|BindingFlags.NonPublic|SetOrthoDwgVersion|ExecuteNonQuery|SendStringToExecute') {
+            throw 'Private native generation and project database writes remain forbidden'
+          }
+      - name: Verify REV19.4 working-database identity and synchronization fix
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTopOneCommandTest.cs' -Raw
+          if ($code -notmatch 'STEP5_WORKING_DB_BEFORE=') { throw 'Missing current working DB filename diagnostic' }
+          if ($code -notmatch 'STEP5_EXPECTED_WORKING_DB=') { throw 'Missing target DB filename diagnostic' }
+          if ($code -notmatch 'STEP5_WORKING_DB_WRAPPER_EQUALS=') { throw 'Missing wrapper identity diagnostic' }
+          if ($code -notmatch 'STEP5_WORKING_DB_SYNC_ENTERED') { throw 'Missing explicit target DB synchronization' }
+          if ($code -notmatch 'HostApplicationServices.WorkingDatabase = targetDoc.Database') { throw 'Must set working DB to verified target before native cube init' }
+          if ($code -notmatch 'STEP5_WORKING_DB_VERIFIED_TARGET') { throw 'Must verify effective working DB filename' }
+          if ($code -notmatch 'STEP5_WORKING_DB_FINAL_SYNC') { throw 'Must synchronize working DB after native call' }
+          if ($code -notmatch 'STEP5_NATIVE_CUBE_EXTENTS_MATCHED') { throw 'Strict native OrthoCube bounds check removed' }
+          if ($code -match 'SetOrthoDwgVersion|GetMethod\("GenerateOrthos"|BindingFlags.NonPublic|ExecuteNonQuery|SQLiteConnection|SendStringToExecute') {
+            throw 'REV19.4 must preserve public-only native Ortho generation and registration'
+          }
+      - name: Verify REV20 separate native TOP FRONT SIDE experiment
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoThreeViewOneCommandTest.cs' -Raw
+          $plan = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoThreeViewPlan.cs' -Raw
+          if ($code -notmatch 'CommandMethod\("SPTC_ORTHO20_THREEVIEW_ONECMD_TEST"') { throw 'REV20 isolated command missing' }
+          if ($code -notmatch 'REV20 TEST') { throw 'REV20 copied-project consent missing' }
+          if ($code -notmatch 'ExecuteInCommandContextAsync') { throw 'Target document context missing' }
+          if ($code -notmatch 'STEP5_WORKING_DB_VERIFIED_TARGET') { throw 'REV19.4 working database guard missing' }
+          if ($code -notmatch 'CUBE_EXTENTS_MATCHED') { throw 'Strict native cube match missing' }
+          if ($code -notmatch 'NativeOrthoThreeViewPlan.Build') { throw 'Sheet-aware view planning missing' }
+          if ($code -notmatch 'STEP10_TOP_FRONT_SIDE_NATIVE_REGISTERED') { throw 'Three view registration missing' }
+          if ($code -notmatch 'CatalogMatches') { throw 'Catalog validation missing' }
+          if ($code -notmatch 'PaperViewports') { throw 'Post-placement inspection missing' }
+          if ($plan -notmatch 'PROPOSED_ONLY:') { throw 'Unenforced placement cannot be advertised as guaranteed' }
+          if ($code -match 'BindingFlags.NonPublic|GetMethod\("GenerateOrthos"|SQLiteConnection|ExecuteNonQuery|SendStringToExecute') {
+            throw 'REV20 must use only public Ortho API'
+          }
+          $baseline = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTopOneCommandTest.cs' -Raw
+          if ($baseline -notmatch 'CommandMethod\("SPTC_ORTHO19_TOP_ONECMD_TEST"') { throw 'Validated REV19.4 command must remain' }
+      - name: Verify REV21 unsupported internal generation is isolated and guarded
+        shell: pwsh
+        run: |
+          $src = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoOneClickInternalTest.cs' -Raw
+          $plan = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoOneClickPlan.cs' -Raw
+          $baseline = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoThreeViewOneCommandTest.cs' -Raw
+          $top = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTopOneCommandTest.cs' -Raw
+          if ($src -notmatch 'CommandMethod\("SPTC_ORTHO21_ONECLICK_INTERNAL_TEST"') { throw 'Separate REV21 command missing' }
+          if ($src -notmatch 'REV21 TEST') { throw 'Copied-project explicit authorization missing' }
+          if ($src -notmatch 'ExecuteInCommandContextAsync') { throw 'Native target drawing command context missing' }
+          if ($src -notmatch 'STEP5_WORKING_DB_VERIFIED_TARGET') { throw 'Working database matching missing' }
+          if ($src -notmatch 'NonPublic\|BindingFlags.Instance') { throw 'Explicit experimental internal method lookup missing' }
+          if ($src -notmatch 'expectedNativeSignature') { throw 'Exact internal method signature gate missing' }
+          if ($src -notmatch 'STEP5_UNSUPPORTED_GENERATE_SIGNATURE_MATCH') { throw 'Internal signature fail-closed guard missing' }
+          if ($src -notmatch 'NativeOrthoOneClickPlan.Build') { throw 'One-click anchor spacing guard missing' }
+          if ($src -notmatch 'PromptPointOptions') { throw 'Exactly one TOP anchor point required' }
+          if ($src -notmatch 'CreateExperimentalViewport') { throw 'Native paper viewport ObjectId creation missing' }
+          if ($src -notmatch 'PRIVATE_GENERATEORTHOS_ENTERED') { throw 'Internal invocation not logged' }
+          if ($src -notmatch 'CatalogMatches') { throw 'Exact native view registration checks missing' }
+          if ($src -notmatch 'CUBE_EXTENTS_MATCHED') { throw 'Native cube geometry verification missing' }
+          if ($src -match 'SQLiteConnection|ExecuteNonQuery|SendStringToExecute|SetOrthoDwgVersion') {
+            throw 'REV21 must not edit project database directly or script clicks'
+          }
+          if ($plan -notmatch 'paperHeight\*\.12' -or $plan -notmatch 'paperWidth\*\.78') { throw 'Title-block keepout guard missing' }
+          if ($baseline -notmatch 'CommandMethod\("SPTC_ORTHO20_THREEVIEW_ONECMD_TEST"') { throw 'REV20 working fallback modified' }
+          if ($top -notmatch 'CommandMethod\("SPTC_ORTHO19_TOP_ONECMD_TEST"') { throw 'REV19.4 working fallback modified' }
+      - name: Verify REV21.1 single-click automatic group translation
+        shell: pwsh
+        run: |
+          $plan = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoOneClickPlan.cs' -Raw
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoOneClickInternalTest.cs' -Raw
+          $previous = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoThreeViewOneCommandTest.cs' -Raw
+          if ($plan -notmatch 'BuildAdjusted') { throw 'Missing automatic full-group anchor translation' }
+          if ($plan -notmatch 'Math.Clamp') { throw 'Anchor must clamp to feasible interval' }
+          if ($plan -notmatch 'minimumX>maximumX') { throw 'Missing fail-closed impossible-fit guard' }
+          if ($plan -notmatch 'IReadOnlyList<Placement> views=Build') { throw 'Strict original collision validation must remain' }
+          if ($code -notmatch 'STEP5_ONE_CLICK_GROUP_TRANSLATION') { throw 'Original versus effective click must be logged' }
+          if ($code -notmatch 'STEP5_ONE_CLICK_AUTO_SHIFTED') { throw 'Auto-shift status missing' }
+          if ($code -notmatch 'NativeOrthoOneClickPlan.BuildAdjusted') { throw 'Native generator not using adjusted group' }
+          if ($code -notmatch 'STEP5_UNSUPPORTED_GENERATE_SIGNATURE_MATCH') { throw 'Internal API signature check must remain' }
+          if ($code -notmatch 'STEP9_.*_VIEW_CATALOG') { throw 'Native registration checks must remain' }
+          if ($previous -notmatch 'CommandMethod\("SPTC_ORTHO20_THREEVIEW_ONECMD_TEST"') { throw 'Working REV20 command changed' }
+      - name: Verify REV22 all ten views and safe separate one-click command
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewOneClickTest.cs' -Raw
+          $plan = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewPlan.cs' -Raw
+          foreach($type in @('Top','Bottom','Left','Right','Front','Back','NW','NE','SW','SE')) {
+            if ($plan -notmatch ('"'+$type+'"')) { throw "REV22 missing native view $type" }
+          }
+          if ($code -notmatch 'CommandMethod\("SPTC_ORTHO22_TENVIEW_ONECLICK_TEST"') { throw 'REV22 separate command missing' }
+          if ($code -notmatch 'REV22 TEST') { throw 'Missing copied-project confirmation' }
+          if ($code -notmatch 'STEP5_ONE_CLICK_COUNT=1') { throw 'One-click anchor missing' }
+          if ($code -notmatch 'NativeOrthoTenViewPlan.BuildAdjusted') { throw '10-view auto-fit missing' }
+          if ($code -notmatch 'STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED') { throw 'Full view catalog verification missing' }
+          if ($code -match 'views.Keys.Take\(8\)') { throw 'Do not truncate the ten native view names' }
+          if ($code -notmatch 'STEP5_UNSUPPORTED_GENERATE_SIGNATURE_MATCH') { throw 'Internal native API signature guard missing' }
+          if ($code -notmatch 'CUBE_EXTENTS_MATCHED') { throw 'Native geometry strict checks missing' }
+          if ($code -notmatch 'STEP5_WORKING_DB_VERIFIED_TARGET') { throw 'Native target context guard missing' }
+          if ($code -match 'SQLiteConnection|ExecuteNonQuery|SendStringToExecute|SetOrthoDwgVersion') { throw 'Direct project metadata modification or UI scripts forbidden' }
+          if ($plan -notmatch 'PROPOSED_ONLY') { throw 'Native Update View validation disclaimer missing' }
+          $previous = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoOneClickInternalTest.cs' -Raw
+          $public = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoThreeViewOneCommandTest.cs' -Raw
+          if ($previous -notmatch 'CommandMethod\("SPTC_ORTHO21_ONECLICK_INTERNAL_TEST"') { throw 'REV21 fallback missing' }
+          if ($public -notmatch 'CommandMethod\("SPTC_ORTHO20_THREEVIEW_ONECMD_TEST"') { throw 'REV20 fallback missing' }
+      - name: Verify REV22.1 fixed isometric Current View fallback
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewIsoFixTest.cs' -Raw
+          $helper = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoIsoViewType.cs' -Raw
+          $original = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewOneClickTest.cs' -Raw
+          if ($code -notmatch 'CommandMethod\("SPTC_ORTHO22_1_ISO_FIX_TEST"') { throw 'REV22.1 independent command missing' }
+          if ($code -notmatch 'REV22.1 TEST') { throw 'Explicit backup-project consent missing' }
+          if ($code -notmatch 'NativeOrthoIsoViewType.Resolve') { throw 'Native iso type normalization missing' }
+          if ($code -notmatch 'NATIVE_TYPE_NAME=') { throw 'Native iso string not logged' }
+          if ($code -notmatch 'ISOMETRIC_CAMERA_MATCH_BEFORE') { throw 'Isometric view camera must be validated before native generate' }
+          if ($code -notmatch 'ISOMETRIC_CAMERA_MATCH_AFTER') { throw 'Isometric camera must be audited after native generate' }
+          if ($code -notmatch 'STEP5_UNSUPPORTED_GENERATE_SIGNATURE_MATCH') { throw 'Private native signature check missing' }
+          if ($code -notmatch 'CUBE_EXTENTS_MATCHED') { throw 'Strict native OrthoCube checks missing' }
+          if ($code -notmatch 'CatalogMatches') { throw 'Native model view registration checks missing' }
+          if ($code -match 'SQLiteConnection|ExecuteNonQuery|SendStringToExecute|SetOrthoDwgVersion') { throw 'Direct metadata edits or UI scripting prohibited' }
+          if ($original -notmatch 'CommandMethod\("SPTC_ORTHO22_TENVIEW_ONECLICK_TEST"') { throw 'Original REV22 command modified' }
+          foreach($iso in @('NW','NE','SW','SE')) {
+            if ($helper -notmatch ('"'+$iso+'" => "'+$iso+'Isometric"')) { throw "Missing canonical native view identifier $iso" }
+          }
+          if ($helper -match 'NWIsometricView|NEIsometricView|SWIsometricView|SEIsometricView') {
+            # Previous names may appear in documentation comments, but not in switch mappings.
+            if ($helper -match '"NW" => "NWIsometricView"|"NE" => "NEIsometricView"|"SW" => "SWIsometricView"|"SE" => "SEIsometricView"') {
+              throw 'Legacy iso type name still used'
+            }
+          }
+      - name: Verify REV22.2 exact native Edit View preset metadata
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewMetadataFixTest.cs' -Raw
+          $preset = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoEditorPreset.cs' -Raw
+          $old = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewIsoFixTest.cs' -Raw
+          foreach($iso in @('NW','NE','SW','SE')) {
+            if ($preset -notmatch ('"'+$iso+'" => "'+$iso+'"')) { throw "REV22.2 missing short preset $iso" }
+          }
+          if ($code -notmatch 'CommandMethod\("SPTC_ORTHO22_2_EDITVIEW_FIX_TEST"') { throw 'Separate new command absent' }
+          if ($code -notmatch 'REV22.2 TEST') { throw 'Copied-project explicit consent absent' }
+          if ($code -notmatch 'NativeOrthoEditorPreset.Resolve') { throw 'Native persisted short names not used' }
+          if ($code -notmatch 'GetViewTypeFromName') { throw 'Native Editor preset parser preflight missing' }
+          if ($code -notmatch 'SAVED_VIEWDEF_TYPE') { throw 'Native saved view-definition type check missing' }
+          if ($code -notmatch 'GetDwgSheetFromOrthoView') { throw 'Missing native read-only sheet readback' }
+          if ($code -notmatch 'GetViewDefByViewName') { throw 'Missing native read-only view definition readback' }
+          if ($code -notmatch 'SAVED_TYPE_CHECK') { throw 'Missing metadata check result' }
+          if ($code -notmatch 'ISOMETRIC_CAMERA_MATCH_AFTER') { throw 'Must retain viewport camera validation' }
+          if ($code -notmatch 'STEP5_UNSUPPORTED_GENERATE_SIGNATURE_MATCH') { throw 'Must retain exact private signature gate' }
+          if ($code -notmatch 'STEP5_WORKING_DB_VERIFIED_TARGET') { throw 'Must retain target document protection' }
+          if ($code -notmatch 'CUBE_EXTENTS_MATCHED') { throw 'Must retain strict native cube bounds' }
+          if ($code -notmatch 'CatalogMatches') { throw 'Must verify native view registration' }
+          if ($code -match 'SQLiteConnection|ExecuteNonQuery|SendStringToExecute|SetOrthoDwgVersion') { throw 'Direct project DB changes prohibited' }
+          if ($old -notmatch 'CommandMethod\("SPTC_ORTHO22_1_ISO_FIX_TEST"') { throw 'REV22.1 must remain available unchanged' }
+      - name: Verify REV22.3 isolated real-viewport paper-scale test
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewScaleLayoutFixTest.cs' -Raw
+          $old = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewMetadataFixTest.cs' -Raw
+          $guard = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoViewportPaperGuard.cs' -Raw
+          if ($code -notmatch 'CommandMethod\("SPTC_ORTHO22_3_SCALE_LAYOUT_TEST"') { throw 'REV22.3 command missing' }
+          if ($old -notmatch 'CommandMethod\("SPTC_ORTHO22_2_EDITVIEW_FIX_TEST"') { throw 'REV22.2 fallback missing' }
+          if ($code -notmatch 'viewportId,item.Width,item.Height,bounds.SizeZ') { throw 'REV22.3 does not pass planned paper-space viewport size' }
+          if ($code -notmatch 'ReadPaperViewportFrame') { throw 'REV22.3 missing actual viewport measurement' }
+          if ($code -notmatch 'ACTUAL_PAPER_LAYOUT_CHECK') { throw 'REV22.3 missing strict post-generation check' }
+          if ($guard -notmatch 'NATIVE_FRAME_SIZE_CHANGED') { throw 'REV22.3 missing actual frame mismatch guard' }
+          if ($code -notmatch 'REV22.3 TEST') { throw 'REV22.3 user consent absent' }
+          if ($code -notmatch 'GetViewTypeFromName') { throw 'REV22.2 native isometric mapping not preserved' }
+          if ($code -notmatch 'SAVED_VIEWDEF_TYPE') { throw 'REV22.2 native metadata readback not preserved' }
+          if ($code -notmatch 'STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED') { throw 'Ten-view catalog verification not preserved' }
+      - name: Verify REV22.4 read-only post-update iso audit
+        shell: pwsh
+        run: |
+          $audit = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoIsoAfterUpdateAudit.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewScaleLayoutFixTest.cs' -Raw
+          if ($audit -notmatch 'CommandMethod\("SPTC_ORTHO22_4_ISO_AUDIT"') { throw 'REV22.4 audit command missing' }
+          foreach($v in @('NW','NE','SW','SE')) {
+            if ($audit -notmatch ('"'+$v+'"')) { throw "REV22.4 missing $v" }
+          }
+          foreach($diagnostic in @('VIEW_DIRECTION','EXPECTED_WCS_ISO_DIRECTION','CAMERA_WCS_ISO_MATCH','VIEW_TWIST_DEG','VIEW_TARGET','PAPER_FRAME','CUSTOM_SCALE')) {
+            if (-not $audit.Contains($diagnostic)) { throw "REV22.4 missing audit diagnostic $diagnostic" }
+          }
+          if ($audit -notmatch 'OpenMode.ForRead') { throw 'Audit must read selected viewport only' }
+          if ($audit -match 'ForWrite|GenerateOrthos|CreateOrthos|AddPnPDrawingFile|CommandFlags.Session') { throw 'Audit must not mutate native ortho project' }
+          if ($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_3_SCALE_LAYOUT_TEST"') { throw 'REV22.3 fallback missing' }
+      - name: Verify REV22.5 isolated four-isometric twist correction
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewIsoTwistFixTest.cs' -Raw
+          $math = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoIsoTwistGuard.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewScaleLayoutFixTest.cs' -Raw
+          if ($code -notmatch 'CommandMethod\("SPTC_ORTHO22_5_ISO_TWIST_TEST"') { throw 'REV22.5 isolated test command missing' }
+          if ($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_3_SCALE_LAYOUT_TEST"') { throw 'REV22.3 fallback missing' }
+          if ($code -notmatch 'REV22.5 TEST') { throw 'REV22.5 copied-project consent missing' }
+          if ($code -notmatch 'NativeOrthoIsoViewType.IsIsometric\(label\)') { throw 'REV22.5 twist is not ISO-only' }
+          if ($code -notmatch 'SetViewportTwistZero') { throw 'REV22.5 twist normalization missing' }
+          if ($code -notmatch 'TWIST_NORMALIZED_CHECK') { throw 'REV22.5 twist readback missing' }
+          if ($code -notmatch 'ReadPaperViewportFrame') { throw 'REV22.3 native dimensions not preserved' }
+          if ($code -notmatch 'SAVED_VIEWDEF_TYPE') { throw 'REV22.2 stored preset readback not preserved' }
+          if ($code -notmatch 'GetViewTypeFromName') { throw 'REV22.2 native preset preflight not preserved' }
+          if ($code -notmatch 'STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED') { throw 'Ten-view registration not preserved' }
+          if ($math -notmatch 'IsProjectedWorldUp') { throw 'REV22.5 projection guard missing' }
+      - name: Verify REV22.6 native reference comparison is isolated and read-only
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoIsoReferenceComparison.cs' -Raw
+          $math = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoIsoReferenceMath.cs' -Raw
+          $old = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewIsoTwistFixTest.cs' -Raw
+          foreach($cmd in @('SPTC_ORTHO22_6_CAPTURE_NATIVE_ISO','SPTC_ORTHO22_6_COMPARE_NATIVE_ISO')) {
+            if ($code -notmatch [regex]::Escape($cmd)) { throw "Missing REV22.6 native comparison command $cmd" }
+          }
+          if ($old -notmatch 'CommandMethod\("SPTC_ORTHO22_5_ISO_TWIST_TEST"') { throw 'REV22.5 generator fallback must remain unchanged' }
+          if ($code -notmatch 'OpenMode.ForRead') { throw 'REV22.6 viewport capture must use ForRead' }
+          if ($code -match 'OpenMode.ForWrite|GenerateOrthos|CreateOrthos|AddPnPDrawingFile|Ortho.dcf') {
+            throw 'REV22.6 must not mutate native Ortho drawings or project DB'
+          }
+          foreach($token in @('ParseNativeReference','VIEWPORT_CAMERA_AND_ROLL_MATCH','NativeOrthoIsoReferenceMath.Compare')) {
+            if (-not $code.Contains($token)) { throw "Missing read-only comparison requirement $token" }
+          }
+          if ($math -notmatch 'Math.IEEERemainder') { throw '0 and 360 degrees must be equivalent' }
+      - name: Verify REV22.6.1 AutoCAD prompt initialization regression
+        shell: pwsh
+        run: |
+          $code = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoIsoReferenceComparison.cs' -Raw
+          $reject = $code.IndexOf('opts.SetRejectMessage(')
+          $allowed = $code.IndexOf('opts.AddAllowedClass(typeof(Viewport),false)')
+          if ($reject -lt 0 -or $allowed -lt 0 -or $reject -gt $allowed) {
+            throw 'REV22.6.1 must call SetRejectMessage BEFORE AddAllowedClass in TrySelectFour'
+          }
+          if ($code -notmatch 'CommandMethod\("SPTC_ORTHO22_6_CAPTURE_NATIVE_ISO"') {
+            throw 'Original native reference capture command must remain'
+          }
+          if ($code -notmatch 'CommandMethod\("SPTC_ORTHO22_6_COMPARE_NATIVE_ISO"') {
+            throw 'Original native reference compare command must remain'
+          }
+      - name: Verify REV22.7 isolated ISO framing correction
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewIsoFrameFixTest.cs' -Raw
+          $guard = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoIsoFramingGuard.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewIsoTwistFixTest.cs' -Raw
+          $reference = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoIsoReferenceComparison.cs' -Raw
+          if ($new -notmatch 'CommandMethod\("SPTC_ORTHO22_7_ISO_FRAME_TEST"') { throw 'REV22.7 new command missing' }
+          if ($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_5_ISO_TWIST_TEST"') { throw 'REV22.5 fallback removed' }
+          if ($reference -notmatch 'SPTC_ORTHO22_6_COMPARE_NATIVE_ISO') { throw 'REV22.6 comparison removed' }
+          if ($new -notmatch 'REV22.7 TEST') { throw 'REV22.7 test-project consent missing' }
+          if ($new -notmatch 'NativeOrthoIsoViewType.IsIsometric\(label\)') { throw 'REV22.7 should be ISO-only' }
+          foreach($token in @('NormalizeHalfTurn','VIEWCENTER_COMPENSATED','ISO_FRAME_COORDINATES_CHECK','SetIsoViewportPose','ReadPaperViewportFrame','GetViewTypeFromName','SAVED_VIEWDEF_TYPE','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED')) {
+            if (-not $new.Contains($token)) { throw "REV22.7 missing mandatory native behavior $token" }
+          }
+          if ($guard -notmatch '\-before.CenterX,\-before.CenterY,0,true') { throw 'REV22.7 must rotate BOTH ViewCenter axes for half-turn' }
+          if ($guard -notmatch 'IsZeroTwist') { throw 'REV22.7 must not double-flip normalized center' }
+          if ($new -notmatch 'vp.ViewCenter=new Point2d') { throw 'REV22.7 must atomically set corrected ViewCenter' }
+      - name: Verify REV22.8 native standard preset fix is isolated
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAxialPresetFixTest.cs' -Raw
+          $helper = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoAxialEditorPreset.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewIsoFrameFixTest.cs' -Raw
+          if ($new -notmatch 'CommandMethod\("SPTC_ORTHO22_8_AXIAL_PRESET_TEST"') { throw 'REV22.8 command missing' }
+          if ($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_7_ISO_FRAME_TEST"') { throw 'REV22.7 generator fallback removed' }
+          if ($new -notmatch 'REV22.8 TEST') { throw 'Copied-project consent missing' }
+          foreach($token in @('NativeOrthoAxialEditorPreset.Resolve','GetViewTypeFromName','AXIAL_CANDIDATES','EDITOR_PRESET','SAVED_VIEWDEF_TYPE','SAVED_TYPE_CHECK','ISO_FRAME_COORDINATES_CHECK','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED')) {
+            if (-not $new.Contains($token)) { throw "Missing REV22.8 verification: $token" }
+          }
+          foreach($name in @('TOP','BOTTOM','LEFT','RIGHT','FRONT','BACK')) {
+            if (-not $helper.Contains('"'+$name+'"')) { throw "Missing axial preset: $name" }
+          }
+          if ($helper -notmatch 'Refusing Current View fallback') { throw 'Unrecognized native preset must fail closed' }
+          if ($new -notmatch 'NativeOrthoIsoViewType.IsIsometric\(label\)') { throw 'ISO-only framing correction missing' }
+          if ($new -notmatch 'NativeOrthoAxialEditorPreset.IsAxial\(label\)') { throw 'Six axial saved-type checks missing' }
+      - name: Verify REV22.9 one-click native automatic Update All
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAutoNativeUpdateTest.cs' -Raw
+          $old = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAxialPresetFixTest.cs' -Raw
+          if ($new -notmatch 'CommandMethod\("SPTC_ORTHO22_9_AUTO_UPDATE_TEST"') { throw 'REV22.9 command missing' }
+          if ($old -notmatch 'CommandMethod\("SPTC_ORTHO22_8_AXIAL_PRESET_TEST"') { throw 'REV22.8 fallback missing' }
+          if ($new -notmatch 'REV22.9 TEST') { throw 'Explicit copied-project user consent missing' }
+          foreach($token in @('PLANTORTHOUPDATE','PLANTORTHOSILENTUPDATE','STEP11_AUTO_UPDATE_COMPLETED','STEP11_SILENTUPDATE_RESTORED','generatedViewNames.AddRange','originalPaperHandles.UnionWith','ALL_TEN_NATIVE_VIEWS_REGISTERED','NativeOrthoAxialEditorPreset.IsAxial','ISO_FRAME_COORDINATES_CHECK','SAVED_TYPE_CHECK','STEP11_POSTUPDATE_VIEWPORT_OVERLAP_OR_OFFSHEET')) {
+            if (-not $new.Contains($token)) { throw "Missing REV22.9 requirement: $token" }
+          }
+          if ($new -notmatch 'Editor.Command\("_.PLANTORTHOUPDATE","_All"\)') { throw 'Must run Autodesk supported PLANTORTHOUPDATE All' }
+          if ($new -notmatch 'AcadApp.SetSystemVariable\("PLANTORTHOSILENTUPDATE",oldSilent\)') { throw 'Must restore original native silent setting' }
+          if ($new -match 'Ortho.dcf\s*=|Ortho.dcf\s*\,') { throw 'Never directly write Ortho.dcf' }
+      - name: Verify REV22.10 six-axial half-turn test and ISO fallback
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAxialOrientationTest.cs' -Raw
+          $helper = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoAxialHalfTurnGuard.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAxialPresetFixTest.cs' -Raw
+          if ($new -notmatch 'CommandMethod\("SPTC_ORTHO22_10_AXIAL_ORIENTATION_TEST"') { throw 'REV22.10 command missing' }
+          if ($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_8_AXIAL_PRESET_TEST"') { throw 'REV22.8 baseline removed' }
+          if ($new -notmatch 'REV22.10 TEST') { throw 'Copied-project consent missing' }
+          foreach($token in @('NativeOrthoAxialEditorPreset.IsAxial(label)','NativeOrthoAxialHalfTurnGuard.Flip','AXIAL_TWIST_BEFORE_DEG','AXIAL_VIEWCENTER_BEFORE','AXIAL_TWIST_AFTER_DEG','AXIAL_VIEWCENTER_AFTER','AXIAL_FRAME_ROTATION_CHECK','ISO_FRAME_COORDINATES_CHECK','SAVED_VIEWDEF_TYPE','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED')) {
+            if (-not $new.Contains($token)) { throw "Missing REV22.10 safeguard: $token" }
+          }
+          if ($new -match 'PLANTORTHOUPDATE_ALL_ENTERED|Editor.Command\("_.PLANTORTHOUPDATE"') { throw 'REV22.9 failed automatic update must not be reused' }
+          if ($helper -notmatch 'before.CenterX,\-before.CenterY') { throw 'Both view center coordinates must be compensated' }
+          if ($helper -notmatch 'IsZeroTwist' -or $helper -notmatch 'IsHalfTurn') { throw 'Only zero/180 initial twists are supported' }
+      - name: Verify REV22.11 optional support-focused pipe clipping
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewSupportFocusedCubeTest.cs' -Raw
+          $helper = Get-Content 'src/SPTC.SupportDrawings/SupportFocusedCubePlanner.cs' -Raw
+          $old = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAxialOrientationTest.cs' -Raw
+          if ($new -notmatch 'CommandMethod\("SPTC_ORTHO22_11_SUPPORT_CUBE_TEST"') { throw 'REV22.11 test command missing' }
+          if ($old -notmatch 'CommandMethod\("SPTC_ORTHO22_10_AXIAL_ORIENTATION_TEST"') { throw 'REV22.10 fallback removed' }
+          if ($new -notmatch 'REV22.11 TEST') { throw 'REV22.11 explicit copied-project consent missing' }
+          foreach($token in @('SupportFocus','Original','SupportFocusedCubePlanner.Build','REV22_11_FOCUS_XY_UNCHANGED_BY_PIPES','REV22_11_PIPE_BBOX_ACCEPTED','REV22_11_PIPE_Z_CLIPPED','NATIVE_CUBE_MIN','NATIVE_CUBE_MAX','AXIAL_FRAME_ROTATION_CHECK','ISO_FRAME_COORDINATES_CHECK','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED')) {
+            if (-not $new.Contains($token)) { throw "REV22.11 missing required behavior: $token" }
+          }
+          if ($new -match 'PLANTORTHOUPDATE_ALL_ENTERED|Editor.Command\("_.PLANTORTHOUPDATE"') { throw 'REV22.9 rejected auto update must not be reused' }
+          if ($helper -notmatch 'minX=support.MinX-xy,maxX=support.MaxX\+xy') { throw 'Support rather than pipe route must determine cube X' }
+          if ($helper -notmatch 'minY=support.MinY-xy,maxY=support.MaxY\+xy') { throw 'Support rather than pipe route must determine cube Y' }
+          if ($helper -notmatch 'Math.Min\(pipe.MaxZ,support.MaxZ\+reach\)') { throw 'Selected long pipe Z must be bounded by local support reach' }
+      - name: Verify REV22.12 automatic SupportFocus without numeric prompts
+        shell: pwsh
+        run: |
+          $auto = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAutoSupportCubeTest.cs' -Raw
+          $helper = Get-Content 'src/SPTC.SupportDrawings/SupportFocusedCubePlanner.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewSupportFocusedCubeTest.cs' -Raw
+          if ($auto -notmatch 'CommandMethod\("SPTC_ORTHO22_12_AUTO_SUPPORT_CUBE_TEST"') { throw 'REV22.12 command missing' }
+          if ($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_11_SUPPORT_CUBE_TEST"') { throw 'REV22.11 fallback missing' }
+          if ($auto -match 'PromptDoubleOptions|GetDouble\(') { throw 'REV22.12 must not ask for clearance numbers' }
+          if ($auto -notmatch 'SupportFocusedCubePlanner.BuildAutomatic') { throw 'REV22.12 must use support-dimension auto plan' }
+          foreach($token in @('REV22_12_AUTOMATIC_CLEARANCE','REV22_12_AUTO_XY_CLEARANCE_MM','REV22_12_AUTO_PIPE_REACH_MM','SupportFocus','Original','AXIAL_FRAME_ROTATION_CHECK','ISO_FRAME_COORDINATES_CHECK','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','REV22.12 TEST')) {
+            if (-not $auto.Contains($token)) { throw "REV22.12 missing guard: $token" }
+          }
+          if ($auto -match 'PLANTORTHOUPDATE_ALL_ENTERED|Editor.Command\("_.PLANTORTHOUPDATE"') { throw 'Failed REV22.9 automatic updater must not be reused' }
+          if ($helper -notmatch 'Math.Clamp\(minHorizontalMm\*0.12,50.0,160.0\)') { throw 'REV22.12 adaptive XY bounds missing' }
+          if ($helper -notmatch 'Math.Clamp\(heightMm\*0.45,300.0,1200.0\)') { throw 'REV22.12 adaptive Z bounds missing' }
+      - name: Verify REV22.13 ten native paper-space view titles
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewWithTitlesTest.cs' -Raw
+          $planner = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoViewTitlePlan.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAutoSupportCubeTest.cs' -Raw
+          if ($new -notmatch 'CommandMethod\("SPTC_ORTHO22_13_VIEW_TITLES_TEST"') { throw 'REV22.13 test command missing' }
+          if ($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_12_AUTO_SUPPORT_CUBE_TEST"') { throw 'REV22.12 working fallback removed' }
+          if ($new -notmatch 'REV22.13 TEST') { throw 'Copied-project authorization missing' }
+          foreach($token in @('NativeOrthoViewTitlePlan.ReserveBelow','CreateNativePaperTitles','NativeOrthoViewTitlePlan.BuildTitles','STEP5_TITLE_RESERVED_SHIFT_Y_MM','STEP10_TITLE_LAYER','STEP10_VIEW_TITLE_COUNT','STEP10_TITLE_PLACEMENT_CHECK=PASS','SupportFocusedCubePlanner.BuildAutomatic','AXIAL_FRAME_ROTATION_CHECK','ISO_FRAME_COORDINATES_CHECK','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED')) {
+            if (-not $new.Contains($token)) { throw "REV22.13 safeguard missing: $token" }
+          }
+          foreach($caption in @('TOP VIEW','BOTTOM VIEW','LEFT VIEW','RIGHT VIEW','FRONT VIEW','BACK VIEW','NW ISOMETRIC VIEW','NE ISOMETRIC VIEW','SW ISOMETRIC VIEW','SE ISOMETRIC VIEW')) {
+            if (-not $planner.Contains('"'+$caption+'"')) { throw "Missing native view caption $caption" }
+          }
+          if($new -match 'PLANTORTHOUPDATE_ALL_ENTERED|Editor.Command\("_.PLANTORTHOUPDATE"') { throw 'Do not reuse failing native auto update' }
+          if($new -notmatch 'new MText') { throw 'Titles must be native editable paper-space MText' }
+          if($new -notmatch 'AttachmentPoint.TopCenter') { throw 'Titles must be centered below their viewport' }
+      - name: Verify REV22.14 block and structural section annotations
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewStructuralAnnotationsTest.cs' -Raw
+          $reader = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSourceReader.cs' -Raw
+          $metadata = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberMetadata.cs' -Raw
+          $plan = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoCalloutPlan.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewWithTitlesTest.cs' -Raw
+          if ($new -notmatch 'CommandMethod\("SPTC_ORTHO22_14_STRUCTURE_ANNOTATIONS_TEST"') { throw 'REV22.14 test command missing' }
+          if ($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_13_VIEW_TITLES_TEST"') { throw 'Working REV22.13 baseline removed' }
+          if ($new -notmatch 'REV22.14 TEST') { throw 'REV22.14 copied-project authorization missing' }
+          foreach($token in @('SupportOrthoSourceReader.Inspect','SupportOrthoCalloutPlan.Build','CreateNativePaperSupportAnnotations','REV22_14_BLOCK_NAME','REV22_14_MEMBER_SIZES','STEP10_SUPPORT_ANNOTATION_COUNT','STEP10_SUPPORT_ANNOTATIONS_CHECK=PASS','NativeOrthoViewTitlePlan.BuildTitles','SupportFocusedCubePlanner.BuildAutomatic','AXIAL_FRAME_ROTATION_CHECK','ISO_FRAME_COORDINATES_CHECK','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED')) {
+            if (-not $new.Contains($token)) { throw "REV22.14 missing guard: $token" }
+          }
+          if ($new -match 'PLANTORTHOUPDATE_ALL_ENTERED|Editor.Command\("_.PLANTORTHOUPDATE"') { throw 'Disallowed native auto updater' }
+          foreach($token in @('BlockReference','AttributeReference','AttributeDefinition','DynamicBlockTableRecord','SectionsFromName')) {
+            if (-not (($reader+$metadata).Contains($token))) { throw "REV22.14 source metadata path missing: $token" }
+          }
+          if ($metadata -notmatch 'NOT AVAILABLE \(NO SECTION METADATA\)') { throw 'Unknown structural sizes must not be fabricated' }
+          if ($plan -notmatch 'FrameGapMm=7.0') { throw 'Callouts must be outside native viewports' }
+          if ($new -notmatch 'new MText' -or $new -notmatch 'new Line\(') { throw 'Native paper-space note and leader not created' }
+      - name: Verify REV22.15 compact standalone block and member annotations
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewCompactSteelAnnotationsTest.cs' -Raw
+          $reader = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSourceReader15.cs' -Raw
+          $metadata = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSelection15.cs' -Raw
+          $panel = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSummaryPanel15.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewStructuralAnnotationsTest.cs' -Raw
+          if ($new -notmatch 'CommandMethod\("SPTC_ORTHO22_15_COMPACT_STEEL_ANNOTATIONS_TEST"') { throw 'REV22.15 test command missing' }
+          if ($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_14_STRUCTURE_ANNOTATIONS_TEST"') { throw 'REV22.14 fallback removed' }
+          if ($new -notmatch 'REV22.15 TEST') { throw 'Missing copied-project authorization' }
+          foreach($token in @('SupportOrthoSourceReader15.Inspect','SupportOrthoSummaryPanel15.Build','CreateNativePaperSupportSummary','REV22_15_SUPPORT_OBJECT_COUNT','REV22_15_BLOCK_REFERENCE_COUNT','REV22_15_NATIVE_STRUCTURE_MEMBER_COUNT','STEP10_SUPPORT_PANEL_STATUS','STEP10_VIEW_TITLE_COUNT','NativeOrthoViewTitlePlan.ReserveBelow','SupportFocusedCubePlanner.BuildAutomatic','AXIAL_FRAME_ROTATION_CHECK','ISO_FRAME_COORDINATES_CHECK','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED')) {
+            if (-not $new.Contains($token)) { throw "REV22.15 missing critical guard: $token" }
+          }
+          if ($new -match 'CreateNativePaperSupportAnnotations\(' -or $new -match 'SupportOrthoCalloutPlan.Build') { throw 'Old ten noisy annotations still used in REV22.15' }
+          if ($new -match 'PLANTORTHOUPDATE_ALL_ENTERED|Editor.Command\("_.PLANTORTHOUPDATE"') { throw 'Disallowed native auto update' }
+          foreach($token in @('BlockReference','ExtensionDictionary','XData','StructureMember','SectionSize','SectionFromAttribute')) {
+            if (-not $reader.Contains($token)) { throw "REV22.15 source metadata reader missing: $token" }
+          }
+          if($metadata -notmatch 'NOT RECORDED') { throw 'Unknown sections must not be invented' }
+          if($panel -notmatch 'columns.Length!=2' -or $panel -notmatch 'PanelMarginMm') { throw 'Single safe central note placement missing' }
+          if($new -notmatch 'new MText') { throw 'REV22.15 must write editable native paper-space MText' }
+      - name: Verify REV22.16 native Plant Structure Member Size data link
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewPnpSteelSizeTest.cs' -Raw
+          $read = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoPlantProperties16.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewCompactSteelAnnotationsTest.cs' -Raw
+          if ($new -notmatch 'CommandMethod\("SPTC_ORTHO22_16_PNP_STEEL_SIZE_TEST"') { throw 'Missing isolated REV22.16 command' }
+          if ($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_15_COMPACT_STEEL_ANNOTATIONS_TEST"') { throw 'Verified REV22.15 command removed' }
+          if ($new -notmatch 'REV22.16 TEST') { throw 'Missing copied project consent code' }
+          foreach($token in @('SupportOrthoPlantProperties16.Inspect','REV22_16_PNP_STRUCTURE_CANDIDATES','REV22_16_PNP_LINKED_ROW_COUNT','REV22_16_PNP_MEMBERS_WITH_SIZE','SupportOrthoSummaryPanel15.Build','NativeOrthoViewTitlePlan.BuildTitles','SupportFocusedCubePlanner.BuildAutomatic','ISO_FRAME_COORDINATES_CHECK','AXIAL_FRAME_ROTATION_CHECK','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','STEP10_SUPPORT_PANEL_STATUS')) {
+            if (-not $new.Contains($token)) { throw "REV22.16 missing invariant: $token" }
+          }
+          foreach($token in @('Autodesk.ProcessPower.PlantInstance.PlantApplication','ProjectParts','Piping','DataLinksManager','FindAcPpRowId','GetAllProperties','StructureMember','"Size"','LinkedRows','MembersWithSize')) {
+            if (-not $read.Contains($token)) { throw "REV22.16 missing PnP source property path: $token" }
+          }
+          if($read -match 'SetProperties\(' -or $read -match 'SetProperty\(') { throw 'REV22.16 must never write PnP model properties' }
+          if($new -match 'PLANTORTHOUPDATE_ALL_ENTERED|Editor.Command\("_.PLANTORTHOUPDATE"') { throw 'Do not reuse unverified native auto update' }
+          if($new -match 'CreateNativePaperSupportAnnotations\(') { throw 'Do not repeat ten noisy annotation callouts' }
+          if($new -notmatch 'CreateNativePaperSupportSummary') { throw 'One compact paper summary must remain' }
+      - name: Verify REV22.17 per-structural-member native view leaders
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewMemberLeadersTest.cs' -Raw
+          $pure = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan17.cs' -Raw
+          $source = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberSource17.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewPnpSteelSizeTest.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_17_MEMBER_LEADERS_TEST"') { throw 'REV22.17 isolated command missing' }
+          if($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_16_PNP_STEEL_SIZE_TEST"') { throw 'Working REV22.16 command missing' }
+          if($new -notmatch 'REV22.17 TEST') { throw 'COPIED test project guard missing' }
+          foreach($token in @('SupportOrthoPlantProperties16.Inspect','SupportOrthoMemberSource17.Read','ReadNativeMemberCameras','SupportOrthoMemberCalloutPlan17.Build','CreateNativePaperMemberLeaders','STEP10_INDIVIDUAL_MEMBER_ANNOTATION_COUNT','STEP10_MEMBER_LABEL','STEP10_MEMBER_ANNOTATIONS_CHECK','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','STEP10_VIEW_TITLE_COUNT','NativeOrthoViewTitlePlan.ReserveBelow','SupportFocusedCubePlanner.BuildAutomatic','AXIAL_FRAME_ROTATION_CHECK','ISO_FRAME_COORDINATES_CHECK')) {
+            if(-not $new.Contains($token)) { throw "REV22.17 per-member guard missing: $token" }
+          }
+          if($new -match 'SupportOrthoSummaryPanel15.Build\(') { throw 'REV22.17 still creates aggregated member size BOM box' }
+          foreach($token in @('WorldToPlane','ViewCenterX','TwistRadians','TextTop','View','Handle','Project','TextBoxMinimumMm')) {
+            if(-not $pure.Contains($token)) { throw "Per-member projector missing: $token" }
+          }
+          if(-not $source.Contains('PNP_STRUCTURE_SIZE handle=') -or -not $source.Contains('GeometricExtents')) { throw 'True source member IDs and 3D anchor points required' }
+          if($new -match 'PLANTORTHOUPDATE_ALL_ENTERED|Editor.Command\("_.PLANTORTHOUPDATE"') { throw 'Do not reuse native auto update' }
+          if($new -notmatch 'new MText' -or $new -notmatch 'new Line\(') { throw 'Paper-space editable leader and text missing' }
+      - name: Verify REV22.18 vertical structural Top of Steel second-line labels
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewVerticalTosTest.cs' -Raw
+          $vertical = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoVerticalSource18.cs' -Raw
+          $verticalRule = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoVerticalMember18.cs' -Raw
+          $leader = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan18.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewMemberLeadersTest.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_18_VERTICAL_TOS_TEST"') { throw 'REV22.18 isolated command missing' }
+          if($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_17_MEMBER_LEADERS_TEST"') { throw 'REV22.17 fallback removed' }
+          if($new -notmatch 'REV22.18 TEST') { throw 'Copied-project authorization missing' }
+          foreach($token in @('SupportOrthoVerticalSource18.Read','SupportOrthoMemberCalloutPlan18.Build','CreateNativePaperMemberLeaders18','STEP10_VERTICAL_TOS_LABEL_COUNT','STEP10_VERTICAL_TOS_EXPECTED','REV22_18_TOS_EXACT_PROPERTY_COUNT','REV22_18_VERTICAL_SOURCE_MEMBER_COUNT','STEP10_MEMBER_ANNOTATIONS_CHECK','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','STEP10_VIEW_TITLE_COUNT','AXIAL_FRAME_ROTATION_CHECK','ISO_FRAME_COORDINATES_CHECK')) {
+            if(-not $new.Contains($token)) { throw "REV22.18 safeguard missing: $token" }
+          }
+          foreach($token in @('TopOfSteel','Top of Steel','StartPoint','EndPoint','GetAllProperties','GeometricExtents','DirectionSource','PropertyDescriptor')) {
+            if(-not $vertical.Contains($token)) { throw "REV22.18 source field missing: $token" }
+          }
+          foreach($token in @('IsVerticalAxis','IsStronglyVerticalBounds','TopOfSteelText','PLANT_TOP_OF_STEEL_PROPERTY','GEOMETRIC_TOP_APPROX','FormatElevation')) {
+            if(-not $verticalRule.Contains($token)) { throw "REV22.18 directional or elevation guard missing: $token" }
+          }
+          foreach($token in @('RowSpacingMm','LaneStepMm','TextLineHeightMm','IsVertical','TOS EL.','TOS~','LabelTop','Project','LabelGapFromFrameMm')) {
+            if(-not $leader.Contains($token)) { throw "REV22.18 paper annotation routing missing: $token" }
+          }
+          if($new -match 'SupportOrthoSummaryPanel15.Build\(') { throw 'REV22.18 may not create old single combined summary' }
+          if($new -match 'PLANTORTHOUPDATE_ALL_ENTERED|Editor.Command\("_.PLANTORTHOUPDATE"') { throw 'Autodesk native auto updater not tested' }
+          if($new -notmatch 'new MText' -or $new -notmatch 'new Line\(') { throw 'Missing editable paper-space MText and leaders' }
+      - name: Verify REV22.19 horizontal-only Top of Steel and zero vertical TOS
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewHorizontalTosTest.cs' -Raw
+          $source = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoHorizontalSource19.cs' -Raw
+          $rule = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoHorizontalMember19.cs' -Raw
+          $layout = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan19.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewVerticalTosTest.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_19_HORIZONTAL_TOS_TEST"') { throw 'REV22.19 isolated command missing' }
+          if($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_18_VERTICAL_TOS_TEST"') { throw 'REV22.18 baseline removed' }
+          if($new -notmatch 'REV22.19 TEST') { throw 'Copied project guard missing' }
+          foreach($token in @('SupportOrthoHorizontalSource19.Read','SupportOrthoMemberCalloutPlan19.Build','CreateNativePaperMemberLeaders19','STEP10_HORIZONTAL_TOS_LABEL_COUNT','STEP10_HORIZONTAL_TOS_EXPECTED','REV22_19_HORIZONTAL_SOURCE_MEMBER_COUNT','STEP10_MEMBER_ANNOTATIONS_CHECK','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','STEP10_VIEW_TITLE_COUNT','SupportFocusedCubePlanner.BuildAutomatic')) {
+            if(-not $new.Contains($token)) { throw "REV22.19 invariant missing: $token" }
+          }
+          foreach($token in @('IsHorizontalAxis','IsStronglyHorizontalBounds','NOT_HORIZONTAL','PLANT_TOP_OF_STEEL_PROPERTY','GEOMETRIC_TOP_APPROX','MaximumVerticalFraction')) {
+            if(-not $rule.Contains($token)) { throw "REV22.19 horizontal gate missing: $token" }
+          }
+          foreach($token in @('TopOfSteel','StartPoint','EndPoint','GetAllProperties','GeometricExtents','IsHorizontal')) {
+            if(-not $source.Contains($token)) { throw "REV22.19 source property path missing: $token" }
+          }
+          if($layout -notmatch 'bool addTos=member.IsHorizontal;') { throw 'REV22.19 TOS MUST be horizontal-only' }
+          if($layout -match 'bool addTos=member.IsVertical;') { throw 'Old vertical TOS condition detected' }
+          foreach($token in @('HorizontalTosLines','RowSpacingMm','LaneStepMm','LabelGapFromFrameMm','TOS EL.','TOS~')) {
+            if(-not $layout.Contains($token)) { throw "REV22.19 layout/token missing: $token" }
+          }
+          if($new -match 'SupportOrthoSummaryPanel15.Build\(') { throw 'No combined legend in per-member revision' }
+          if($new -notmatch 'new MText' -or $new -notmatch 'new Line\(') { throw 'Leader and member labels missing' }
+      - name: Verify REV22.20 horizontal TOS text spacing only
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewTosSpacingTest.cs' -Raw
+          $old = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewHorizontalTosTest.cs' -Raw
+          $plan = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan20.cs' -Raw
+          $priorPlan = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan19.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_20_TOS_SPACING_TEST"') { throw 'REV22.20 isolated command missing' }
+          if($old -notmatch 'CommandMethod\("SPTC_ORTHO22_19_HORIZONTAL_TOS_TEST"') { throw 'Previous REV22.19 preserved command missing' }
+          if($new -notmatch 'REV22.20 TEST') { throw 'Copied project authorization missing' }
+          foreach($token in @('SupportOrthoHorizontalSource19.Read','SupportOrthoMemberCalloutPlan20.Build','CreateNativePaperMemberLeaders20','STEP10_HORIZONTAL_TOS_LABEL_COUNT','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','STEP10_VIEW_TITLE_COUNT','SupportFocusedCubePlanner.BuildAutomatic')) {
+            if(-not $new.Contains($token)) { throw "REV22.20 member/camera invariant missing: $token" }
+          }
+          if($plan -notmatch 'bool addTos=member.IsHorizontal;') { throw 'REV22.20 TOS must remain horizontal-only' }
+          if(-not $plan.Contains('"TOS ~ ":"TOS EL. "')) { throw 'REV22.20 approximate TOS spacing not applied' }
+          if(-not $plan.Contains('label+"\n\n"+tos')) { throw 'REV22.20 blank annotation paragraph not applied' }
+          if(-not $plan.Contains('double height=addTos?TextLineHeightMm*3:')) { throw 'REV22.20 TOS 3-line bounding height not reserved' }
+          if(-not $plan.Contains('n.Text.Contains("TOS ~ ")')) { throw 'REV22.20 approximate TOS detection must use spaced tilde' }
+          if($plan.Contains('"TOS~ "')) { throw 'Unspaced TOS tilde persists in the new planner' }
+          if(-not $priorPlan.Contains('"TOS~ "')) { throw 'Do not change REV22.19 fallback' }
+          if($new -notmatch 'Replace\("\\n","\\\\P"\)') { throw 'REV22.20 native MText must convert double newline to two paragraph breaks' }
+      - name: Verify REV22.21 screenshot-matching TOS directly below member text
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewTosDirectLineTest.cs' -Raw
+          $previous = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewTosSpacingTest.cs' -Raw
+          $planner = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan21.cs' -Raw
+          $oldPlanner = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan20.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_21_TOS_DIRECT_LINE_TEST"') { throw 'REV22.21 command missing' }
+          if($previous -notmatch 'CommandMethod\("SPTC_ORTHO22_20_TOS_SPACING_TEST"') { throw 'REV22.20 baseline removed' }
+          if($new -notmatch 'REV22.21 TEST') { throw 'REV22.21 copied-project confirmation missing' }
+          foreach($token in @('SupportOrthoHorizontalSource19.Read','SupportOrthoMemberCalloutPlan21.Build','CreateNativePaperMemberLeaders21','STEP10_HORIZONTAL_TOS_LABEL_COUNT','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','STEP10_VIEW_TITLE_COUNT','SupportFocusedCubePlanner.BuildAutomatic')) {
+            if(-not $new.Contains($token)) { throw "REV22.21 critical invariant missing: $token" }
+          }
+          if(-not $planner.Contains('bool addTos=member.IsHorizontal;')) { throw 'Horizontal-only TOS rule missing' }
+          if(-not $planner.Contains('"TOS ~ ":"TOS EL. "')) { throw 'Spaced TOS ~ text missing' }
+          if(-not $planner.Contains('tos==null?label:label+"\n"+tos,height,addTos')) { throw 'TOS must immediately follow Size with ONE newline' }
+          if($planner.Contains('label+"\n\n"+tos')) { throw 'Unexpected blank line in screenshot style' }
+          if(-not $planner.Contains('double height=addTos?TextLineHeightMm*2:')) { throw 'Reserve two text rows for Size and TOS' }
+          if(-not $oldPlanner.Contains('label+"\n\n"+tos')) { throw 'Keep old REV22.20 command unchanged as fallback' }
+          if(-not $new.Contains('Replace("\n","\\P")')) { throw 'Native MText line break conversion absent' }
+      - name: Verify REV22.22 native MText line break preservation
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewMTextSeparatorTest.cs' -Raw
+          $old = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewTosDirectLineTest.cs' -Raw
+          $encoder = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberMText22.cs' -Raw
+          $planner = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan21.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_22_MTEXT_SEPARATOR_TEST"') { throw 'REV22.22 separate command missing' }
+          if($old -notmatch 'CommandMethod\("SPTC_ORTHO22_21_TOS_DIRECT_LINE_TEST"') { throw 'REV22.21 previous command removed' }
+          if($new -notmatch 'REV22.22 TEST') { throw 'Copied-project authorization missing' }
+          if(-not $new.Contains('Contents=SupportOrthoMemberMText22.Encode(item.Text)')) { throw 'Native MText must call split-first encoder' }
+          if($new.Contains('Contents=SupportOrthoMemberMetadata.SafeMText(item.Text)')) { throw 'Old newline-stripping path remains in REV22.22' }
+          foreach($token in @('Split(',"string.Join(", 'paragraphs.Select(SupportOrthoMemberMetadata.SafeMText)')) {
+            if(-not $encoder.Contains($token)) { throw "REV22.22 encoder implementation missing $token" }
+          }
+          foreach($token in @('SupportOrthoHorizontalSource19.Read','SupportOrthoMemberCalloutPlan21.Build','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','STEP10_VIEW_TITLE_COUNT','STEP10_HORIZONTAL_TOS_LABEL_COUNT','STEP10_MEMBER_ANNOTATIONS_CHECK')) {
+            if(-not $new.Contains($token)) { throw "REV22.22 native view regression guard missing: $token" }
+          }
+          if(-not $planner.Contains('bool addTos=member.IsHorizontal;') -or -not $planner.Contains('"TOS ~ ":"TOS EL. "')) { throw 'Horizontal-only spaced-tilde display removed' }
+      - name: Verify REV22.23 nonwrapping native structural member DBText labels
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewNoOverlapTextTest.cs' -Raw
+          $old = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewMTextSeparatorTest.cs' -Raw
+          $planner = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan23.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_23_NO_OVERLAP_TEXT_TEST"') { throw 'Isolated REV22.23 command missing' }
+          if($old -notmatch 'CommandMethod\("SPTC_ORTHO22_22_MTEXT_SEPARATOR_TEST"') { throw 'REV22.22 rollback missing' }
+          if($new -notmatch 'REV22.23 TEST') { throw 'Copied-project confirmation missing' }
+          foreach($token in @('SupportOrthoMemberCalloutPlan23.Build','CreateNativePaperMemberLeaders23','REV22_23_NATIVE_TEXT_SKIPPED_COUNT','REV22_23_TEXT_MODE=SEPARATE_NON_WRAPPING_DBTEXT','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','STEP10_VIEW_TITLE_COUNT','STEP10_INDIVIDUAL_MEMBER_ANNOTATION_COUNT','STEP10_MEMBER_ANNOTATIONS_CHECK','SupportOrthoHorizontalSource19.Read','SupportFocusedCubePlanner.BuildAutomatic')) {
+            if(-not $new.Contains($token)) { throw "REV22.23 invariant missing: $token" }
+          }
+          if(-not $new.Contains('new DBText') -or -not $new.Contains('GeometricExtents')) { throw 'Must use real native DBText glyph measurement' }
+          if(-not $new.Contains('NATIVE_FONT_TOO_WIDE_AT_MINIMUM_HEIGHT') -or -not $new.Contains('name.Erase()')) { throw 'Fail-closed native label fitting not enforced' }
+          if($new.Contains('new MText'+'\n'+'            {'+'\n'+'                Contents=SupportOrthoMemberMText22.Encode(item.Text)')) { throw 'Old wrapping annotation path remains' }
+          if(-not $planner.Contains('bool addTos=member.IsHorizontal;') -or -not $planner.Contains('"TOS ~ ":"TOS EL. "')) { throw 'Horizontal-only TOS semantics missing' }
+          if(-not $planner.Contains('TextHeightMm=1.75') -or -not $planner.Contains('RowSpacingMm=1.8')) { throw 'Smaller text / wider row gaps not applied' }
+          if($new -notmatch 'LabelTop-item.LabelHeight') { throw 'Native glyph extents must fit reserved label box' }
+      - name: Verify REV22.24 Plant piping Support compatibility
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewPlantSupportTest.cs' -Raw
+          $reader = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoPlantSupport24.cs' -Raw
+          $support = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSupportLabel24.cs' -Raw
+          $old = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewNoOverlapTextTest.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_24_SUPPORT_COMPAT_TEST"') { throw 'REV22.24 isolated command missing' }
+          if($old -notmatch 'CommandMethod\("SPTC_ORTHO22_23_NO_OVERLAP_TEXT_TEST"') { throw 'Working REV22.23 fallback removed' }
+          if($new -notmatch 'REV22.24 TEST') { throw 'Copied-project authorization missing' }
+          foreach($token in @('SupportOrthoPlantSupport24.Read','plantSupports.Members','sourceAnnotations','REV22_24_PNP_SUPPORT_ACCEPTED','REV22_24_COMBINED_ANNOTATION_SOURCE_COUNT','STEP10_PIPING_SUPPORT_COUNT','STEP10_STRUCTURE_MEMBER_COUNT','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','STEP10_VIEW_TITLE_COUNT','SupportOrthoMemberCalloutPlan23.Build','CreateNativePaperMemberLeaders24','STEP10_MEMBER_ANNOTATIONS_CHECK')) {
+            if(-not $new.Contains($token)) { throw "REV22.24 missing functionality: $token" }
+          }
+          foreach($token in @('DataLinksManager','FindAcPpRowId','GetAllProperties','LongDescriptionSize','PipeSupportsSpec','Size','Support','GeometricExtents','StructureMember','PIPING_SUPPORT')) {
+            if(-not (($reader+$support+$new).Contains($token))) { throw "REV22.24 actual Support read path missing: $token" }
+          }
+          if(-not $support.Contains('LongDescriptionSize') -or -not $support.Contains('ShortDescription')) { throw 'Use real Plant support description before bare Size' }
+          if(-not $new.Contains('s.Handle,s.Description,s.X,s.Y,s.Z,false,null,')) { throw 'A Piping Support must NEVER be assigned structural Top of Steel' }
+          if($new -notmatch 'new DBText') { throw 'Preserve native nonwrapping individual member labels' }
+          if($new -match 'PLANTORTHOUPDATE_ALL_ENTERED|Editor.Command\("_.PLANTORTHOUPDATE"') { throw 'Do not reuse unsupported native automatic updates' }
+      - name: Verify REV22.25 Support TOS property and geometric approximation
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewPlantSupportTosTest.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewPlantSupportTest.cs' -Raw
+          $reader = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoPlantSupport25.cs' -Raw
+          $elev = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSupportTos25.cs' -Raw
+          $planner = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan25.cs' -Raw
+          $supportLabel = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSupportLabel24.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_25_SUPPORT_TOS_TEST"') { throw 'REV22.25 command missing' }
+          if($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_24_SUPPORT_COMPAT_TEST"') { throw 'REV22.24 fallback missing' }
+          if($new -notmatch 'REV22.25 TEST') { throw 'Copied project guard missing' }
+          foreach($term in @('SupportOrthoPlantSupport25.Read','STEP10_SUPPORT_TOS_LABEL_COUNT','STEP10_SUPPORT_TOS_EXPECTED','STEP10_HORIZONTAL_TOS_LABEL_COUNT','SupportOrthoMemberCalloutPlan25.Build','CreateNativePaperMemberLeaders25','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED','STEP10_VIEW_TITLE_COUNT','STEP10_MEMBER_ANNOTATIONS_CHECK','SupportFocusedCubePlanner.BuildAutomatic')) {
+            if(-not $new.Contains($term)) { throw "Missing REV22.25 key function: $term" }
+          }
+          foreach($term in @('TopOfSteel','TOSElevation','SUPPORT_GEOMETRIC_TOP_APPROX','SUPPORT_EXPLICIT_TOP_OF_STEEL','SupportOrthoVerticalMember18.FormatElevation')) {
+            if(-not $elev.Contains($term)) { throw "Missing safe support TOS property: $term" }
+          }
+          foreach($term in @('SupportOrthoSupportTos25.Evaluate','b.MaxPoint.Z','TosText','TosSource','LongDescriptionSize','DataLinksManager')) {
+            if(-not (($reader+$new+$supportLabel).Contains($term))) { throw "Support source TOS or PnP missing: $term" }
+          }
+          if(-not $planner.Contains('bool addTos=member.HasTos;')) { throw 'REV22.25 support and steel TOS must use explicit per-object eligibility' }
+          if(-not $planner.Contains('SUPPORT_GEOMETRIC_TOP_APPROX')) { throw 'Support geometric elevation must display as TOS ~, never exact' }
+          if(-not $planner.Contains('"TOS ~ ":"TOS EL. "')) { throw 'Maintain correct per-line TOS formatting' }
+          if(-not $new.Contains('new DBText') -or -not $new.Contains('GeometricExtents')) { throw 'Preserve no-wrap member and Support labels' }
+      - name: Verify REV22.26 ten native Ortho views auto-placed with zero mouse clicks
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAutoPlacementTest.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewPlantSupportTosTest.cs' -Raw
+          $planner = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAutoPlacement26.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_26_AUTO_PLACE_TEN_TEST"') { throw 'REV22.26 isolated command missing' }
+          if($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_25_SUPPORT_TOS_TEST"') { throw 'REV22.25 working baseline missing' }
+          if($new -notmatch 'REV22.26 TEST') { throw 'Copied-project authorization missing' }
+          if($new.Contains('.GetPoint(') -or $new.Contains('PromptPointOptions(')) { throw 'REV22.26 must never ask for a paper-space placement click' }
+          foreach($key in @('NativeOrthoTenViewAutoPlacement26.Build(','STEP5_AUTO_PLACEMENT_ENABLED=True','STEP5_PAPER_POINT_CLICKS_REQUIRED=0','STEP10_REV22_TEN_GROUP_PLACED_AUTOMATICALLY=True','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True','STEP10_VIEW_TITLE_COUNT','STEP10_SUPPORT_TOS_LABEL_COUNT','SupportOrthoPlantSupport25.Read','SupportOrthoMemberCalloutPlan25.Build','CreateNativePaperMemberLeaders25','NativeOrthoViewTitlePlan.BuildTitles','SupportFocusedCubePlanner.BuildAutomatic')) {
+            if(-not $new.Contains($key)) { throw "REV22.26 critical functionality missing: $key" }
+          }
+          foreach($key in @('NativeOrthoTenViewPlan.BuildAdjusted','NativeOrthoViewTitlePlan.ReserveBelow','candidate.Views[0].CenterX','candidate.Views[0].CenterY','adjusted.WasAdjusted','reserved.Titles.Count!=10')) {
+            if(-not $planner.Contains($key)) { throw "REV22.26 automatic TOP anchor or native title guard missing: $key" }
+          }
+          if($planner.Contains('.GetPoint(') -or $planner.Contains('PromptPointOptions(')) { throw 'Automatic planner cannot request user input' }
+      - name: Verify REV22.27 Pipe Line Number Tag and BOP elevation annotations
+        shell: pwsh
+        run: |
+          $new = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewPipeAnnotationsTest.cs' -Raw
+          $prior = Get-Content 'src/SPTC.SupportDrawings/NativeOrthoTenViewAutoPlacementTest.cs' -Raw
+          $pipe = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoPlantPipe27.cs' -Raw
+          $fields = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoPipeLabel27.cs' -Raw
+          $planner = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan27.cs' -Raw
+          if($new -notmatch 'CommandMethod\("SPTC_ORTHO22_27_PIPE_BOP_TEST"') { throw 'Isolated REV22.27 command missing' }
+          if($prior -notmatch 'CommandMethod\("SPTC_ORTHO22_26_AUTO_PLACE_TEN_TEST"') { throw 'Working REV22.26 fallback missing' }
+          if($new -notmatch 'REV22.27 TEST') { throw 'Copied-project confirmation missing' }
+          foreach($key in @('SupportOrthoPlantPipe27.Read(','SupportOrthoPipeLabel27.IsNativePipeType','SupportOrthoMemberCalloutPlan27.Build','CreateNativePaperMemberLeaders27','STEP10_PIPE_ANNOTATION_SOURCE_COUNT','STEP10_PIPE_BOP_LABEL_COUNT','STEP10_PIPE_BOP_EXPECTED','STEP10_HORIZONTAL_TOS_LABEL_COUNT','STEP10_SUPPORT_TOS_LABEL_COUNT','STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True','STEP5_PAPER_POINT_CLICKS_REQUIRED=0')) {
+            if(-not $new.Contains($key)) { throw "REV22.27 functionality missing: $key" }
+          }
+          if($new.Contains('.GetPoint(') -or $new.Contains('PromptPointOptions(')) { throw 'REV22.27 must preserve zero paper insertion clicks' }
+          foreach($key in @('FindAcPpRowId','GetAllProperties','LineNumberTag','BottomOfPipe','TypeDescriptor','BOUNDS_CLIPPED_TO_NATIVE_ORTHOCUBE','cube.MinX','cube.MaxX')) {
+            if(-not $pipe.Contains($key)) { throw "REV22.27 source Pipe metadata not checked: $key" }
+          }
+          foreach($key in @('EXPLICIT_BOTTOM_OF_PIPE','BOP_NOT_AVAILABLE','Line Number Tag','Bottom of Pipe','LineNumberTag','BOP EL. ')) {
+            if(-not $fields.Contains($key)) { throw "REV22.27 pipe PnP field requirement missing: $key" }
+          }
+          if($fields.Contains('TopOfPipe') -and $fields.Contains('BOP EL. ' + 'TopOfPipe')) { throw 'Do not substitute TOP for BOP' }
+          if(-not $planner.Contains('PipeBopSource') -or -not $planner.Contains('PipeBopText') -or -not $planner.Contains('BopLines')) { throw 'REV22.27 BOP must be distinct from existing TOS' }
+          if(-not $planner.Contains('bool isPipe=member.PipeBopSource!=null;')) { throw 'Explicit pipe BOP eligibility missing' }
+          if(-not $new.Contains('new DBText') -or -not $new.Contains('GeometricExtents')) { throw 'Native nonwrapping label rendering missing' }
+      - name: Compile SPTC Support Drawings
+        run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release
+      - name: Verify compiled DLL
+        shell: pwsh
+        run: |
+          $dll = 'src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll'
+          if (!(Test-Path $dll)) { throw 'Compiled DLL was not created.' }
+          Get-Item $dll | Select-Object FullName, Length
+      - name: Upload DLL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_27
+          path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
+          retention-days: 30
+          if-no-files-found: error
