@@ -3,10 +3,6 @@ name: Build SPTC Support Drawings DLL
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/SPTC.SupportDrawings/**'
-      - 'tests/SupportSheetSmokeTests/**'
-      - '.github/workflows/build-support-drawings.yml'
   workflow_dispatch:
 
 permissions:
