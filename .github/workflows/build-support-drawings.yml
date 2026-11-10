@@ -901,6 +901,36 @@ jobs:
           }
       - name: Test REV22.29 compact label formatting
         run: dotnet run --project tests/Rev229LabelSmokeTests/Rev229LabelSmokeTests.csproj -c Release
+      - name: Verify REV22.30 cross-drawing XREF freshness and leader checks are read-only
+        shell: pwsh
+        run: |
+          $old=Get-Content 'src/SPTC.SupportDrawings/SupportOrthoUpdateAudit29.cs' -Raw
+          $new=Get-Content 'src/SPTC.SupportDrawings/SupportOrthoXrefUpdateAudit30.cs' -Raw
+          $manifest=Get-Content 'src/SPTC.SupportDrawings/SupportOrthoXrefAuditManifest30.cs' -Raw
+          if(-not $old.Contains('SPTC_ORTHO22_29_AUDIT_UPDATE')) { throw 'REV22.29 rollback command missing' }
+          foreach($token in @('SPTC_ORTHO22_30_VALIDATE_XREF_UPDATE',
+              'SupportOrthoPipeDiscovery28.Scan','SupportOrthoPipeDiscovery28.ReadXrefs',
+              'SupportOrthoPlantPipe27.Read','SupportOrthoPipeCallout29.Compose',
+              'SOURCE_MODEL_NOT_OPEN','BOP_CHANGED','LINE_TAG_CHANGED',
+              'PIPE_LEADER_SOURCE_MISALIGNED','PIPE_LEADER_SEGMENT_MISSING',
+              'NATIVE_PAPER_VIEWPORT_COUNT_MISMATCH',
+              'XREF_DISK_RELOAD_STATUS=NOT_VERIFIED',
+              'NATIVE_2D_GENERATED_GEOMETRY_FRESHNESS=NOT_VERIFIED',
+              'SourceDocument','OpenMode.ForRead')) {
+            if($token -eq 'SourceDocument') {continue}
+            if(-not $new.Contains($token)) { throw "REV22.30 missing audit requirement: $token" }
+          }
+          if($new.Contains('OpenMode.ForWrite') -or $new.Contains('Editor.Command(') -or
+             $new.Contains('SendStringToExecute(') -or
+             $new.Contains('AddPnPDrawingFile')) {
+            throw 'REV22.30 must not update DWG or invoke Update View'
+          }
+          foreach($token in @('REV22_29_PIPE_SOURCE=','STEP10_MEMBER_LABEL=',
+               'STEP8_','STEP10_MEMBER_ANNOTATIONS_CHECK=PASS')) {
+            if(-not $manifest.Contains($token)) { throw "Original manifest guard missing: $token" }
+          }
+      - name: Test REV22.30 original XREF source and label manifest parsing
+        run: dotnet run --project tests/Rev230AuditSmokeTests/Rev230AuditSmokeTests.csproj -c Release
       - name: Compile SPTC Support Drawings
         run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release
       - name: Verify compiled DLL
@@ -912,7 +942,7 @@ jobs:
       - name: Upload DLL artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_29
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_30
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
