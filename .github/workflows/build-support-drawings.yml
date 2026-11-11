@@ -271,6 +271,23 @@ jobs:
               throw "REV22.43 vertical height integration missing: $token"
             }
           }
+          # REV22.46 collision-aware planner has fixed annotation obstacles,
+          # native view/title keepouts and no forced overlapping placements.
+          $smart = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSmartDimPlan46.cs' -Raw
+          foreach($token in @('BuildFixedZones','CollisionCandidatesRejected',
+              'NO_COLLISION_FREE_DIMENSION_LANE','repositioned++',
+              'ProjectBounds','PaperTextX')) {
+            if ($smart -notmatch [regex]::Escape($token)) {
+              throw "REV22.46 smart-layout invariant missing: $token"
+            }
+          }
+          foreach($token in @('REV22_46_AUTO_REPOSITIONED=',
+              'REV22_46_COLLIDING_CANDIDATES_REJECTED=',
+              'REV22_46_DIMENSION_COVERAGE=')) {
+            if ($gen -notmatch [regex]::Escape($token)) {
+              throw "REV22.46 integration log missing: $token"
+            }
+          }
           # REV22.44: all recognized structure/support members receive
           # independent horizontal/vertical projected OVERALL dimensions on
           # each of six orthographic views (no cross-view size dedup).
@@ -403,11 +420,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.45 restored TOP VIEW H/V DIMLINEAR DLL bytes: $size"
+          Write-Host "REV22.46 collision-aware auto DIMLINEAR DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_45-TOP-VIEW-DIMENSIONS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_46-SMART-AUTO-DIMENSIONS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
