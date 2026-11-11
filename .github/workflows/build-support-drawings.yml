@@ -152,6 +152,8 @@ jobs:
         run: dotnet run --project tests/Rev229LabelSmokeTests/Rev229LabelSmokeTests.csproj -c Release
       - name: Test REV22.35 native view subset and title-callout guards
         run: dotnet run --project tests/Rev235UiSmokeTests/Rev235UiSmokeTests.csproj -c Release
+      - name: Test embedded logo and Windows Forms icon
+        run: dotnet run --project tests/Rev236BrandingSmokeTests/Rev236BrandingSmokeTests.csproj -c Release
       - name: Compile production DLL
         run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release
       - name: Verify compiled DLL
