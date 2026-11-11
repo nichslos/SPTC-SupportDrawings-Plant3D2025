@@ -26,7 +26,8 @@ internal sealed record SupportDrawingUiOptions(
     bool Tos,
     bool Description,
     bool BatchOrtho,
-    bool XrefMemberNames)
+    bool XrefMemberNames,
+    bool AutoDimLinear)
 {
     public static readonly string[] AllViews =
         {"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK","NW","NE","SW","SE"};
@@ -51,6 +52,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly CheckBox description = new();
     private readonly CheckBox batch = new();
     private readonly CheckBox xrefNames = new();
+    private readonly CheckBox autoDimLinear = new();
     private readonly TextBox preview = new();
     private readonly Button runButton = new();
     private readonly Button preflightButton = new();
@@ -213,6 +215,12 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         none.Click += (_,_) => SetAllViews(false);
         orthoTab.Controls.Add(all);
         orthoTab.Controls.Add(none);
+        // REV22.41: dimensions are generated only from verified native
+        // StructureMember / Plant Support Start/End source geometry.
+        autoDimLinear.SetBounds(18, 425, 355, 27);
+        autoDimLinear.Text = "Auto DIMLINEAR (horizontal / vertical)";
+        autoDimLinear.Checked = true;
+        orthoTab.Controls.Add(autoDimLinear);
 
         Label aLabel = L("Annotations", 407, 196, 280);
         orthoTab.Controls.Add(aLabel);
@@ -350,7 +358,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             "   |   Views: " + string.Join(",",chosen) +
             "   |   Scale: " + SupportDrawingPaperScale39.Display(
                 SupportDrawingPaperScale39.Resolve(scale.Text,(int)customScale.Value)) +
-            "   |   XREF member names: " + (xrefNames.Checked?"On":"Off");
+            "   |   XREF member names: " + (xrefNames.Checked?"On":"Off") +
+            "   |   Auto DIMLINEAR: " + (autoDimLinear.Checked?"On":"Off");
     }
 
     private void RunSelected()
@@ -402,7 +411,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             tab, cubeMode.SelectedIndex==0,
             autoSeed.Checked, seed.Text.Trim(), prefix.Text.Trim(), denominator,
             selected, line.Checked,bop.Checked,tos.Checked,
-            description.Checked,batch.Checked,xrefNames.Checked);
+            description.Checked,batch.Checked,xrefNames.Checked,
+            autoDimLinear.Checked);
         // Modeless palette remains open; dispatch in a fresh AutoCAD
         // command context rather than accessing Editor from this UI callback.
         RunRequested?.Invoke(Settings);
