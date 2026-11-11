@@ -35,7 +35,7 @@ internal sealed record SupportDrawingUiOptions(
         Views.Contains(name, StringComparer.OrdinalIgnoreCase);
 }
 
-internal sealed class SupportDrawingManagerForm35 : WinForms.Form
+internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 {
     private readonly TabControl tabs = new();
     private readonly ComboBox cubeMode = new();
@@ -52,23 +52,30 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
     private readonly CheckBox batch = new();
     private readonly CheckBox xrefNames = new();
     private readonly TextBox preview = new();
-    private readonly string source;
-    private readonly string orthoFolder;
+    private readonly Button runButton = new();
+    private readonly Button preflightButton = new();
+    private readonly Label sourceLabel = new();
+    private string source;
+    private string orthoFolder;
+    private string projectRoot;
     internal SupportDrawingUiOptions? Settings { get; private set; }
+    internal event Action<SupportDrawingUiOptions>? RunRequested;
+    internal bool IsRunning { get; private set; }
 
     internal SupportDrawingManagerForm35(string sourceDwg, string projectRoot,
         string projectOrthoFolder)
     {
         source = sourceDwg;
         orthoFolder = projectOrthoFolder;
-        Text = "SPTC Support Drawing Manager  |  REV 22.39";
-        Icon = SupportBranding36.CreateIcon();
-        StartPosition = FormStartPosition.CenterScreen;
+        this.projectRoot = projectRoot;
+        Name = "SPTC_SupportDrawingManager40";
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(805, 765);
+        Size = new Size(805, 765);
         MinimumSize = new Size(780, 740);
-        FormBorderStyle = FormBorderStyle.Sizable;
-        MaximizeBox = false;
+        BackColor = Color.White;
+        AutoScroll = true;
+        // REV22.40: Hosted permanently as a modeless AutoCAD PaletteSet
+        // UserControl. No WinForms DialogResult or Close() on Run.
 
         // The supplied SPTC Engineering logo is embedded; no image path needed.
         // A larger top band keeps the full wordmark readable at Windows DPI.
@@ -87,14 +94,12 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
             Location = new Point(222, 57), Size = new Size(545, 25)
         };
         Controls.Add(brandSubtitle);
-        Label active = new()
-        {
-            Text = "Source: " + Path.GetFileName(sourceDwg) +
-                "     |     Project: " + Path.GetFileName(projectRoot.TrimEnd('\\','/')),
-            Location = new Point(222, 94), Size = new Size(545, 24),
-            AutoEllipsis = true
-        };
-        Controls.Add(active);
+        sourceLabel.Text = "Source: " + Path.GetFileName(sourceDwg) +
+            "     |     Project: " + Path.GetFileName(projectRoot.TrimEnd('\\','/'));
+        sourceLabel.Location = new Point(222, 94);
+        sourceLabel.Size = new Size(545, 24);
+        sourceLabel.AutoEllipsis = true;
+        Controls.Add(sourceLabel);
 
         tabs.Location = new Point(18, 140);
         tabs.Size = new Size(770, 475);
@@ -245,18 +250,63 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
             "\r\nNo drawing writes occur until validation has passed.";
         Controls.Add(preview);
 
-        Button check = new() {Text = "Preflight", Size = new Size(110, 29)};
-        check.Location = new Point(637, 652);
-        check.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-        check.Click += (_,_) => ShowPreflight();
-        Controls.Add(check);
+        preflightButton.Text = "Preflight";
+        preflightButton.Size = new Size(110, 29);
+        preflightButton.Location = new Point(637, 652);
+        preflightButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+        preflightButton.Click += (_,_) => ShowPreflight();
+        Controls.Add(preflightButton);
 
-        Button run = new() {Text = "Run selected", Size = new Size(112, 30)};
-        run.Location = new Point(637, 689);
-        run.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-        run.Click += (_,_) => RunSelected();
-        Controls.Add(run);
-        AcceptButton = run;
+        runButton.Text = "Run selected";
+        runButton.Size = new Size(112, 30);
+        runButton.Location = new Point(637, 689);
+        runButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+        runButton.Click += (_,_) => RunSelected();
+        Controls.Add(runButton);
+    }
+
+    // Never clear user options on another drawing run. Refresh source context
+    // only when the command is explicitly opened for that project.
+    internal void UpdateProjectContext(string sourceDwg,string root,string folder)
+    {
+        bool differentProject=!string.Equals(projectRoot,root,
+            StringComparison.OrdinalIgnoreCase);
+        source=sourceDwg;
+        projectRoot=root;
+        orthoFolder=folder;
+        sourceLabel.Text="Source: "+Path.GetFileName(sourceDwg)+
+            "     |     Project: "+Path.GetFileName(root.TrimEnd('\\','/'));
+        if(differentProject && !autoSeed.Checked)
+        {
+            // Never carry a manual seed from a different Plant project.
+            autoSeed.Checked=true;
+            seed.Text="";
+        }
+        SetStatus("Source: "+Path.GetFileName(sourceDwg)+
+            " | Ready (persistent palette; options retained).");
+    }
+
+    internal void SetRunning(bool running)
+    {
+        IsRunning=running;
+        runButton.Enabled=!running;
+        preflightButton.Enabled=!running;
+        tabs.Enabled=!running;
+        if(running)
+            SetStatus("Operation queued / in progress. Select CAD entities when prompted.");
+        else
+            SetStatus("Ready for another operation. Settings retained.");
+    }
+
+    internal void SetStatus(string message)
+    {
+        if(IsDisposed)return;
+        if(InvokeRequired)
+        {
+            BeginInvoke(new Action<string>(SetStatus),message);
+            return;
+        }
+        preview.Text=message;
     }
 
     private static Label L(string text, int x, int y, int w) =>
@@ -305,6 +355,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
 
     private void RunSelected()
     {
+        if(IsRunning)return; // REV22.40 re-entry guard.
         string tab = tabs.SelectedTab?.Name ?? "ortho";
         string[] selected = views.CheckedItems.Cast<object>()
             .Select(v=>v.ToString() ?? "").Where(v=>v.Length>0).ToArray();
@@ -352,8 +403,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
             autoSeed.Checked, seed.Text.Trim(), prefix.Text.Trim(), denominator,
             selected, line.Checked,bop.Checked,tos.Checked,
             description.Checked,batch.Checked,xrefNames.Checked);
-        DialogResult = DialogResult.OK;
-        Close();
+        // Modeless palette remains open; dispatch in a fresh AutoCAD
+        // command context rather than accessing Editor from this UI callback.
+        RunRequested?.Invoke(Settings);
     }
 }
 
