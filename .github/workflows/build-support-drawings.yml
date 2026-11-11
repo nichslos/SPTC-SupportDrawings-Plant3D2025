@@ -33,9 +33,7 @@ jobs:
           if(-not $commands.Contains('public void Initialize() { }')) {
             throw 'Expected silent Initialize() for the cleaned production DLL'
           }
-          $verify=Get-Content "$root/SupportOrthoXrefUpdateAudit30.cs" -Raw
           $labels=Get-Content "$root/SupportOrthoPipeCallout29.cs" -Raw
-          $audit=Get-Content "$root/SupportOrthoUpdateAudit29.cs" -Raw
           if(-not $gen.Contains('SPTC_SUPPORTORTHO10')) {throw 'Production 10-view command missing'}
           if(-not $gen.Contains('REV22.29 TEST')) {throw 'Copied-project confirmation must remain active'}
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
@@ -45,18 +43,19 @@ jobs:
               'STEP5_PAPER_POINT_CLICKS_REQUIRED=0')) {
             if(-not $gen.Contains($token)) {throw "Critical generation invariant missing: $token"}
           }
-          foreach($token in @('SPTC_ORTHO22_30_VALIDATE_XREF_UPDATE',
-              'PIPE_LEADER_SOURCE_MISALIGNED',
-              'LINE_TAG_CHANGED','BOP_CHANGED',
-              'NATIVE_2D_GENERATED_GEOMETRY_FRESHNESS=NOT_VERIFIED')) {
-            if(-not $verify.Contains($token)) {throw "Critical read-only verification invariant missing: $token"}
+          foreach($legacy in @('SupportOrthoUpdateAudit29.cs',
+              'SupportOrthoXrefUpdateAudit30.cs',
+              'SupportOrthoXrefAuditManifest30.cs')) {
+            if(Test-Path "$root/$legacy") {throw "Completed audit still ships: $legacy"}
           }
-          if($verify.Contains('OpenMode.ForWrite') -or
-             $verify.Contains('SendStringToExecute(') -or
-             $verify.Contains('Editor.Command(')) {
-            throw 'Verification must remain read-only'
+          $sourceText=(Get-ChildItem $root -Filter '*.cs' |
+            Get-Content -Raw | Out-String)
+          foreach($cmd in @('SPTC_ORTHO22_29_AUDIT_UPDATE',
+              'SPTC_ORTHO22_30_VALIDATE_XREF_UPDATE')) {
+            if($sourceText.Contains($cmd)) {
+              throw "Obsolete audit command still registered: $cmd"
+            }
           }
-          if(-not $audit.Contains('SPTC_ORTHO22_29_AUDIT_UPDATE')) {throw 'Text persistence audit missing'}
           if(-not $labels.Contains('"LINE NO: "+tag')) {throw 'Compact XREF tag formatting missing'}
           if(Get-ChildItem $root -Filter '*Test.cs') {
             throw 'Historical development command clones must not ship in the active source tree'
@@ -68,8 +67,6 @@ jobs:
         run: dotnet run --project tests/SupportSheetSmokeTests/SupportSheetSmokeTests.csproj -c Release
       - name: Test compact XREF pipe labels
         run: dotnet run --project tests/Rev229LabelSmokeTests/Rev229LabelSmokeTests.csproj -c Release
-      - name: Test strict source and paper-label manifest parsing
-        run: dotnet run --project tests/Rev230AuditSmokeTests/Rev230AuditSmokeTests.csproj -c Release
       - name: Compile production DLL
         run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release
       - name: Verify compiled DLL
@@ -79,11 +76,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.31 production DLL bytes: $size"
+          Write-Host "REV22.32 production DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_31-CLEAN
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_32-PRODUCTION
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
