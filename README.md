@@ -1,5 +1,20 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
+## REV 22.36 — SPTC Engineering branded WinForms UI
+
+The supplied **SPTC Engineering** logo is now embedded directly in the DLL as a
+transparent optimized PNG. The full-color wordmark is displayed in the header
+of the Support Drawing Manager, as a smaller banner in the progress window and
+existing Support Batch export dialog. A compact brand icon is used in the
+Windows title bars. The logo remains visible offline with no external PNG,
+file path, manual resource installation or internet connection.
+
+Branding adds no new AutoCAD commands and does **not** alter Ortho creation,
+support batch export, source selection, scale, camera, annotations or project
+registration. For legibility, the Manager and progress windows have slightly
+taller headers; the original tab controls remain available. This revision
+includes a Windows logo/image/icon smoke test in GitHub Actions.
+
 ## REV 22.35 — Support Drawing Manager (UI + automation)
 
 **Production command registration stays at exactly four:** `SPTC_SUPPORTORTHO10`, `SPTC_SUPPORTEXPORT`, `SPTC_SUPPORTBATCH`, `SPTC_SUPPORT2DBATCH`. This version adds a WinForms **Support Drawing Manager** that opens when `SPTC_SUPPORTORTHO10` is called, with four operation tabs. Choosing another tab dispatches the corresponding existing export/batch command rather than creating extra AutoCAD commands.
@@ -29,12 +44,12 @@
 
 1. Close Plant 3D completely; replace the old `SPTC.SupportDrawings.dll`.
 2. In a copied project open a saved registered source 3D DWG with resolved XREFs.
-3. `NETLOAD` the REV22.35 DLL and run `SPTC_SUPPORTORTHO10`.
+3. `NETLOAD` the REV22.36 DLL and run `SPTC_SUPPORTORTHO10`.
 4. Choose the form tab and settings, click **Preflight** to inspect options, then **Run selected**.
 5. When generating Ortho drawings, select one support or select multiple block supports if Batch Ortho is enabled. Review all generated DWGs, paper annotations and TXT logs.
 
 ### Build
 
-Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_35-UI`.
+Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_36-BRANDED`.
 
 Rollback source is preserved in repository Git history and the [full pre-cleanup archive](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).
