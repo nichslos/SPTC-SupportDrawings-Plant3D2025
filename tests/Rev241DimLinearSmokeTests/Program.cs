@@ -112,7 +112,7 @@ Assert(fallbackPlan.Dimensions.Count==1 &&
 Assert(SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
     100,100,450,1.0),"upright support 450 mm high qualifies");
 Assert(SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
-    70,70,0.45,1000.0),"source geometry in meters is unit-safe");
+    0.07,0.07,0.45,1000.0),"source geometry in meters is unit-safe");
 Assert(!SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
     500,600,450,1.0),"broad assembly is not assumed a vertical member");
 Assert(!SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
