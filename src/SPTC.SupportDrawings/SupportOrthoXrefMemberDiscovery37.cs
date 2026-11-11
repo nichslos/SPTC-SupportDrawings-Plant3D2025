@@ -19,7 +19,8 @@ namespace SPTC.SupportDrawings;
 internal static class SupportOrthoXrefMemberDiscovery37
 {
     internal sealed record Item(string Key, string Kind, string DrawingName,
-        string DrawingPath, BoundingBox3 WorldBounds);
+        string DrawingPath, BoundingBox3 WorldBounds,
+        ObjectId Id,Matrix3d ToHost);
 
     internal sealed record Result(IReadOnlyList<Item> Items,
         IReadOnlyList<string> Diagnostics);
@@ -165,7 +166,7 @@ internal static class SupportOrthoXrefMemberDiscovery37
                 string drawing=Path.GetFileName(sourceFile);
                 if(string.IsNullOrWhiteSpace(drawing))continue;
                 string key="XREF_MEMBER:"+path+"/"+id.Handle;
-                found.Add(new Item(key,kind,drawing,sourceFile,bounds));
+                found.Add(new Item(key,kind,drawing,sourceFile,bounds,id,toHost));
             }
             catch(System.Exception ex)
             {

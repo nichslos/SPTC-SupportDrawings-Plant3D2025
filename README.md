@@ -1,5 +1,49 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
+## REV 22.41 — Optional Auto DIMLINEAR on verified Ortho members
+
+The `SPTC_SUPPORTORTHO10` persistent SPTC palette has a default-ON
+**Auto DIMLINEAR (horizontal / vertical)** checkbox. It runs after saved
+native Ortho viewport orientation/scale and annotations are verified.
+
+- Native Plant 3D **Structure Member** and **Support/Pipe Support** entities
+  can receive a true AutoCAD `RotatedDimension` (native `DIMLINEAR`) when
+  **explicit, verifiable Start/End points** exist in the source entity's
+  actual properties. The same rule applies to recognized support/structure
+  members in loaded, resolved nested XREFs; source endpoints are transformed
+  to host WCS using the known XREF instance transform.
+- Only **TOP, BOTTOM, FRONT, BACK, LEFT, RIGHT** orthogonal views are
+  dimensioned, and only if the member projects without foreshortening
+  into a **horizontal or vertical** axis in that view. Isometric views,
+  diagonal/sloping projections and too-small projected lengths are skipped.
+- Each native paper-space `RotatedDimension` uses the existing Ortho
+  **DIMSTYLE** and layer `SPTC_AUTO_DIMLINEAR`. The **explicit millimeter
+  model length** is applied as display text. AutoCAD's measured paper
+  length would be wrong under a 1:N Ortho viewport scale.
+- Dimensions stay **inside the actual native viewport frame**, and safe
+  separation/collision checks skip overlapping or off-sheet proposed
+  dimensions. This is an additional dimension layer: **native Ortho view
+  geometry, SupportFocus, BOP/TOS, XREF filenames and member leaders are
+  not changed.**
+- No endpoint means **no dimension**, with `REV22_41_DIM_ENDPOINTS_NOT_DECLARED`
+  or `REV22_41_SOURCE_DIAGNOSTIC` in the result TXT. We never infer the
+  member cut length from 3D geometric bounding boxes, nor assume that a
+  generic solid/insert is a verifiable Plant support.
+- All objects are appended **only to the generated Ortho layout**. Model
+  DWGs, source XREFs and PnP rows are read-only. The existing four
+  AutoCAD commands remain unchanged.
+- Each dimension and reason for skipping is logged using `REV22_41_...`
+  fields, including `REV22_41_DIMENSIONS_CREATED`.
+
+**Caution:** Auto DIMLINEAR uses genuine native dimension entities but the
+dimension text is a **model-length override**, not a DIMASSOC association
+to the 3D source. If someone manually **updates a native Ortho view**,
+these annotations **do not automatically refresh**; re-run the plugin
+for a fresh drawing or verify/edit them manually. This release has Windows
+CI regression tests, but should be tested in a **copied Plant 3D 2025
+project** with sample native and XREF structural members before production
+use. The internal Autodesk native Ortho generator remains unsupported.
+
 ## REV 22.40 — Persistent dockable SPTC palette
 
 Running `SPTC_SUPPORTORTHO10` now opens or focuses a single **modeless,
@@ -177,6 +221,6 @@ includes a Windows logo/image/icon smoke test in GitHub Actions.
 
 ### Build
 
-Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_40-PERSISTENT-PALETTE`.
+Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_41-AUTO-DIMLINEAR`.
 
 Rollback source is preserved in repository Git history and the [full pre-cleanup archive](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).

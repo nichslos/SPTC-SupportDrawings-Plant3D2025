@@ -191,6 +191,50 @@ jobs:
              -not $gen.Contains('SupportDrawingPalette40.Finish(')) {
             throw 'REV22.40 must dispatch through modeless command context'
           }
+          # REV22.41: full model lengths must only come from explicit
+          # native support/structure source End/Start positions, never a
+          # bounding box. DIMLINEAR must be created in target PAPER SPACE,
+          # never the source or loaded XREF databases.
+          $dimSource=Get-Content "$root/SupportOrthoDimensionSource41.cs" -Raw
+          $dimPlan=Get-Content "$root/SupportOrthoDimLinearPlan41.cs" -Raw
+          $dimWriter=Get-Content "$root/SupportOrthoDimLinearWriter41.cs" -Raw
+          foreach($token in @('ExplicitPoint(', 'DIM_ENDPOINTS_NOT_DECLARED',
+              'DIM_ENDPOINTS_OUTSIDE_NATIVE_EXTENTS','id.Database',
+              'member.ToHost','StructureMember','SupportOrthoSupportLabel24')) {
+            if(-not $dimSource.Contains($token)) {
+              throw "REV22.41 verified dimension source missing: $token"
+            }
+          }
+          foreach($token in @('FRONT','BACK','TOP','BOTTOM','LEFT','RIGHT',
+              'FORESHORTENED_PROJECTION','NON_AXIAL_PAPER_DIRECTION',
+              'NO_NONOVERLAPPING_DIMLINE','Math.Abs(wz)',
+              'source.Millimeters.ToString(')) {
+            if(-not $dimPlan.Contains($token)) {
+              throw "REV22.41 DIMLINEAR planner guard missing: $token"
+            }
+          }
+          foreach($token in @('new RotatedDimension(', 'db.Dimstyle',
+              'layout.BlockTableRecordId','item.Measurement,db.Dimstyle',
+              'SPTC_AUTO_DIMLINEAR')) {
+            if(-not (($dimWriter+$dimPlan).Contains($token))) {
+              throw "REV22.41 paper dimension writer missing: $token"
+            }
+          }
+          foreach($token in @('options.AutoDimLinear',
+              'SupportOrthoDimensionSource41.Read(',
+              'SupportOrthoDimLinearPlan41.Build(',
+              'SupportOrthoDimLinearWriter41.Write(',
+              'REV22_41_DIMENSIONS_CREATED=',
+              'REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=TRUE')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.41 ten-view integration missing: $token"
+            }
+          }
+          if(-not $ui.Contains('Auto DIMLINEAR (horizontal / vertical)') -or
+             -not $ui.Contains('autoDimLinear.Checked = true') -or
+             -not $ui.Contains('autoDimLinear.Checked);')) {
+            throw 'REV22.41 persistent UI option must be default ON and retained'
+          }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
               'SupportOrthoMemberCalloutPlan27.Build',
               'CreateNativePaperMemberLeaders27',
@@ -260,6 +304,8 @@ jobs:
         run: dotnet run --project tests/Rev239ScaleSmokeTests/Rev239ScaleSmokeTests.csproj -c Release
       - name: Test REV22.40 persistent WinForms UI and queued-run busy control
         run: dotnet run --project tests/Rev240PaletteSmokeTests/Rev240PaletteSmokeTests.csproj -c Release
+      - name: Test REV22.41 safe horizontal/vertical native and XREF DIMLINEAR plan
+        run: dotnet run --project tests/Rev241DimLinearSmokeTests/Rev241DimLinearSmokeTests.csproj -c Release
       - name: Compile production DLL
         run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release
       - name: Verify compiled DLL
@@ -269,11 +315,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.40 dockable persistent palette DLL bytes: $size"
+          Write-Host "REV22.41 verified Auto DIMLINEAR Ortho DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_40-PERSISTENT-PALETTE
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_41-AUTO-DIMLINEAR
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
