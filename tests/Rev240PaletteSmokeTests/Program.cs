@@ -35,6 +35,8 @@ internal static class Program
         Check(!manager.IsDisposed && manager.Settings!=null,
             "palette contents persist after Run");
         Check(last!.ScaleDenominator==0,"Automatic scale preserved");
+        Check(last.AutoDimLinear,
+            "REV22.41 default-on Auto DIMLINEAR retained by palette");
         manager.SetRunning(true);
         run.Invoke(manager,null);
         Check(count==1 && manager.IsRunning,
