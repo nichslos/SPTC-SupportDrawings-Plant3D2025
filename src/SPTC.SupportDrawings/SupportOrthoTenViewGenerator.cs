@@ -19,16 +19,16 @@ using WinForms = System.Windows.Forms;
 namespace SPTC.SupportDrawings;
 
 /// <summary>
-/// REV22.17 isolated actual viewport paper-size experiment: select support in a
+/// REV22.29 isolated actual viewport paper-size experiment: select support in a
 /// registered 3D source; clone a verified empty native Ortho Project Manager seed;
 /// register, open, initialize ten native OrthoCubes and call unsupported internal
-/// GenerateOrthos for ten views using one clicked paper-space anchor.
+/// GenerateOrthos for ten views using automatically computed paper-space TOP anchor.
 /// BACKUP/COPIED PROJECT ONLY. Never directly patch Ortho.dcf.
 /// Any Autodesk dialogs from the public API remain host-controlled.
 /// </summary>
-public sealed class NativeOrthoTenViewMemberLeadersTest
+public sealed class SupportOrthoTenViewGenerator
 {
-    [CommandMethod("SPTC_ORTHO22_17_MEMBER_LEADERS_TEST",
+    [CommandMethod("SPTC_SUPPORTORTHO10",
         CommandFlags.Modal | CommandFlags.Session)]
     public async void Run()
     {
@@ -38,7 +38,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         string source = Path.GetFullPath(sourceDoc.Database.Filename ?? "");
         if (!File.Exists(source))
         {
-            ed.WriteMessage("\nREV22.17: Open a saved project-registered 3D model before running the test.");
+            ed.WriteMessage("\nREV22.29: Open a saved project-registered 3D model before running the test.");
             return;
         }
 
@@ -46,12 +46,12 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         try { sourceCheck = NativeOrthoProjectCheck.Inspect(source); }
         catch (System.Exception ex)
         {
-            ed.WriteMessage("\nREV22.17: Native source check failed: " + ex.Message);
+            ed.WriteMessage("\nREV22.29: Native source check failed: " + ex.Message);
             return;
         }
         if (!sourceCheck.SourceRegistrationVerified)
         {
-            ed.WriteMessage("\nREV22.17: Source 3D drawing is not verified project-registered. No changes.");
+            ed.WriteMessage("\nREV22.29: Source 3D drawing is not verified project-registered. No changes.");
             return;
         }
 
@@ -62,15 +62,15 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         };
         if (units <= 0)
         {
-            ed.WriteMessage("\nREV22.17: Unsupported source units; expected a physical unit like Millimeters.");
+            ed.WriteMessage("\nREV22.29: Unsupported source units; expected a physical unit like Millimeters.");
             return;
         }
 
-        // REV22.17: Keep Original mode available as an exact fallback.
+        // REV22.29: Keep Original mode available as an exact fallback.
         // SupportFocus mode calculates the XY cube only from STRUCTURAL
         // support selection, not full long-pipe GeometricExtents.
         var modePrompt=new PromptKeywordOptions(
-            "\nREV22.17 OrthoCube mode [SupportFocus/Original] <SupportFocus>: ")
+            "\nREV22.29 OrthoCube mode [SupportFocus/Original] <SupportFocus>: ")
         { AllowNone=true };
         modePrompt.Keywords.Add("SupportFocus");
         modePrompt.Keywords.Add("Original");
@@ -83,8 +83,8 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         PromptSelectionResult selection = ed.GetSelection(new PromptSelectionOptions
         {
             MessageForAdding = supportFocus
-                ? "\nREV22.17: Select STRUCTURAL SUPPORT members ONLY (do not include long pipes): "
-                : "\nREV22.17 ORIGINAL: Select all structure entities for ONE support: "
+                ? "\nREV22.29: Select STRUCTURE MEMBERS and/or Plant 3D SUPPORT objects (pipes at NEXT selection): "
+                : "\nREV22.29 ORIGINAL: Select all structure entities for ONE support: "
         });
         if (selection.Status != PromptStatus.OK) return;
 
@@ -120,76 +120,75 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         if (!geometry.HasValue || handles.Count == 0 ||
             invalidExtents > 0 || misselectedPipeEntities > 0)
         {
-            ed.WriteMessage("\nREV22.17: Select valid structural support entities only. "+
+            ed.WriteMessage("\nREV22.29: Select valid structural support entities only. "+
                 "Invalid extents="+invalidExtents+
                 " accidentally selected pipe objects="+misselectedPipeEntities);
             return;
         }
 
-        // REV22.17: read only the actual selected support objects.
+        // REV22.29: read only the actual selected support objects.
         // The member sizes must come from declared CAD metadata, never
         // geometric bounding-box dimensions.
-        // REV22.17: Plant project property DB stores native
+        // REV22.29: Plant project property DB stores native
         // Structure Member.Size independently of ordinary CAD objects.
         // Retrieve the real value before opening any new Ortho drawing.
         var pnpRead=SupportOrthoPlantProperties16.Inspect(
             sourceDoc.Database,selectedSupportIds);
         var structuralMetadata=pnpRead.Summary;
-        // REV22.17: capture each real steel member separately while the
+        // REV22.29: capture each real steel member separately while the
         // source drawing is active and its geometric extents are accessible.
         var sourceSteel=SupportOrthoMemberSource17.Read(
             sourceDoc.Database,selectedSupportIds,pnpRead);
-        ed.WriteMessage("\nREV22.17: "+structuralMetadata.IdentityKind+
+        // REV22.29: check source member direction (start/end axis when
+        // available) and Plant 3D Top of Steel before context switches.
+        var horizontalSteel=SupportOrthoHorizontalSource19.Read(
+            sourceDoc.Database,selectedSupportIds,sourceSteel);
+        // REV22.29: read native Plant 3D Piping Support objects separately.
+        // Their actual Long Description (Size) is used for the label.
+        // Plant Support TOS is separate: exact if source field is present,
+        // otherwise labeled approximate from geometric upper elevation.
+        var plantSupports=SupportOrthoPlantSupport25.Read(
+            sourceDoc.Database,selectedSupportIds);
+        var sourceAnnotations=horizontalSteel.Members.Select(m=>
+            new SupportOrthoMemberCalloutPlan27.Member(
+                m.Handle,m.Size,m.X,m.Y,m.Z,m.IsHorizontal,
+                m.TosText,m.TosSource))
+            .Concat(plantSupports.Members.Select(s=>
+                new SupportOrthoMemberCalloutPlan27.Member(
+                    s.Handle,s.Description,s.X,s.Y,s.Z,true,
+                    string.IsNullOrWhiteSpace(s.TosText)?null:s.TosText,
+                    s.TosSource)))
+            .ToArray();
+        if(sourceAnnotations.Select(m=>m.Handle).Distinct(
+            StringComparer.OrdinalIgnoreCase).Count()!=sourceAnnotations.Length)
+            throw new InvalidOperationException(
+                "REV22.29 duplicate steel/support ObjectId handles.");
+        ed.WriteMessage("\nREV22.29: "+structuralMetadata.IdentityKind+
             "="+structuralMetadata.Identity+
             " ; Plant 3D structural sizes="+structuralMetadata.SizeText+
             " ; PnP members="+pnpRead.MembersWithSize);
 
-        // Explicit pipe selection is OPTIONAL: these pipes already exist in
-        // the source DWG model references. They contribute ONLY local Z.
-        // A selected pipe spanning kilometers must never enlarge X/Y.
-        var localPipeBounds=new List<BoundingBox3>();
+        // REV22.29: no separate pipe selection. Include all nearby native pipes
+        // and native Pipe entities from loaded XREFs, including nested instances.
+        // Support selection remains explicit; only pipes are auto-discovered.
+        var pipeDiscovery=SupportOrthoPipeDiscovery28.Scan(
+            sourceDoc.Database,geometry.Value,units);
+        var localPipeBounds=pipeDiscovery.Candidates
+            .Select(p=>p.WorldBounds).ToList();
+        var selectedPipeIds=pipeDiscovery.Candidates
+            .Where(p=>!p.FromXref).Select(p=>p.Id).Distinct().ToList();
         SupportFocusedCubePlanner.Result? focusPlan=null;
         double focusXYClearanceMm=0.0,focusPipeReachMm=0.0;
-        if(supportFocus)
+        ed.WriteMessage("\nREV22.29: Automatically discovered "+
+            pipeDiscovery.NativeCount+" native pipes and "+
+            pipeDiscovery.XrefCount+" XREF pipes near the selected support.");
+        foreach(string note in pipeDiscovery.Diagnostics)
+            ed.WriteMessage("\nREV22.29 SOURCE: "+note);
+        if(pipeDiscovery.Diagnostics.Any(s=>
+            s.StartsWith("REV22_29_SCAN_FAILED=",StringComparison.Ordinal)))
         {
-            // REV22.17: no numeric prompts. Both clearances are calculated
-            // after optional pipe selection from the support geometry.
-            ed.WriteMessage("\nREV22.17: Auto SupportFocus enabled. "+
-                "XY clearance and pipe elevation reach are calculated automatically.");
-            ed.WriteMessage("\nREV22.17: OPTIONAL select long pipe objects crossing "+
-                "the support. Their full LENGTH will not enlarge OrthoCube. "+
-                "Press Enter to skip pipes.");
-            PromptSelectionResult pipeSelection=ed.GetSelection(
-                new PromptSelectionOptions
-                {
-                    MessageForAdding="\nREV22.17: Select nearby pipe route(s), or Enter to skip: "
-                });
-            if(pipeSelection.Status==PromptStatus.OK)
-            {
-                int invalidPipes=0;
-                var selectedPipes=pipeSelection.Value.GetObjectIds().Distinct().ToArray();
-                using(Transaction tr=sourceDoc.Database.TransactionManager.StartTransaction())
-                {
-                    foreach(ObjectId pipeId in selectedPipes)
-                    {
-                        try
-                        {
-                            if(tr.GetObject(pipeId,OpenMode.ForRead,false) is not Entity pipeEntity)
-                            { invalidPipes++;continue; }
-                            Extents3d pb=pipeEntity.GeometricExtents;
-                            localPipeBounds.Add(new BoundingBox3(
-                                pb.MinPoint.X,pb.MinPoint.Y,pb.MinPoint.Z,
-                                pb.MaxPoint.X,pb.MaxPoint.Y,pb.MaxPoint.Z));
-                        }
-                        catch{invalidPipes++;}
-                    }
-                }
-                if(invalidPipes>0 || localPipeBounds.Count==0)
-                {
-                    ed.WriteMessage("\nREV22.17: Invalid pipe extents, no project files changed.");
-                    return;
-                }
-            }
+            ed.WriteMessage("\nREV22.29: Pipe scan failed. No files changed.");
+            return;
         }
 
         NativeOrthoLayout.Plan layout;
@@ -206,7 +205,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                     throw new InvalidOperationException(
                         "No selected pipe intersects the automatically computed "+
                         "support cube. Reselect nearby pipes or use Original mode.");
-                ed.WriteMessage("\nREV22.17: Calculated XY clearance="+
+                ed.WriteMessage("\nREV22.29: Calculated XY clearance="+
                     focusXYClearanceMm.ToString("0.###",CultureInfo.InvariantCulture)+
                     " mm; pipe elevation reach="+
                     focusPipeReachMm.ToString("0.###",CultureInfo.InvariantCulture)+" mm.");
@@ -216,14 +215,45 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage("\nREV22.17: Invalid support OrthoCube: " + ex.Message);
+            ed.WriteMessage("\nREV22.29: Invalid support OrthoCube: " + ex.Message);
             return;
         }
+        // REV22.29: source-authenticated pipe metadata only.
+        // XREF source ObjectIds and nested transforms come from loaded XREF DBs.
+        var nativeRead=SupportOrthoPlantPipe27.Read(
+            sourceDoc.Database,selectedPipeIds,layout.PaddedCube);
+        var xrefRead=SupportOrthoPipeDiscovery28.ReadXrefs(
+            pipeDiscovery.Candidates,layout.PaddedCube);
+        if(pipeDiscovery.XrefCount>0 && xrefRead.Pipes.Count==0)
+        {
+            ed.WriteMessage("\nREV22.29: XREF pipes were found, but none "+
+                "provided verifiable Line Number Tag/BOP metadata. "+
+                "See diagnostics below. No Ortho drawing created.");
+            foreach(string note in xrefRead.Diagnostics)
+                ed.WriteMessage("\nREV22.29 XREF: "+note);
+            return;
+        }
+        var pipeRead=new SupportOrthoPlantPipe27.Result(
+            nativeRead.Pipes.Concat(xrefRead.Pipes).ToArray(),
+            nativeRead.Candidates+xrefRead.Candidates,
+            nativeRead.LinkedRows+xrefRead.LinkedRows,
+            pipeDiscovery.Diagnostics.Concat(nativeRead.Diagnostics)
+                .Concat(xrefRead.Diagnostics).ToArray());
+        var pipeAnnotations=pipeRead.Pipes.Select(p=>
+            new SupportOrthoMemberCalloutPlan27.Member(
+                p.Handle,"Line Number Tag: "+p.LineTag,p.X,p.Y,p.Z,
+                false,null,"NOT_STEEL_TOS",p.BopLabel,p.BopSource)).ToArray();
+        sourceAnnotations=sourceAnnotations.Concat(pipeAnnotations).ToArray();
+        if(sourceAnnotations.Select(m=>m.Handle).Distinct(
+            StringComparer.OrdinalIgnoreCase).Count()!=sourceAnnotations.Length)
+            throw new InvalidOperationException(
+                "REV22.29 duplicate Pipe/Structure Member/Support handle.");
+
         ProjectPart part;
         try { part = CurrentOrthoProject(); }
         catch (System.Exception ex)
         {
-            ed.WriteMessage("\nREV22.17: Cannot resolve current Plant Ortho project: " + ex.Message);
+            ed.WriteMessage("\nREV22.29: Cannot resolve current Plant Ortho project: " + ex.Message);
             return;
         }
 
@@ -231,7 +261,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             Path.Combine(part.OrthoFolder, "DWGs") : part.OrthoFolder;
         using var picker = new WinForms.OpenFileDialog
         {
-            Title = "REV22.17 - Select an EMPTY Project Manager-created native Ortho seed (not DWT)",
+            Title = "REV22.29 - Select an EMPTY Project Manager-created native Ortho seed (not DWT)",
             Filter = "AutoCAD drawing (*.dwg)|*.dwg", CheckFileExists = true,
             InitialDirectory = initial, RestoreDirectory = true
         };
@@ -240,36 +270,36 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         if (!NativeOrthoRegistrationNames.IsInsideProjectDirectory(seed, part.ProjectRoot) ||
             !NativeOrthoRegistrationNames.IsInsideProjectDirectory(seed, part.OrthoFolder))
         {
-            ed.WriteMessage("\nREV22.17: Seed must be within the active project's registered Orthos folder.");
+            ed.WriteMessage("\nREV22.29: Seed must be within the active project's registered Orthos folder.");
             return;
         }
         if (!IsNativeOrthoValid(part.OrthoPart, seed))
         {
-            ed.WriteMessage("\nREV22.17: Seed failed native OrthoDocUtils.IsValidOrthoDrawing.");
+            ed.WriteMessage("\nREV22.29: Seed failed native OrthoDocUtils.IsValidOrthoDrawing.");
             return;
         }
         string seedState = ViewCatalog(part.OrthoPart, seed);
         if (seedState != "EMPTY_REGISTERED_ORTHO")
         {
-            ed.WriteMessage("\nREV22.17: Seed must be registered and EMPTY; found: " + seedState);
+            ed.WriteMessage("\nREV22.29: Seed must be registered and EMPTY; found: " + seedState);
             return;
         }
 
         string suffix = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss",
             CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N")[..6];
         string file = NativeOrthoRegistrationNames.NewOrthoDrawingFileName(source, handles, suffix)
-            .Replace("_ORTHO_R14_", "_ORTHO_R217LEADERS_", StringComparison.Ordinal);
+            .Replace("_ORTHO_R14_", "_ORTHO_R229XREF_", StringComparison.Ordinal);
         string dest = Path.Combine(Path.GetDirectoryName(seed)!, file);
         if (File.Exists(dest))
         {
-            ed.WriteMessage("\nREV22.17: Destination DWG exists. No changes.");
+            ed.WriteMessage("\nREV22.29: Destination DWG exists. No changes.");
             return;
         }
 
         // The public SDK, not this command, decides the final viewport insertion.
         // No false claim that the proposed TOP center is passed into CreateOrthos.
         var popup = WinForms.MessageBox.Show(
-            "REV22.17 - ONE-CLICK ALL TEN NATIVE VIEW TYPES EXPERIMENT\n\n" +
+            "REV22.29 - AUTOMATIC ALL TEN NATIVE VIEWS EXPERIMENT\n\n" +
             "SOURCE 3D: " + source + "\n" +
             "SELECTED MEMBERS: " + string.Join(", ", handles) + "\n" +            "CUBE MODE: " + (supportFocus?"SupportFocus":"Original") + "\n" +            "CLEARANCE MODE: " + (supportFocus?"Automatic":"Original") + "\n" +
             "SELECTED PIPE EXTENT CANDIDATES: " + localPipeBounds.Count + "\n" +
@@ -280,28 +310,28 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             "NATIVE EMPTY SEED: " + seed + "\n" +
             "NEW NATIVE ORTHO: " + dest + "\n\n" +
             "A NEW drawing will be created and registered to the ACTIVE Plant project.\n" +
-            "ONE anchor click will position TEN proposed native Ortho views.\n" +
+            "ALL TEN native Ortho views are positioned automatically; NO insertion click.\n" +
             "EXPERIMENTAL: this invokes Autodesk's NON-PUBLIC GenerateOrthos API.\n" +
             "Native view links, viewport state and Update View are NOT guaranteed.\n" +
             "Do not use your production project. Retain all test logs and drawings.\n\n" +
             "ONLY authorize in a separate COPIED/BACKED-UP TEST PROJECT.\n" +
             "Do you want to run this experiment?",
-            "SPTC REV22.17 UNSUPPORTED INTERNAL API - COPIED TEST PROJECT ONLY",
+            "SPTC REV22.29 UNSUPPORTED INTERNAL API - COPIED TEST PROJECT ONLY",
             WinForms.MessageBoxButtons.YesNo, WinForms.MessageBoxIcon.Warning,
             WinForms.MessageBoxDefaultButton.Button2);
         if (popup != WinForms.DialogResult.Yes) return;
         PromptResult typed = ed.GetString(new PromptStringOptions(
-            "\nType REV22.17 TEST to register a NEW Ortho DWG in this copied project: ")
+            "\nType REV22.29 TEST to register a NEW Ortho DWG in this copied project: ")
         { AllowSpaces = true });
         if (typed.Status != PromptStatus.OK ||
-            !string.Equals(typed.StringResult.Trim(), "REV22.17 TEST", StringComparison.Ordinal))
+            !string.Equals(typed.StringResult.Trim(), "REV22.29 TEST", StringComparison.Ordinal))
         {
-            ed.WriteMessage("\nREV22.17: Cancelled before any project write.");
+            ed.WriteMessage("\nREV22.29: Cancelled before any project write.");
             return;
         }
 
         string report = Path.Combine(Path.GetDirectoryName(dest)!,
-            Path.GetFileNameWithoutExtension(dest) + "_REV22_17_RESULT.txt");
+            Path.GetFileNameWithoutExtension(dest) + "_REV22_29_RESULT.txt");
         var log = new StringBuilder(6000);
         void Log(string msg)
         {
@@ -319,52 +349,104 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             Log("PROJECT=" + part.ProjectRoot);
             Log("SOURCE_MODEL=" + source);
             Log("SOURCE_HANDLES=" + string.Join(",", handles));
-            Log("REV22_17_SUPPORT_TYPE="+structuralMetadata.IdentityKind);
-            Log("REV22_17_SUPPORT_IDENTITY="+structuralMetadata.Identity);
-            Log("REV22_17_SUPPORT_OBJECT_COUNT="+structuralMetadata.SelectedCount);
-            Log("REV22_17_BLOCK_REFERENCE_COUNT="+structuralMetadata.BlockCount);
-            Log("REV22_17_NATIVE_STRUCTURE_MEMBER_COUNT="+
+            Log("REV22_29_SUPPORT_TYPE="+structuralMetadata.IdentityKind);
+            Log("REV22_29_SUPPORT_IDENTITY="+structuralMetadata.Identity);
+            Log("REV22_29_SUPPORT_OBJECT_COUNT="+structuralMetadata.SelectedCount);
+            Log("REV22_29_BLOCK_REFERENCE_COUNT="+structuralMetadata.BlockCount);
+            Log("REV22_29_NATIVE_STRUCTURE_MEMBER_COUNT="+
                 structuralMetadata.StructuralMemberCount);
-            Log("REV22_17_MEMBER_SIZES="+structuralMetadata.SizeText);
-            Log("REV22_17_MEMBER_SIZE_COUNT="+structuralMetadata.MemberSizes.Count);
-            Log("REV22_17_MEMBER_SIZE_SOURCE_COUNT="+structuralMetadata.Evidence.Count);
-            Log("REV22_17_PNP_STRUCTURE_CANDIDATES="+pnpRead.CandidateMembers);
-            Log("REV22_17_PNP_LINKED_ROW_COUNT="+pnpRead.LinkedRows);
-            Log("REV22_17_PNP_MEMBERS_WITH_SIZE="+pnpRead.MembersWithSize);
-            Log("REV22_17_ANCHOR_SOURCE_MEMBER_COUNT="+sourceSteel.Members.Count);
+            Log("REV22_29_MEMBER_SIZES="+structuralMetadata.SizeText);
+            Log("REV22_29_MEMBER_SIZE_COUNT="+structuralMetadata.MemberSizes.Count);
+            Log("REV22_29_MEMBER_SIZE_SOURCE_COUNT="+structuralMetadata.Evidence.Count);
+            Log("REV22_29_PNP_STRUCTURE_CANDIDATES="+pnpRead.CandidateMembers);
+            Log("REV22_29_PNP_LINKED_ROW_COUNT="+pnpRead.LinkedRows);
+            Log("REV22_29_PNP_MEMBERS_WITH_SIZE="+pnpRead.MembersWithSize);
+            Log("REV22_29_ANCHOR_SOURCE_MEMBER_COUNT="+sourceSteel.Members.Count);
+            Log("REV22_29_PNP_SUPPORT_CANDIDATES="+plantSupports.CandidateCount);
+            Log("REV22_29_PNP_SUPPORT_LINKED_ROWS="+plantSupports.LinkedRowCount);
+            Log("REV22_29_SELECTED_PIPE_IDS="+selectedPipeIds.Count);
+            Log("REV22_29_PIPE_CANDIDATES="+pipeRead.Candidates);
+            Log("REV22_29_PIPE_PNP_LINKED_ROWS="+pipeRead.LinkedRows);
+            Log("REV22_29_PIPE_ANNOTATION_SOURCES="+pipeRead.Pipes.Count);
+            foreach(var pipe in pipeRead.Pipes)
+                Log("REV22_29_PIPE_SOURCE="+pipe.Handle+
+                    " LINE_TAG="+pipe.LineTag+
+                    " LINE_SOURCE="+pipe.LineSource+
+                    " "+pipe.BopLabel+
+                    " BOP_SOURCE="+pipe.BopSource+
+                    " ANCHOR_SOURCE="+pipe.AnchorSource+
+                    " WCS="+Point(pipe.X,pipe.Y,pipe.Z));
+            foreach(var diagnostic in pipeRead.Diagnostics)
+                Log("REV22_29_PIPE_DIAGNOSTIC="+diagnostic);
+            Log("REV22_29_PNP_SUPPORT_ACCEPTED="+plantSupports.Members.Count);
+            Log("REV22_29_SUPPORT_TOS_EXPLICIT_COUNT="+
+                plantSupports.Members.Count(x=>
+                    x.TosSource=="SUPPORT_EXPLICIT_TOP_OF_STEEL"));
+            Log("REV22_29_SUPPORT_TOS_APPROX_COUNT="+
+                plantSupports.Members.Count(x=>
+                    x.TosSource=="SUPPORT_GEOMETRIC_TOP_APPROX"));
+            Log("REV22_29_SUPPORT_TOS_UNAVAILABLE_COUNT="+
+                plantSupports.Members.Count(x=>
+                    x.TosSource=="SUPPORT_TOS_UNAVAILABLE"));
+            Log("REV22_29_COMBINED_ANNOTATION_SOURCE_COUNT="+
+                sourceAnnotations.Length);
+            foreach(var support in plantSupports.Members)
+                Log("REV22_29_SUPPORT_ANNOTATION_SOURCE="+support.Handle+
+                    " PNP_CLASS="+support.PnpClass+
+                    " DESCRIPTION="+support.Description+
+                    " SIZE="+support.Size+
+                    " SPEC="+support.Spec+
+                    " TOS="+SupportOrthoSupportTos25.Display(
+                        new SupportOrthoSupportTos25.Observation(
+                            support.TosText,support.TosSource))+
+                    " TOS_SOURCE="+support.TosSource+
+                    " WCS="+Point(support.X,support.Y,support.Z));
+            foreach(var warning in plantSupports.Diagnostics)
+                Log("REV22_29_SUPPORT_DIAGNOSTIC="+warning);
+            Log("REV22_29_HORIZONTAL_SOURCE_MEMBER_COUNT="+horizontalSteel.HorizontalCount);
+            Log("REV22_29_TOS_EXACT_PROPERTY_COUNT="+horizontalSteel.PropertyTosCount);
+            Log("REV22_29_TOS_GEOMETRIC_APPROX_COUNT="+horizontalSteel.ApproximateTosCount);
+            foreach(var member in horizontalSteel.Members)
+                Log("REV22_29_MEMBER_TOS="+member.Handle+
+                    " VERTICAL="+member.IsHorizontal+
+                    " SIZE="+member.Size+
+                    " TOS="+(member.TosText??"UNAVAILABLE")+
+                    " SOURCE="+member.TosSource);
+            foreach(var diagnostic in horizontalSteel.Diagnostics)
+                Log("REV22_29_TOS_DIAGNOSTIC="+diagnostic);
             foreach(var member in sourceSteel.Members)
-                Log("REV22_17_SOURCE_MEMBER="+member.Handle+
+                Log("REV22_29_SOURCE_MEMBER="+member.Handle+
                     " SIZE="+member.Size+" WCS="+Point(
                         member.X,member.Y,member.Z));
             foreach(var warning in sourceSteel.Diagnostics)
-                Log("REV22_17_SOURCE_MEMBER_WARNING="+warning);
+                Log("REV22_29_SOURCE_MEMBER_WARNING="+warning);
             foreach(var diagnostic in pnpRead.Diagnostics)
-                Log("REV22_17_PNP_DIAGNOSTIC="+diagnostic);
+                Log("REV22_29_PNP_DIAGNOSTIC="+diagnostic);
             foreach(var evidence in structuralMetadata.Evidence)
-                Log("REV22_17_SOURCE_EVIDENCE="+evidence);
+                Log("REV22_29_SOURCE_EVIDENCE="+evidence);
             foreach(var warning in structuralMetadata.Warnings)
-                Log("REV22_17_SOURCE_WARNING="+warning);
-            Log("REV22_17_CUBE_MODE="+(supportFocus?"SupportFocus":"Original"));
-            Log("REV22_17_SUPPORT_RAW_MIN="+Point(
+                Log("REV22_29_SOURCE_WARNING="+warning);
+            Log("REV22_29_CUBE_MODE="+(supportFocus?"SupportFocus":"Original"));
+            Log("REV22_29_SUPPORT_RAW_MIN="+Point(
                 geometry.Value.MinX,geometry.Value.MinY,geometry.Value.MinZ));
-            Log("REV22_17_SUPPORT_RAW_MAX="+Point(
+            Log("REV22_29_SUPPORT_RAW_MAX="+Point(
                 geometry.Value.MaxX,geometry.Value.MaxY,geometry.Value.MaxZ));
-            Log("REV22_17_SELECTED_PIPE_BOUNDS_COUNT="+localPipeBounds.Count);
+            Log("REV22_29_SELECTED_PIPE_BOUNDS_COUNT="+localPipeBounds.Count);
             if(focusPlan!=null)
             {
-                Log("REV22_17_AUTOMATIC_CLEARANCE=True");
-                Log("REV22_17_AUTO_XY_CLEARANCE_MM="+focusXYClearanceMm);
-                Log("REV22_17_AUTO_PIPE_REACH_MM="+focusPipeReachMm);
-                Log("REV22_17_XY_CLEARANCE_MM="+focusXYClearanceMm);
-                Log("REV22_17_VERTICAL_PIPE_REACH_MM="+focusPipeReachMm);
-                Log("REV22_17_PIPE_BBOX_ACCEPTED="+focusPlan.PipesAccepted);
-                Log("REV22_17_PIPE_BBOX_REJECTED="+focusPlan.PipesRejected);
-                Log("REV22_17_PIPE_Z_CLIPPED="+focusPlan.PipesVerticalClipped);
-                Log("REV22_17_FOCUS_XY_UNCHANGED_BY_PIPES=True");
-                Log("REV22_17_FOCUSED_MIN="+Point(
+                Log("REV22_29_AUTOMATIC_CLEARANCE=True");
+                Log("REV22_29_AUTO_XY_CLEARANCE_MM="+focusXYClearanceMm);
+                Log("REV22_29_AUTO_PIPE_REACH_MM="+focusPipeReachMm);
+                Log("REV22_29_XY_CLEARANCE_MM="+focusXYClearanceMm);
+                Log("REV22_29_VERTICAL_PIPE_REACH_MM="+focusPipeReachMm);
+                Log("REV22_29_PIPE_BBOX_ACCEPTED="+focusPlan.PipesAccepted);
+                Log("REV22_29_PIPE_BBOX_REJECTED="+focusPlan.PipesRejected);
+                Log("REV22_29_PIPE_Z_CLIPPED="+focusPlan.PipesVerticalClipped);
+                Log("REV22_29_FOCUS_XY_UNCHANGED_BY_PIPES=True");
+                Log("REV22_29_FOCUSED_MIN="+Point(
                     focusPlan.FocusBounds.MinX,
                     focusPlan.FocusBounds.MinY,focusPlan.FocusBounds.MinZ));
-                Log("REV22_17_FOCUSED_MAX="+Point(
+                Log("REV22_29_FOCUSED_MAX="+Point(
                     focusPlan.FocusBounds.MaxX,
                     focusPlan.FocusBounds.MaxY,focusPlan.FocusBounds.MaxZ));
             }
@@ -380,7 +462,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             // REV16-proven native DWG seed clone; never clone a DWT.
             using (var db = new Database(false, true))
             {
-                // REV22.17: The FileShare overload can throw eFileSharingViolation
+                // REV22.29: The FileShare overload can throw eFileSharingViolation
                 // when the native Project Manager Ortho seed is open in Plant 3D.
                 // Autodesk recommends the FileOpenMode API for shared read access.
                 // CloseInput materializes the lazy load before the SaveAs clone.
@@ -452,9 +534,9 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             Log("PROPOSED_LAYOUT_NOT_ENFORCED_BY_NATIVE_API=True");
             Log("PUBLIC_API_HAS_NO_INSERTION_POINT_ARGUMENT=TRUE");
 
-            // REV22.17: A Session command can activate a different DWG without
+            // REV22.29: A Session command can activate a different DWG without
             // entering that drawing's document/command execution context.
-            // REV22.17 yielded sentinel +/-1e20 Extents after InitializeCube,
+            // REV22.29 yielded sentinel +/-1e20 Extents after InitializeCube,
             // whereas REV18 succeeded when invoked within the Ortho document.
             // Schedule all native cube + view generation in target document
             // context, preserving the exact strict extents validation.
@@ -515,7 +597,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
 
             // REV22 ISOLATED EXPERIMENT: Non-public GenerateOrthos requires a
             // preexisting native paper-space Viewport ObjectId and insertion
-            // Point3d. Exact signature is verified before taking the one click.
+            // Point3d. Exact signature is verified before automatic placement.
             // Unsupported calls are limited to a NEW registered Ortho clone in
             // the user-confirmed COPIED test project.
             Assembly[] loaded=AppDomain.CurrentDomain.GetAssemblies();
@@ -541,7 +623,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             if(!nativeEnum.IsEnum)throw new InvalidOperationException("Native ViewType is not an enum.");
             string[] available=Enum.GetNames(nativeEnum);
             Log("STEP5_NATIVE_VIEW_TYPES="+string.Join(",",available));
-            // REV22.17: native Edit View string parser is queried before
+            // REV22.29: native Edit View string parser is queried before
             // picking stored preset names for all SIX standard views.
             Type nativeUi=FindType(loaded,
                 "Autodesk.ProcessPower.PnP3dOrthoDrawingsUI.UIUtils") ??
@@ -589,7 +671,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                         slot.Dx,slot.Dy,slot.Dz)||
                      !string.Equals(selected,slot.Name,StringComparison.OrdinalIgnoreCase)))
                     throw new InvalidOperationException(
-                        "REV22.17 unexpected "+slot.Name+
+                        "REV22.29 unexpected "+slot.Name+
                         " native enum or camera quadrant, refusing Current View fallback.");
                 resolved.Add((slot,nativeValue,nativeString));
                 Log("STEP5_"+slot.Name+"_ENUM="+selected+
@@ -597,14 +679,14 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                     " NATIVE_TYPE_NAME="+nativeString+
                     " ISOMETRIC="+NativeOrthoIsoViewType.IsIsometric(slot.Name));
             }
-            // REV22.17: verify ALL TEN strings, not just four isometrics.
+            // REV22.29: verify ALL TEN strings, not just four isometrics.
             // Unknown/native Current fallback is a hard pre-generation failure.
             foreach(var spec in resolved)
             {
                 if(NativeOrthoIsoViewType.IsIsometric(spec.Slot.Name) &&
                    !NativeOrthoEditorPreset.IsExactIsoPreset(
                        spec.Slot.Name,spec.TypeName))
-                    throw new InvalidOperationException("REV22.17 "+
+                    throw new InvalidOperationException("REV22.29 "+
                         spec.Slot.Name+" invalid saved ISO type: "+spec.TypeName);
                 object? parsed=parser.Invoke(null,new object[]{spec.TypeName});
                 bool match=parsed!=null &&
@@ -613,7 +695,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                 Log("STEP5_"+spec.Slot.Name+"_EDITOR_PRESET="+
                     spec.TypeName+" MATCHED_NATIVE_ENUM="+match);
                 if(!match)
-                    throw new InvalidOperationException("REV22.17 "+
+                    throw new InvalidOperationException("REV22.29 "+
                         spec.Slot.Name+" maps to Current View in native Editor.");
             }
             if(candidate.Views.Count!=10 || resolved.Count!=10)
@@ -647,64 +729,30 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             Log("STEP5_CUBE_EXPECTED_MIN="+Point(bounds.MinX,bounds.MinY,bounds.MinZ));
             Log("STEP5_CUBE_EXPECTED_MAX="+Point(bounds.MaxX,bounds.MaxY,bounds.MaxZ));
 
-            // One click only. This is the TOP viewport's paper-space center;
-            // FRONT and SIDE are translated by the same planned offsets.
+            // REV22.29: NO PAPER POINT PROMPT, NO MOUSE CLICK.
+            // Derive the entire two-column x five-row arrangement from
+            // the native ten-view candidate, preserve camera/scale and
+            // reserve all ten title bands before ANY native generation.
+            var autoPlacement=NativeOrthoTenViewAutoPlacement26.Build(
+                candidate,paperWidth,paperHeight);
+            var group=autoPlacement.Views;
+            Log("STEP5_AUTO_PLACEMENT_ENABLED=True");
+            Log("STEP5_PAPER_POINT_CLICKS_REQUIRED=0");
+            Log("STEP5_AUTO_TOP_SUGGESTED="+
+                Point(autoPlacement.SuggestedTopX,autoPlacement.SuggestedTopY,0));
+            Log("STEP5_AUTO_TOP_EFFECTIVE="+
+                Point(autoPlacement.EffectiveTopX,autoPlacement.EffectiveTopY,0));
+            Log("STEP5_AUTO_TOP_FINAL="+
+                Point(autoPlacement.FinalTopX,autoPlacement.FinalTopY,0));
+            Log("STEP5_AUTO_TITLE_SHIFT_Y_MM="+
+                autoPlacement.TitleShiftY.ToString("0.###",CultureInfo.InvariantCulture));
+            Log("STEP5_AUTO_GROUP_SHIFTED="+autoPlacement.WasShifted);
             targetDoc.Editor.WriteMessage(
-                "\nREV22.17: click ONCE inside the Ortho sheet for TOP placement. "+
-                "All TEN views will follow in a 2-column x 5-row group. If the group does not fit "+
-                "at that position, it will shift together to the nearest safe area.");
-            PromptPointResult placement=targetDoc.Editor.GetPoint(
-                new PromptPointOptions("\nREV22 ONE CLICK: Pick TOP group anchor in paper space: "));
-            if(placement.Status!=PromptStatus.OK)
-                throw new InvalidOperationException("REV22 cancelled: no group anchor point picked.");
-            Point3d anchor=placement.Value;
-            if(!double.IsFinite(anchor.X)||!double.IsFinite(anchor.Y)||
-                !double.IsFinite(anchor.Z))
-                throw new InvalidOperationException("REV22 received non-finite placement point.");
-            Log("STEP5_ONE_CLICK_TOP_ANCHOR="+Point(anchor.X,anchor.Y,anchor.Z));
-            Log("STEP5_ONE_CLICK_COUNT=1");
-
-            // REV22.17: preserve the one-click workflow and translate the
-            // complete group when the requested TOP anchor is too close to an
-            // edge. The strict sheet/title-block and collision guards remain.
-            // Log the translation BEFORE the first unsupported native call.
-            var adjustedGroup=NativeOrthoTenViewPlan.BuildAdjusted(
-                candidate,paperWidth,paperHeight,anchor.X,anchor.Y);
-            // REV22.17: Reserve a printed caption band BELOW every viewport.
-            // Whole-group Y translation prevents the last row's labels from
-            // entering the native A1 title-block keepout at 12% paper height.
-            // No per-view offset, camera, cube or scale change.
-            var titleReserve=NativeOrthoViewTitlePlan.ReserveBelow(
-                adjustedGroup.Views.Select(v=>new NativeOrthoViewTitlePlan.Frame(
-                    v.Name,v.CenterX,v.CenterY,
-                    v.PaperFrameWidth,v.PaperFrameHeight)).ToArray(),
-                paperWidth,paperHeight);
-            var group=titleReserve.Frames.Select(v=>
-                new NativeOrthoTenViewPlan.Placement(
-                    v.Name,v.X,v.Y,v.W,v.H)).ToArray();
-            Log("STEP5_TITLE_RESERVED_SHIFT_Y_MM="+
-                titleReserve.ShiftY.ToString("0.###",CultureInfo.InvariantCulture));
-            Log("STEP5_TITLE_EFFECTIVE_TOP_ANCHOR="+
-                Point(group[0].CenterX,group[0].CenterY,0));
-            Log("STEP5_ONE_CLICK_VALID_TOP_X_RANGE="+
-                adjustedGroup.MinimumTopX.ToString("0.###",CultureInfo.InvariantCulture)+
-                ","+adjustedGroup.MaximumTopX.ToString("0.###",CultureInfo.InvariantCulture));
-            Log("STEP5_ONE_CLICK_VALID_TOP_Y_RANGE="+
-                adjustedGroup.MinimumTopY.ToString("0.###",CultureInfo.InvariantCulture)+
-                ","+adjustedGroup.MaximumTopY.ToString("0.###",CultureInfo.InvariantCulture));
-            Log("STEP5_ONE_CLICK_EFFECTIVE_TOP_ANCHOR="+
-                Point(adjustedGroup.EffectiveTopX,adjustedGroup.EffectiveTopY,0));
-            Log("STEP5_ONE_CLICK_GROUP_TRANSLATION="+
-                Point(adjustedGroup.EffectiveTopX-anchor.X,
-                      adjustedGroup.EffectiveTopY-anchor.Y,0));
-            Log("STEP5_ONE_CLICK_AUTO_SHIFTED="+adjustedGroup.WasAdjusted);
-            if(adjustedGroup.WasAdjusted)
-                targetDoc.Editor.WriteMessage(
-                    "\nREV22.17: moved the complete ten-view group to fit "+
-                    "the sheet. Effective TOP center: ("+
-                    adjustedGroup.EffectiveTopX.ToString("0.#",CultureInfo.InvariantCulture)+
-                    ", "+adjustedGroup.EffectiveTopY.ToString("0.#",CultureInfo.InvariantCulture)+
-                    "). See REV22_RESULT.txt for exact offset.");
+                "\nREV22.29: Automatically placing all TEN native Ortho "+
+                "views and their titles. No insertion click required. "+
+                "TOP center: ("+
+                autoPlacement.FinalTopX.ToString("0.###",CultureInfo.InvariantCulture)+
+                ", "+autoPlacement.FinalTopY.ToString("0.###",CultureInfo.InvariantCulture)+").");
             var planned=new List<(NativeOrthoTenViewPlan.Slot Slot,
                 object ViewEnum,string TypeName,Point3d Center,double Width,double Height)>();
             foreach(var item in resolved)
@@ -795,7 +843,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                     Point(configured.X,configured.Y,configured.Z));
                                 Log("STEP7_"+label+"_ISOMETRIC_CAMERA_MATCH_BEFORE="+correct);
                                 if(!correct)throw new InvalidOperationException(
-                                    "REV22.17 "+label+
+                                    "REV22.29 "+label+
                                     " pre-generation camera differs from requested isometric preset.");
                             }
                             Log("STEP7_"+label+"_NATIVE_TYPE_STRING="+item.TypeName);
@@ -809,7 +857,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                 viewportId,item.Width,item.Height,bounds.SizeZ,
                                 candidate.Scale,0.0,solid
                             };
-                            // REV22.17: REV22.2 passed raw bounds.SizeX/SizeY as
+                            // REV22.29: REV22.2 passed raw bounds.SizeX/SizeY as
                             // viewportWidth/viewportHeight. Its native call then
                             // changed a planned 76.163 x 19.950 paper viewport
                             // into a 362.680 x 95.000 viewport. The API argument
@@ -824,7 +872,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                             Log("STEP8_"+label+"_PRIVATE_GENERATEORTHOS_RETURNED");
                             if(NativeOrthoAxialEditorPreset.IsAxial(label))
                             {
-                                // REV22.17 ISOLATED AXIAL HALF-TURN experiment:
+                                // REV22.29 ISOLATED AXIAL HALF-TURN experiment:
                                 // Manual Update View visibly rotates all SIX
                                 // axial projections ~180 degrees. Exact twist
                                 // values BEFORE/AFTER were never recorded in
@@ -852,7 +900,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                     Point(beforeAxial.CenterX,beforeAxial.CenterY,0));
                                 if(!beforeCameraMatch)
                                     throw new InvalidOperationException(
-                                        "REV22.17 "+label+" camera mismatch; refusing to rotate.");
+                                        "REV22.29 "+label+" camera mismatch; refusing to rotate.");
                                 var expectedAxial=NativeOrthoAxialHalfTurnGuard.Flip(
                                     beforeAxial);
                                 SetIsoViewportPose(
@@ -878,12 +926,12 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                     (axialPass?"PASS":"FAIL"));
                                 if(!axialPass)
                                     throw new InvalidOperationException(
-                                        "REV22.17 "+label+
+                                        "REV22.29 "+label+
                                         " half-turn/center adjustment failed readback.");
                             }
                             if(NativeOrthoIsoViewType.IsIsometric(label))
                             {
-                                // REV22.17 isolated corrective test. REV22.4
+                                // REV22.29 isolated corrective test. REV22.4
                                 // observed 180deg twist on NW/NE/SW/SE even
                                 // though VIEW_DIRECTION and stored NW/NE/SW/SE
                                 // native identifiers were correct. The WCS-Z
@@ -892,7 +940,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                 // Only newly generated test viewports are edited.
                                 // Native Edit View / Update View may restore
                                 // its own rotation; verify after regeneration.
-                                // REV22.17: REV22.5 merely reset TwistAngle=0
+                                // REV22.29: REV22.5 merely reset TwistAngle=0
                                 // but left ViewCenter in the OLD 180deg view
                                 // coordinate system. Thus it rendered geometry
                                 // off-screen (empty frames) despite correct camera,
@@ -910,7 +958,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                     item.Slot.Dx,item.Slot.Dy,item.Slot.Dz,
                                     item.Slot.Ux,item.Slot.Uy,item.Slot.Uz))
                                     throw new InvalidOperationException(
-                                        "REV22.17 "+label+" view up differs from expected WCS +Z projection.");
+                                        "REV22.29 "+label+" view up differs from expected WCS +Z projection.");
                                 var adjusted=NativeOrthoIsoFramingGuard.NormalizeHalfTurn(oldPose);
                                 SetIsoViewportPose(targetDoc.Database,viewportId,adjusted);
                                 var actualPose=ReadIsoViewportState(
@@ -931,7 +979,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                     (frameMatch?"PASS":"FAIL"));
                                 if(!frameMatch)
                                     throw new InvalidOperationException(
-                                        "REV22.17 "+label+
+                                        "REV22.29 "+label+
                                         " viewport twist/center correction did not persist.");
                             }
                             var plannedFrame=new NativeOrthoViewportPaperGuard.Frame(
@@ -951,7 +999,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                 plannedFrame,actualFrame,paperWidth,paperHeight,confirmedFrames);
                             Log("STEP8_"+label+"_ACTUAL_PAPER_LAYOUT_CHECK="+frameCheck);
                             if(frameCheck!="PASS")
-                                throw new InvalidOperationException("REV22.17 "+label+
+                                throw new InvalidOperationException("REV22.29 "+label+
                                     " failed actual paper-space post-generation guard: "+
                                     frameCheck+". Stop before creating more views; "+
                                     "retain this partially registered copied test DWG.");
@@ -959,7 +1007,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                             nativeMemberViewportIds.Add(label,viewportId);
                             if(NativeOrthoAxialEditorPreset.IsAxial(label))
                             {
-                                // REV22.17: read back the ACTUAL persisted
+                                // REV22.29: read back the ACTUAL persisted
                                 // IDwgViewDef.ViewType, not the requested label.
                                 string storedAxial=ReadNativeStoredViewType(
                                     nativeView,viewName);
@@ -970,13 +1018,13 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                     (savedAxialMatch?"PASS":"FAIL"));
                                 if(!savedAxialMatch)
                                     throw new InvalidOperationException(
-                                        "REV22.17 "+label+" native Editor preset "+
+                                        "REV22.29 "+label+" native Editor preset "+
                                         "not persisted as expected. Requested: "+
                                         item.TypeName+" actual: "+storedAxial);
                             }
                             if(NativeOrthoIsoViewType.IsIsometric(label))
                             {
-                                // REV22.17: Edit View uses persisted native
+                                // REV22.29: Edit View uses persisted native
                                 // IDwgViewDef.ViewType, not only viewport angle.
                                 string storedType=ReadNativeStoredViewType(nativeView,viewName);
                                 Log("STEP8_"+label+"_SAVED_VIEWDEF_TYPE="+storedType);
@@ -988,7 +1036,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                         label,storedType);
                                     Log("STEP8_"+label+"_SAVED_TYPE_CHECK="+(exact?"PASS":"FAIL"));
                                     if(!exact)throw new InvalidOperationException(
-                                        "REV22.17 "+label+
+                                        "REV22.29 "+label+
                                         " was not saved with the native Ortho Editor "+
                                         "preset identifier: "+storedType);
                                 }
@@ -1002,7 +1050,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                                 Log("STEP8_"+label+"_ISOMETRIC_CAMERA_MATCH_AFTER="+isoCameraMatches);
                                 if(!isoCameraMatches)
                                     throw new InvalidOperationException(
-                                        "REV22.17 "+label+
+                                        "REV22.29 "+label+
                                         " native generator reverted camera to Current View. "+
                                         "Do NOT trust this experimental test DWG.");
                             }
@@ -1024,7 +1072,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                 finally { if(cube is IDisposable disposeCube)disposeCube.Dispose(); }
             }
             Log("STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True");
-            Log("STEP10_REV22_TEN_GROUP_PLACED_WITH_ONE_CLICK=True");
+            Log("STEP10_REV22_TEN_GROUP_PLACED_AUTOMATICALLY=True");
             var newFrames=PaperViewports(targetDoc.Database,paperLayout)
                 .Where(v=>!priorHandles.Contains(v.Handle)).ToList();
             Log("STEP10_NEW_PAPER_VIEWPORT_COUNT="+newFrames.Count);
@@ -1054,7 +1102,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             Log("NATIVE_ORTHO_VIEW_COUNT="+completed.Count);
             if(completed.Count!=10||newFrames.Count!=10||overlaps||possibleTitleBlock)
                 throw new InvalidOperationException(
-                    "REV22.17: Native view frame checks failed; titles not created.");
+                    "REV22.29: Native view frame checks failed; titles not created.");
             // Generate paper-space MText independently of native view metadata,
             // OrthoCube geometry or AutoCAD model contents.
             var titles=NativeOrthoViewTitlePlan.BuildTitles(
@@ -1067,7 +1115,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             Log("STEP10_VIEW_TITLE_COUNT="+titleHandles.Count);
             if(titleHandles.Count!=10)
                 throw new InvalidOperationException(
-                    "REV22.17 did not append all ten paper-space titles.");
+                    "REV22.29 did not append all ten paper-space titles.");
             for(int k=0;k<titles.Count;k++)
             {
                 Log("STEP10_TITLE_"+titles[k].Name+"="+titles[k].Text+
@@ -1075,52 +1123,107 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
                     " PAPER_POSITION="+Point(titles[k].CenterX,titles[k].TopY,0));
             }
             Log("STEP10_TITLE_PLACEMENT_CHECK=PASS");
-            // REV22.17: project EACH actual source structure member onto
+            // REV22.29: project EACH actual source structure member onto
             // the ACTUAL SAVED native viewport camera. The leader starts at
             // that member's projected 3D extents center (not assembly center).
             // Arrange MText outside the viewport in sorted non-overlapping rows.
             // No revision to native cube, camera, view registration, or titles.
             string annotationStatus;
             int annotated=0;
-            if(sourceSteel.Members.Count>0)
+            if(sourceAnnotations.Length>0)
             {
                 var memberCameras=ReadNativeMemberCameras(
                     targetDoc.Database,nativeMemberViewportIds);
                 foreach(var camera in memberCameras)
-                    Log("REV22_17_CAMERA_"+camera.Name+
+                    Log("REV22_29_CAMERA_"+camera.Name+
                         " DIRECTION="+Point(camera.DirX,camera.DirY,camera.DirZ)+
                         " CENTER="+Point(camera.ViewCenterX,camera.ViewCenterY,0)+
                         " TWIST="+camera.TwistRadians+
                         " SCALE="+camera.Scale);
-                var plan=SupportOrthoMemberCalloutPlan17.Build(
-                    memberCameras,sourceSteel.Members,paperWidth,paperHeight);
-                annotated=CreateNativePaperMemberLeaders(
-                    targetDoc.Database,paperLayout,plan.Callouts);
+                var plan=SupportOrthoMemberCalloutPlan27.Build(
+                    memberCameras,titles,sourceAnnotations,paperWidth,paperHeight);
+                // REV22.29: preserve full source XREF key in the diagnostics;
+                // ONLY change the actual visible two-line PIPE annotation.
+                // Structural members and Support TOS retain their REV22.28 text.
+                var pipeByHandle=pipeRead.Pipes.ToDictionary(p=>p.Handle,
+                    StringComparer.OrdinalIgnoreCase);
+                var visibleCallouts=plan.Callouts.Select(note=>
+                    note.IsPipe&&pipeByHandle.TryGetValue(note.Handle,out var p)
+                        ? note with {Text=SupportOrthoPipeCallout29.Compose(
+                            p.LineTag,p.BopLabel)} : note).ToArray();
+                Log("REV22_29_PIPE_LABEL_FORMAT=LINE_NO_AND_BOP_WITHOUT_XREF_PATH");
+                annotated=CreateNativePaperMemberLeaders27(
+                    targetDoc.Database,paperLayout,visibleCallouts,
+                    out var nativeTextWarnings);
+                foreach(var warning in nativeTextWarnings)
+                    Log("REV22_29_NATIVE_TEXT_SKIP="+warning);
+                Log("REV22_29_NATIVE_TEXT_SKIPPED_COUNT="+
+                    nativeTextWarnings.Count);
+                Log("REV22_29_TEXT_MODE=SEPARATE_NON_WRAPPING_DBTEXT");
+                Log("REV22_29_TEXT_HEIGHT_MAX="+
+                    SupportOrthoMemberCalloutPlan27.TextHeightMm);
                 Log("STEP10_INDIVIDUAL_MEMBER_LAYER="+
-                    SupportOrthoMemberCalloutPlan17.Layer);
+                    SupportOrthoMemberCalloutPlan27.Layer);
                 Log("STEP10_INDIVIDUAL_SOURCE_MEMBER_COUNT="+
-                    sourceSteel.Members.Count);
+                    sourceAnnotations.Length);
+                Log("STEP10_STRUCTURE_MEMBER_COUNT="+horizontalSteel.Members.Count);
+                Log("STEP10_PIPING_SUPPORT_COUNT="+plantSupports.Members.Count);
+                Log("STEP10_PIPE_ANNOTATION_SOURCE_COUNT="+pipeRead.Pipes.Count);
                 Log("STEP10_INDIVIDUAL_MEMBER_ANNOTATION_COUNT="+annotated);
-                foreach(var label in plan.Callouts)
+                var steelHandles=horizontalSteel.Members.Select(m=>m.Handle)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var supportHandles=plantSupports.Members.Select(m=>m.Handle)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                int steelTosLabels=plan.Callouts.Count(x=>x.HasTos&&
+                    steelHandles.Contains(x.Handle));
+                int supportTosLabels=plan.Callouts.Count(x=>x.HasTos&&
+                    supportHandles.Contains(x.Handle));
+                Log("STEP10_HORIZONTAL_TOS_LABEL_COUNT="+steelTosLabels);
+                Log("STEP10_SUPPORT_TOS_LABEL_COUNT="+supportTosLabels);
+                Log("STEP10_TOTAL_TOS_LABEL_COUNT="+plan.TosLines);
+                Log("STEP10_TOTAL_TOS_APPROX_LABEL_COUNT="+
+                    plan.ApproximateTosLines);
+                int pipeBopLabels=plan.Callouts.Count(c=>
+                    c.IsPipe&&c.HasTos);
+                Log("STEP10_PIPE_BOP_LABEL_COUNT="+pipeBopLabels);
+                // REV22.29 uses separately measured single-line DBText
+                // entities. No MText word wrap or artificial paragraph flow.
+                var tosPreview=visibleCallouts.FirstOrDefault(x=>x.HasTos);
+                if(tosPreview!=null)
+                    Log("REV22_29_TWO_SEPARATE_DBTEXT_LINES="+
+                        tosPreview.Text.Replace("\n"," | "));
+                foreach(var label in visibleCallouts)
                     Log("STEP10_MEMBER_LABEL="+label.View+
                         " SOURCE="+label.Handle+
-                        " TEXT="+label.Text+
-                        " ANCHOR="+Point(label.Ax,label.Ay,0)+
-                        " LABEL="+Point(label.TextX,label.TextTop,0));
+                        " SECOND_LINE_PRESENT="+label.HasTos+
+                        " PIPE_BOP="+label.IsPipe+
+                        " TEXT="+label.Text.Replace("\n"," | ")+
+                        " ANCHOR="+Point(label.AnchorX,label.AnchorY,0)+
+                        " LANE_X="+label.LaneX+
+                        " LABEL="+Point(label.LabelX,label.LabelTop,0));
                 foreach(var warn in plan.Skipped)
                     Log("STEP10_MEMBER_ANNOTATION_SKIP="+warn);
-                foreach(var noLabels in plan.ViewsWithoutLabels)
+                foreach(var noLabels in plan.ViewWithoutLabels)
                     Log("STEP10_MEMBER_ANNOTATION_VIEW_EMPTY="+noLabels);
-                int target=10*sourceSteel.Members.Count;
-                annotationStatus=annotated==target?"PASS":"PARTIAL";
+                int target=10*sourceAnnotations.Length;
+                int steelTosTarget=10*horizontalSteel.HorizontalCount;
+                int supportTosTarget=10*plantSupports.Members.Count;
+                int pipeBopTarget=10*pipeRead.Pipes.Count;
+                annotationStatus=annotated==target&&
+                    steelTosLabels==steelTosTarget&&
+                    supportTosLabels==supportTosTarget&&
+                    pipeBopLabels==pipeBopTarget?"PASS":"PARTIAL";
                 Log("STEP10_MEMBER_ANNOTATION_EXPECTED="+target);
+                Log("STEP10_HORIZONTAL_TOS_EXPECTED="+steelTosTarget);
+                Log("STEP10_SUPPORT_TOS_EXPECTED="+supportTosTarget);
+                Log("STEP10_PIPE_BOP_EXPECTED="+pipeBopTarget);
                 Log("STEP10_MEMBER_ANNOTATIONS_CHECK="+annotationStatus);
             }
             else
             {
                 // Selected ordinary BlockReferences with no independently
                 // linked members cannot acquire fabricated member pointers.
-                annotationStatus="NO_INDIVIDUAL_NATIVE_MEMBERS";
+                annotationStatus="NO_NATIVE_STEEL_OR_PLANT_SUPPORTS";
                 Log("STEP10_MEMBER_ANNOTATION_EXPECTED=0");
                 Log("STEP10_INDIVIDUAL_MEMBER_ANNOTATION_COUNT=0");
                 Log("STEP10_MEMBER_ANNOTATIONS_CHECK="+annotationStatus);
@@ -1129,7 +1232,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             Log("FINAL_STATUS=TEN_NATIVE_VIEWS_AND_TITLES_MEMBER_LEADERS_"+
                 annotationStatus);
             SafeWriteToActiveEditor(
-                "REV22.17: TEN native views and titles created. "+
+                "REV22.29: TEN native views and titles created. "+
                 annotated+" per-member leader annotations; "+
                 annotationStatus+". Save and verify Update View.");
 
@@ -1201,7 +1304,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         }
     }
 
-    // REV22.17 read-only API reflection; verified from native DLL metadata:
+    // REV22.29 read-only API reflection; verified from native DLL metadata:
     // GetDwgSheetFromOrthoView(PlantOrthoView,out IDwgSheetDef) and
     // GetViewDefByViewName(string,IDwgSheetDef,out IDwgViewDef).
     private static string ReadNativeStoredViewType(object orthoView,string viewName)
@@ -1261,16 +1364,16 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         }
     }
 
-    // REV22.17: read ONLY the real viewport after Autodesk's internal
+    // REV22.29: read ONLY the real viewport after Autodesk's internal
     // generation. A plan-time frame is not a reliable paper-space result.
     private static NativeOrthoViewportPaperGuard.Frame ReadPaperViewportFrame(
         Database db,ObjectId viewportId,string name)
     {
         if(viewportId.IsNull||!viewportId.IsValid)
-            throw new InvalidOperationException("REV22.17 invalid generated viewport ID.");
+            throw new InvalidOperationException("REV22.29 invalid generated viewport ID.");
         using Transaction tr=db.TransactionManager.StartTransaction();
         if(tr.GetObject(viewportId,OpenMode.ForRead,false) is not Viewport vp)
-            throw new InvalidOperationException("REV22.17 viewport missing after generation.");
+            throw new InvalidOperationException("REV22.29 viewport missing after generation.");
         var frame=new NativeOrthoViewportPaperGuard.Frame(name,
             vp.CenterPoint.X,vp.CenterPoint.Y,vp.Width,vp.Height,
             vp.CustomScale,vp.ViewHeight);
@@ -1278,19 +1381,19 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         return frame;
     }
 
-    // REV22.17: this is the only new drawing mutation. Its scope is the
+    // REV22.29: this is the only new drawing mutation. Its scope is the
     // freshly created ISO viewport in an isolated copied test Ortho DWG.
     // The Autodesk native ViewDef is not edited directly.
-    // REV22.17: change only newly created isometric paper-space viewports.
+    // REV22.29: change only newly created isometric paper-space viewports.
     // Do not edit Plant native IDwgViewDef or Ortho.dcf.
     private static NativeOrthoIsoFramingGuard.ViewState ReadIsoViewportState(
         Database db,ObjectId viewportId)
     {
         if(viewportId.IsNull||!viewportId.IsValid)
-            throw new InvalidOperationException("REV22.17 generated ISO viewport id invalid.");
+            throw new InvalidOperationException("REV22.29 generated ISO viewport id invalid.");
         using Transaction tr=db.TransactionManager.StartTransaction();
         if(tr.GetObject(viewportId,OpenMode.ForRead,false) is not Viewport vp)
-            throw new InvalidOperationException("REV22.17 generated ISO viewport missing.");
+            throw new InvalidOperationException("REV22.29 generated ISO viewport missing.");
         var center=vp.ViewCenter;
         var result=new NativeOrthoIsoFramingGuard.ViewState(
             center.X,center.Y,vp.TwistAngle);
@@ -1302,10 +1405,10 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         NativeOrthoIsoFramingGuard.Adjustment adjusted)
     {
         if(viewportId.IsNull||!viewportId.IsValid)
-            throw new InvalidOperationException("REV22.17 generated ISO viewport id invalid.");
+            throw new InvalidOperationException("REV22.29 generated ISO viewport id invalid.");
         using Transaction tr=db.TransactionManager.StartTransaction();
         if(tr.GetObject(viewportId,OpenMode.ForWrite,false) is not Viewport vp)
-            throw new InvalidOperationException("REV22.17 generated ISO viewport missing.");
+            throw new InvalidOperationException("REV22.29 generated ISO viewport missing.");
         vp.TwistAngle=adjusted.TwistRadians;
         vp.ViewCenter=new Point2d(adjusted.CenterX,adjusted.CenterY);
         tr.Commit();
@@ -1314,10 +1417,10 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
     private static Vector3d ReadViewportCamera(Database db,ObjectId viewportId)
     {
         if(viewportId.IsNull||!viewportId.IsValid)
-            throw new InvalidOperationException("REV22.17 invalid native viewport id.");
+            throw new InvalidOperationException("REV22.29 invalid native viewport id.");
         using Transaction tr=db.TransactionManager.StartTransaction();
         if(tr.GetObject(viewportId,OpenMode.ForRead,false) is not Viewport vp)
-            throw new InvalidOperationException("REV22.17 native viewport no longer exists.");
+            throw new InvalidOperationException("REV22.29 native viewport no longer exists.");
         Vector3d dir=vp.ViewDirection;
         tr.Commit();
         return dir;
@@ -1355,7 +1458,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         return id;
     }
 
-    // REV22.17: the saved native viewport is the sole authority for
+    // REV22.29: the saved native viewport is the sole authority for
     // projection angle, twist, scale and display-center. We read these AFTER
     // Autodesk native generation and the verified orientation corrections.
     private static IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera>
@@ -1369,7 +1472,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             if(view.Value.IsNull||!view.Value.IsValid ||
                tr.GetObject(view.Value,OpenMode.ForRead,false) is not Viewport vp)
                 throw new InvalidOperationException(
-                    "REV22.17 actual native viewport unavailable: "+view.Key);
+                    "REV22.29 actual native viewport unavailable: "+view.Key);
             views.Add(new SupportOrthoMemberCalloutPlan17.Camera(
                 view.Key,vp.CenterPoint.X,vp.CenterPoint.Y,
                 vp.Width,vp.Height,
@@ -1380,76 +1483,187 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         tr.Commit();
         if(views.Count!=10)
             throw new InvalidOperationException(
-                "REV22.17 member labels require TEN genuine native cameras.");
+                "REV22.29 member labels require TEN genuine native cameras.");
         return views;
     }
 
-    // REV22.17: native editable MText plus a two-piece lightweight
-    // paper-space leader per projected member. One transaction for all
-    // annotations: no partially created member label sets if an error occurs.
-    private static int CreateNativePaperMemberLeaders(
+    // REV22.29: SINGLE-LINE DBText is not capable of word wrapping.
+    // One name entity; a second TOS entity for HORIZONTAL members only.
+    // Actual AutoCAD font extents are measured at write-time. Shrink the
+    // text height to fit the allocated rectangle, or skip it entirely.
+    private static int CreateNativePaperMemberLeaders27(
         Database db,string paperLayout,
-        IReadOnlyList<SupportOrthoMemberCalloutPlan17.Callout> callouts)
+        IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout> callouts,
+        out List<string> skipped)
     {
+        skipped=new List<string>();
         using Transaction tr=db.TransactionManager.StartTransaction();
         var layouts=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,OpenMode.ForRead);
         if(!layouts.Contains(paperLayout))
             throw new InvalidOperationException(
-                "REV22.17 native Ortho paper layout missing.");
+                "REV22.29 native Ortho paper layout missing.");
         var layout=(Layout)tr.GetObject(layouts.GetAt(paperLayout),OpenMode.ForRead);
         var paper=(BlockTableRecord)tr.GetObject(
             layout.BlockTableRecordId,OpenMode.ForWrite);
         var layers=(LayerTable)tr.GetObject(db.LayerTableId,OpenMode.ForRead);
         ObjectId layerId;
-        if(layers.Has(SupportOrthoMemberCalloutPlan17.Layer))
-            layerId=layers[SupportOrthoMemberCalloutPlan17.Layer];
+        if(layers.Has(SupportOrthoMemberCalloutPlan27.Layer))
+            layerId=layers[SupportOrthoMemberCalloutPlan27.Layer];
         else
         {
             layers.UpgradeOpen();
             using var layer=new LayerTableRecord
-            { Name=SupportOrthoMemberCalloutPlan17.Layer };
+            {Name=SupportOrthoMemberCalloutPlan27.Layer};
             layerId=layers.Add(layer);
             tr.AddNewlyCreatedDBObject(layer,true);
         }
         int count=0;
         foreach(var item in callouts)
         {
-            using var first=new Line(
-                new Point3d(item.Ax,item.Ay,0),
-                new Point3d(item.ElbowX,item.ElbowY,0))
-            { LayerId=layerId };
-            paper.AppendEntity(first);
-            tr.AddNewlyCreatedDBObject(first,true);
-            using var second=new Line(
-                new Point3d(item.ElbowX,item.ElbowY,0),
-                new Point3d(item.TextX-1.0,
-                    item.TextTop-item.TextHeight*.52,0))
-            { LayerId=layerId };
-            paper.AppendEntity(second);
-            tr.AddNewlyCreatedDBObject(second,true);
-            using var label=new MText
+            string[] lines=item.Text.Replace("\r\n","\n").Split('\n');
+            if(lines.Length!=(item.HasTos?2:1)||
+               lines.Any(t=>string.IsNullOrWhiteSpace(t)))
             {
-                Contents=SupportOrthoMemberMetadata.SafeMText(item.Text),
-                Location=new Point3d(item.TextX,item.TextTop,0),
-                Width=item.TextWidth,
-                TextHeight=item.TextHeight,
-                Attachment=AttachmentPoint.TopLeft,
+                skipped.Add(item.View+"/"+item.Handle+
+                    ":UNEXPECTED_PARAGRAPH_COUNT");
+                continue;
+            }
+            using var name=new DBText
+            {
+                TextString=SupportOrthoMemberMetadata.Clean(lines[0]),
+                Height=SupportOrthoMemberCalloutPlan27.TextHeightMm,
+                Position=new Point3d(item.LabelX,item.LabelTop-2.1,0),
                 LayerId=layerId,
-                TextStyleId=db.Textstyle
+                TextStyleId=db.Textstyle,
+                WidthFactor=1.0
             };
-            ObjectId id=paper.AppendEntity(label);
-            tr.AddNewlyCreatedDBObject(label,true);
-            if(id.IsNull||!id.IsValid)
-                throw new InvalidOperationException(
-                    "REV22.17 failed member callout "+item.View+
-                    "/"+item.Handle);
-            count++;
+            paper.AppendEntity(name);
+            tr.AddNewlyCreatedDBObject(name,true);
+            DBText? tos=null;
+            try
+            {
+                if(lines.Length==2)
+                {
+                    tos=new DBText
+                    {
+                        TextString=SupportOrthoMemberMetadata.Clean(lines[1]),
+                        Height=SupportOrthoMemberCalloutPlan27.TextHeightMm,
+                        Position=new Point3d(item.LabelX,
+                            item.LabelTop-
+                            SupportOrthoMemberCalloutPlan27.TextLineHeightMm-2.1,0),
+                        LayerId=layerId,
+                        TextStyleId=db.Textstyle,
+                        WidthFactor=1.0
+                    };
+                    paper.AppendEntity(tos);
+                    tr.AddNewlyCreatedDBObject(tos,true);
+                }
+
+                const double minimumReadableTextMm=1.05;
+                double fontHeight=SupportOrthoMemberCalloutPlan27.TextHeightMm;
+                bool fit=false;
+                string problem="NATIVE_TEXT_TOO_WIDE";
+                for(int pass=0;pass<10;pass++)
+                {
+                    name.Height=fontHeight;
+                    name.Position=new Point3d(item.LabelX,
+                        item.LabelTop-fontHeight*1.18,0);
+                    if(tos!=null)
+                    {
+                        tos.Height=fontHeight;
+                        tos.Position=new Point3d(item.LabelX,
+                            item.LabelTop-
+                                SupportOrthoMemberCalloutPlan27.TextLineHeightMm-
+                                fontHeight*1.18,0);
+                    }
+                    try
+                    {
+                        Extents3d sizeBounds=name.GeometricExtents;
+                        Extents3d? tosBounds=tos?.GeometricExtents;
+                        double width1=sizeBounds.MaxPoint.X-sizeBounds.MinPoint.X;
+                        double width2=tosBounds.HasValue?
+                            tosBounds.Value.MaxPoint.X-tosBounds.Value.MinPoint.X:0;
+                        double measuredWidth=Math.Max(width1,width2);
+                        double safeWidth=item.LabelWidth-1.5;
+                        if(!double.IsFinite(measuredWidth)||measuredWidth<=0)
+                        {
+                            problem="NATIVE_FONT_EXTENTS_UNAVAILABLE";
+                            break;
+                        }
+                        double minimumY=tosBounds.HasValue?
+                            tosBounds.Value.MinPoint.Y:sizeBounds.MinPoint.Y;
+                        bool heightFits=
+                            sizeBounds.MaxPoint.Y<=item.LabelTop+.12 &&
+                            minimumY>=item.LabelTop-item.LabelHeight+.12 &&
+                            (!tosBounds.HasValue||
+                                sizeBounds.MinPoint.Y>=
+                                    tosBounds.Value.MaxPoint.Y+.25);
+                        if(measuredWidth<=safeWidth && heightFits &&
+                           sizeBounds.MinPoint.X>=item.LabelX-.12 &&
+                           (!tosBounds.HasValue||
+                                tosBounds.Value.MinPoint.X>=item.LabelX-.12))
+                        {
+                            fit=true;
+                            break;
+                        }
+                        double next=measuredWidth>safeWidth?
+                            fontHeight*(safeWidth/measuredWidth)*.95:
+                            fontHeight*.91;
+                        if(next<minimumReadableTextMm-1e-5)
+                        {
+                            problem=measuredWidth>safeWidth?
+                                "NATIVE_FONT_TOO_WIDE_AT_MINIMUM_HEIGHT":
+                                "NATIVE_FONT_TOO_TALL_FOR_RESERVED_ROW";
+                            break;
+                        }
+                        fontHeight=Math.Min(fontHeight-.055,next);
+                    }
+                    catch(System.Exception ex)
+                    {
+                        problem="NATIVE_FONT_MEASUREMENT_ERROR_"+
+                            ex.GetType().Name;
+                        break;
+                    }
+                }
+                if(!fit)
+                {
+                    tos?.Erase();
+                    name.Erase();
+                    skipped.Add(item.View+"/"+item.Handle+":"+problem);
+                    continue;
+                }
+
+                double landingY=item.LabelTop-
+                    SupportOrthoMemberCalloutPlan27.TextLineHeightMm*.5;
+                var routes=new (Point3d Start,Point3d End)[]
+                {
+                    (new Point3d(item.AnchorX,item.AnchorY,0),
+                        new Point3d(item.LaneX,item.AnchorY,0)),
+                    (new Point3d(item.LaneX,item.AnchorY,0),
+                        new Point3d(item.LaneX,landingY,0)),
+                    (new Point3d(item.LaneX,landingY,0),
+                        new Point3d(item.LabelX-1.0,landingY,0))
+                };
+                foreach(var route in routes)
+                {
+                    if(route.Start.DistanceTo(route.End)<1e-5)continue;
+                    using var leader=new Line(route.Start,route.End)
+                    {LayerId=layerId};
+                    paper.AppendEntity(leader);
+                    tr.AddNewlyCreatedDBObject(leader,true);
+                }
+                count++;
+            }
+            finally
+            {
+                tos?.Dispose();
+            }
         }
         tr.Commit();
         return count;
     }
 
-    // REV22.17: one concise source-grounded panel in PAPER SPACE only.
+    // REV22.29: one concise source-grounded panel in PAPER SPACE only.
     // It does not claim per-member associative leader identities.
     private static string CreateNativePaperSupportSummary(
         Database db,string paperLayout,
@@ -1458,7 +1672,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         using Transaction tr=db.TransactionManager.StartTransaction();
         var layouts=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,OpenMode.ForRead);
         if(!layouts.Contains(paperLayout))
-            throw new InvalidOperationException("REV22.17 native paper layout unavailable.");
+            throw new InvalidOperationException("REV22.29 native paper layout unavailable.");
         var layout=(Layout)tr.GetObject(layouts.GetAt(paperLayout),OpenMode.ForRead);
         var paper=(BlockTableRecord)tr.GetObject(
             layout.BlockTableRecordId,OpenMode.ForWrite);
@@ -1523,24 +1737,24 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
         tr.AddNewlyCreatedDBObject(text,true);
         if(id.IsNull||!id.IsValid)
             throw new InvalidOperationException(
-                "REV22.17 native paper summary MText could not be created.");
+                "REV22.29 native paper summary MText could not be created.");
         tr.Commit();
         return text.Handle.ToString();
     }
 
-    // REV22.17: ten readable titles are independent paper-space MText,
+    // REV22.29: ten readable titles are independent paper-space MText,
     // not part of the model source, native OrthoCube or viewport regeneration.
     private static IReadOnlyList<string> CreateNativePaperTitles(
         Database db,string paperLayout,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles)
     {
         if(titles==null||titles.Count!=10)
-            throw new ArgumentException("REV22.17 requires exactly ten titles.");
+            throw new ArgumentException("REV22.29 requires exactly ten titles.");
         using Transaction tr=db.TransactionManager.StartTransaction();
         var layouts=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,OpenMode.ForRead);
         if(!layouts.Contains(paperLayout))
             throw new InvalidOperationException(
-                "REV22.17 target native Ortho paper layout disappeared.");
+                "REV22.29 target native Ortho paper layout disappeared.");
         var layout=(Layout)tr.GetObject(
             layouts.GetAt(paperLayout),OpenMode.ForRead);
         var paper=(BlockTableRecord)tr.GetObject(
@@ -1576,7 +1790,7 @@ public sealed class NativeOrthoTenViewMemberLeadersTest
             tr.AddNewlyCreatedDBObject(label,true);
             if(textId.IsNull||!textId.IsValid)
                 throw new InvalidOperationException(
-                    "REV22.17 failed to append paper title "+title.Name);
+                    "REV22.29 failed to append paper title "+title.Name);
             handles.Add(label.Handle.ToString());
         }
         tr.Commit();
