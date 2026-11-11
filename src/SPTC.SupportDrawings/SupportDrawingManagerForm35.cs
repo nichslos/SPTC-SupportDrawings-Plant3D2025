@@ -218,7 +218,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // REV22.41: dimensions are generated only from verified native
         // StructureMember / Plant Support Start/End source geometry.
         autoDimLinear.SetBounds(18, 425, 355, 27);
-        autoDimLinear.Text = "Auto DIMLINEAR (horizontal / vertical)";
+        autoDimLinear.Text = "Auto H/V dimensions: all Ortho members/views";
         autoDimLinear.Checked = true;
         orthoTab.Controls.Add(autoDimLinear);
 
