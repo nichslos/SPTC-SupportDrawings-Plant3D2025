@@ -298,37 +298,12 @@ public sealed class SupportOrthoTenViewGenerator
 
         // The public SDK, not this command, decides the final viewport insertion.
         // No false claim that the proposed TOP center is passed into CreateOrthos.
-        var popup = WinForms.MessageBox.Show(
-            "REV22.29 - AUTOMATIC ALL TEN NATIVE VIEWS EXPERIMENT\n\n" +
-            "SOURCE 3D: " + source + "\n" +
-            "SELECTED MEMBERS: " + string.Join(", ", handles) + "\n" +            "CUBE MODE: " + (supportFocus?"SupportFocus":"Original") + "\n" +            "CLEARANCE MODE: " + (supportFocus?"Automatic":"Original") + "\n" +
-            "SELECTED PIPE EXTENT CANDIDATES: " + localPipeBounds.Count + "\n" +
-            "SUPPORT FOCUS XY CLEARANCE (mm): " + focusXYClearanceMm + "\n" +
-            "LOCAL PIPE Z REACH (mm): " + focusPipeReachMm + "\n" +
-            "Long pipes will be CLIPPED by a compact native OrthoCube.\n" +
-
-            "NATIVE EMPTY SEED: " + seed + "\n" +
-            "NEW NATIVE ORTHO: " + dest + "\n\n" +
-            "A NEW drawing will be created and registered to the ACTIVE Plant project.\n" +
-            "ALL TEN native Ortho views are positioned automatically; NO insertion click.\n" +
-            "EXPERIMENTAL: this invokes Autodesk's NON-PUBLIC GenerateOrthos API.\n" +
-            "Native view links, viewport state and Update View are NOT guaranteed.\n" +
-            "Do not use your production project. Retain all test logs and drawings.\n\n" +
-            "ONLY authorize in a separate COPIED/BACKED-UP TEST PROJECT.\n" +
-            "Do you want to run this experiment?",
-            "SPTC REV22.29 UNSUPPORTED INTERNAL API - COPIED TEST PROJECT ONLY",
-            WinForms.MessageBoxButtons.YesNo, WinForms.MessageBoxIcon.Warning,
-            WinForms.MessageBoxDefaultButton.Button2);
-        if (popup != WinForms.DialogResult.Yes) return;
-        PromptResult typed = ed.GetString(new PromptStringOptions(
-            "\nType REV22.29 TEST to register a NEW Ortho DWG in this copied project: ")
-        { AllowSpaces = true });
-        if (typed.Status != PromptStatus.OK ||
-            !string.Equals(typed.StringResult.Trim(), "REV22.29 TEST", StringComparison.Ordinal))
-        {
-            ed.WriteMessage("\nREV22.29: Cancelled before any project write.");
-            return;
-        }
+        // REV22.34: The explicit SPTC_SUPPORTORTHO10 command authorizes creating
+        // and registering a new, uniquely named Ortho drawing. The source and
+        // registered-empty-seed validations and destination-exists guard above
+        // must all pass before any project write. No Yes/No or typed revision
+        // confirmation is requested.
+        ed.WriteMessage("\nSPTC: Creating and registering a new 10-view Ortho DWG automatically: " + dest);
 
         string report = Path.Combine(Path.GetDirectoryName(dest)!,
             Path.GetFileNameWithoutExtension(dest) + "_REV22_29_RESULT.txt");
