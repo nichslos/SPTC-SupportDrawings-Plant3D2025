@@ -21,7 +21,7 @@ public sealed class SupportDrawingCommands : IExtensionApplication
 {
     // Avoid obsolete REV19 banners or unnecessary output on NETLOAD.
     public void Initialize() { }
-    public void Terminate() { }
+    public void Terminate() { SupportDrawingPalette40.Shutdown(); }
 
     [CommandMethod("SPTC_SUPPORTEXPORT", CommandFlags.Modal)]
     public void ExportOne()
