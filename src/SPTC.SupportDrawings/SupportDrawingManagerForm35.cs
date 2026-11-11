@@ -43,6 +43,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
     private readonly TextBox seed = new();
     private readonly TextBox prefix = new();
     private readonly ComboBox scale = new();
+    private readonly NumericUpDown customScale = new();
     private readonly CheckedListBox views = new();
     private readonly CheckBox line = new();
     private readonly CheckBox bop = new();
@@ -60,12 +61,12 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
     {
         source = sourceDwg;
         orthoFolder = projectOrthoFolder;
-        Text = "SPTC Support Drawing Manager  |  REV 22.36";
+        Text = "SPTC Support Drawing Manager  |  REV 22.39";
         Icon = SupportBranding36.CreateIcon();
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(805, 725);
-        MinimumSize = new Size(780, 700);
+        ClientSize = new Size(805, 765);
+        MinimumSize = new Size(780, 740);
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
 
@@ -96,7 +97,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
         Controls.Add(active);
 
         tabs.Location = new Point(18, 140);
-        tabs.Size = new Size(770, 435);
+        tabs.Size = new Size(770, 475);
         tabs.Anchor = AnchorStyles.Top | AnchorStyles.Bottom |
             AnchorStyles.Left | AnchorStyles.Right;
         Controls.Add(tabs);
@@ -127,10 +128,35 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
         scale.DropDownStyle = ComboBoxStyle.DropDownList;
         scale.Items.AddRange(new object[] {
             "Automatic", "1:10", "1:20", "1:30", "1:40", "1:50",
-            "1:75", "1:100", "1:150", "1:200", "1:250", "1:500"
+            "1:75", "1:100", "1:150", "1:200", "1:250", "1:500",
+            SupportDrawingPaperScale39.Custom
         });
         scale.SelectedIndex = 0;
         orthoTab.Controls.Add(scale);
+
+        // REV22.39: explicit custom paper-scale denominator (1:N).
+        // The native Ortho generator and its existing sheet-fit preflight
+        // receive the same validated ScaleDenominator as any preset.
+        Label customLabel = L("Custom scale  1 :", 242, 79, 130);
+        customScale.SetBounds(375, 76, 160, 27);
+        customScale.Minimum = SupportDrawingPaperScale39.Min;
+        customScale.Maximum = SupportDrawingPaperScale39.Max;
+        customScale.Value = 25;
+        customScale.DecimalPlaces = 0;
+        customScale.Increment = 1;
+        customScale.TextAlign = HorizontalAlignment.Right;
+        customScale.ThousandsSeparator = false;
+        customLabel.Visible = false;
+        customScale.Visible = false;
+        scale.SelectedIndexChanged += (_,_) =>
+        {
+            bool active=scale.Text==SupportDrawingPaperScale39.Custom;
+            customLabel.Visible = active;
+            customScale.Visible = active;
+            customScale.Enabled = active;
+        };
+        orthoTab.Controls.Add(customLabel);
+        orthoTab.Controls.Add(customScale);
 
         Label prefixLabel = L("Drawing prefix (optional)", 406, 17, 288);
         orthoTab.Controls.Add(prefixLabel);
@@ -138,15 +164,15 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
         prefix.PlaceholderText = "Automatic unique name";
         orthoTab.Controls.Add(prefix);
 
-        autoSeed.SetBounds(18, 82, 355, 26);
+        autoSeed.SetBounds(18, 120, 355, 26);
         autoSeed.Text = "Automatically select a verified empty Ortho seed";
         autoSeed.Checked = true;
         orthoTab.Controls.Add(autoSeed);
-        seed.SetBounds(18, 114, 568, 27);
+        seed.SetBounds(18, 152, 568, 27);
         seed.PlaceholderText = "Auto: select a registered empty project Ortho DWG";
         seed.Enabled = false;
         orthoTab.Controls.Add(seed);
-        Button browse = new() { Text = "Browse seed...", Location = new Point(594, 112),
+        Button browse = new() { Text = "Browse seed...", Location = new Point(594, 150),
             Size = new Size(127, 30), Enabled = false };
         orthoTab.Controls.Add(browse);
         autoSeed.CheckedChanged += (_,_) =>
@@ -166,51 +192,51 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
             if(picker.ShowDialog(this)==DialogResult.OK) seed.Text = picker.FileName;
         };
 
-        Label vLabel = L("Native views (choose one or more)", 18, 158, 350);
+        Label vLabel = L("Native views (choose one or more)", 18, 196, 350);
         orthoTab.Controls.Add(vLabel);
-        views.SetBounds(18, 184, 345, 165);
+        views.SetBounds(18, 222, 345, 165);
         views.CheckOnClick = true;
         views.IntegralHeight = false;
         foreach(string name in SupportDrawingUiOptions.AllViews)
             views.Items.Add(name, true);
         orthoTab.Controls.Add(views);
-        Button all = new() {Text = "All 10", Location = new Point(18, 354),
+        Button all = new() {Text = "All 10", Location = new Point(18, 392),
             Size = new Size(83, 29)};
-        Button none = new() {Text = "Clear", Location = new Point(110, 354),
+        Button none = new() {Text = "Clear", Location = new Point(110, 392),
             Size = new Size(83, 29)};
         all.Click += (_,_) => SetAllViews(true);
         none.Click += (_,_) => SetAllViews(false);
         orthoTab.Controls.Add(all);
         orthoTab.Controls.Add(none);
 
-        Label aLabel = L("Annotations", 407, 158, 280);
+        Label aLabel = L("Annotations", 407, 196, 280);
         orthoTab.Controls.Add(aLabel);
-        line.SetBounds(407, 184, 295, 24);
+        line.SetBounds(407, 222, 295, 24);
         line.Text = "Pipe Line Number Tag"; line.Checked = true;
-        bop.SetBounds(407, 211, 295, 24);
+        bop.SetBounds(407, 249, 295, 24);
         bop.Text = "Pipe BOP elevation"; bop.Checked = true;
-        tos.SetBounds(407, 238, 295, 24);
+        tos.SetBounds(407, 276, 295, 24);
         tos.Text = "Support / Structure TOS"; tos.Checked = true;
-        description.SetBounds(407, 265, 295, 24);
+        description.SetBounds(407, 303, 295, 24);
         description.Text = "Support / Structure description"; description.Checked = true;
         orthoTab.Controls.AddRange(new Control[] {line,bop,tos,description});
 
-        xrefNames.SetBounds(407, 298, 314, 29);
+        xrefNames.SetBounds(407, 336, 314, 29);
         xrefNames.Text = "Nearby XREF members: label source DWG";
         xrefNames.Checked = true;
         orthoTab.Controls.Add(xrefNames);
-        batch.SetBounds(407, 332, 310, 45);
+        batch.SetBounds(407, 370, 310, 45);
         batch.Text = "Batch Ortho: one native Ortho DWG per\r\nselected support BLOCK reference";
         batch.Checked = false;
         orthoTab.Controls.Add(batch);
-        Label notice = L("Batch runs sequentially. Start with a copied project.",407,386,330);
+        Label notice = L("Batch runs sequentially. Start with a copied project.",407,424,330);
         notice.ForeColor = Color.DarkGoldenrod;
         orthoTab.Controls.Add(notice);
 
-        Label previewLabel = L("Preflight / configuration summary", 22, 590, 420);
+        Label previewLabel = L("Preflight / configuration summary", 22, 630, 420);
         previewLabel.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
         Controls.Add(previewLabel);
-        preview.SetBounds(20, 612, 600, 73);
+        preview.SetBounds(20, 652, 600, 73);
         preview.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         preview.Multiline = true;
         preview.ReadOnly = true;
@@ -220,13 +246,13 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
         Controls.Add(preview);
 
         Button check = new() {Text = "Preflight", Size = new Size(110, 29)};
-        check.Location = new Point(637, 612);
+        check.Location = new Point(637, 652);
         check.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         check.Click += (_,_) => ShowPreflight();
         Controls.Add(check);
 
         Button run = new() {Text = "Run selected", Size = new Size(112, 30)};
-        run.Location = new Point(637, 649);
+        run.Location = new Point(637, 689);
         run.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         run.Click += (_,_) => RunSelected();
         Controls.Add(run);
@@ -272,7 +298,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
             "Project Ortho folder: " + orthoFolder + "\r\n" +
             "Seed: " + (autoSeed.Checked ? "Auto (registered / empty)" : seed.Text) +
             "   |   Views: " + string.Join(",",chosen) +
-            "   |   Scale: " + scale.Text +
+            "   |   Scale: " + SupportDrawingPaperScale39.Display(
+                SupportDrawingPaperScale39.Resolve(scale.Text,(int)customScale.Value)) +
             "   |   XREF member names: " + (xrefNames.Checked?"On":"Off");
     }
 
@@ -306,8 +333,20 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
             }
         }
         int denominator=0;
-        if(scale.SelectedIndex>0 &&
-            !int.TryParse(scale.Text.AsSpan(2),out denominator)) return;
+        if(tab=="ortho")
+        {
+            try
+            {
+                denominator=SupportDrawingPaperScale39.Resolve(
+                    scale.Text,(int)customScale.Value);
+            }
+            catch(ArgumentException ex)
+            {
+                MessageBox.Show(this,ex.Message,"Invalid paper scale",
+                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                return;
+            }
+        }
         Settings = new SupportDrawingUiOptions(
             tab, cubeMode.SelectedIndex==0,
             autoSeed.Checked, seed.Text.Trim(), prefix.Text.Trim(), denominator,
