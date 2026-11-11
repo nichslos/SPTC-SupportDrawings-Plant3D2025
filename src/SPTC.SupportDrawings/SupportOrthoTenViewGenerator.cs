@@ -1348,9 +1348,9 @@ public sealed class SupportOrthoTenViewGenerator
                            (!options.LineNumber&&!options.Bop))
                             return null;
                         string first=options.LineNumber?"LINE NO: "+p.LineTag:p.BopLabel;
-                        string label=options.LineNumber&&options.Bop?
+                        string pipeLabel=options.LineNumber&&options.Bop?
                             first+"\n"+p.BopLabel:first;
-                        return note with {Text=label,
+                        return note with {Text=pipeLabel,
                             HasTos=options.LineNumber&&options.Bop};
                     }
                     bool includeSecond=options.Tos&&note.HasTos;
