@@ -158,8 +158,8 @@ internal static class SupportOrthoDimensionSource41
             // assembly may have a real Z envelope, but should not be
             // labeled as a single upright component without evidence.
             // This is an *overall height* dimension, not member LENGTH.
-            if(z*unitsToMm<150.0 ||
-               Math.Max(x,y)>z*.70)
+            if(!SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
+                x,y,z,unitsToMm))
             {
                 notes.Add("DIM_OVERALL_HEIGHT_NOT_VERTICAL_DOMINANT="+key);
                 return false;
