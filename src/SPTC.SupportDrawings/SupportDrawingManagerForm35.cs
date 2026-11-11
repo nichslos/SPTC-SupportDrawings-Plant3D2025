@@ -298,7 +298,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
             "Project Ortho folder: " + orthoFolder + "\r\n" +
             "Seed: " + (autoSeed.Checked ? "Auto (registered / empty)" : seed.Text) +
             "   |   Views: " + string.Join(",",chosen) +
-            "   |   Scale: " + SupportDrawingPaperScale39.Display(\n                SupportDrawingPaperScale39.Resolve(scale.Text,(int)customScale.Value)) +
+            "   |   Scale: " + SupportDrawingPaperScale39.Display(
+                SupportDrawingPaperScale39.Resolve(scale.Text,(int)customScale.Value)) +
             "   |   XREF member names: " + (xrefNames.Checked?"On":"Off");
     }
 
