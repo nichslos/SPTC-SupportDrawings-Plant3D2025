@@ -86,8 +86,10 @@ Assert(equalPlan.Dimensions.Count==1 &&
 
 // Different lengths, orientations or Plant categories must remain distinct.
 var different=repeatSource with {Key="NATIVE:900",
-    Ax=-450,Bx=450,SourceLength=900,Millimeters=900};
-var otherCategory=repeatSource with {Key="NATIVE:SUPP",Kind="SUPPORT"};
+    Ax=-450,Bx=450,Ay=500,By=500,SourceLength=900,Millimeters=900};
+var otherCategory=repeatSource with {
+    Key="NATIVE:SUPP",Kind="SUPPORT",Ay=-500,By=-500
+};
 var dimensionVariety=SupportOrthoDimLinearPlan41.Build(
     new[]{top2,front2},
     new[]{repeatSource,different,otherCategory,vertical},594,841);
