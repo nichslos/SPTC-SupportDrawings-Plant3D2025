@@ -271,6 +271,23 @@ jobs:
               throw "REV22.43 vertical height integration missing: $token"
             }
           }
+          # REV22.46 collision-aware planner has fixed annotation obstacles,
+          # native view/title keepouts and no forced overlapping placements.
+          $smart = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSmartDimPlan46.cs' -Raw
+          foreach($token in @('BuildFixedZones','CollisionCandidatesRejected',
+              'NO_COLLISION_FREE_DIMENSION_LANE','repositioned++',
+              'ProjectBounds')) {
+            if ($smart -notmatch [regex]::Escape($token)) {
+              throw "REV22.46 smart-layout invariant missing: $token"
+            }
+          }
+          foreach($token in @('REV22_46_AUTO_REPOSITIONED=',
+              'REV22_46_COLLIDING_CANDIDATES_REJECTED=',
+              'REV22_46_DIMENSION_COVERAGE=')) {
+            if ($gen -notmatch [regex]::Escape($token)) {
+              throw "REV22.46 integration log missing: $token"
+            }
+          }
           # REV22.44: all recognized structure/support members receive
           # independent horizontal/vertical projected OVERALL dimensions on
           # each of six orthographic views (no cross-view size dedup).
@@ -296,7 +313,7 @@ jobs:
             }
           }
           foreach($token in @('SupportOrthoAllMemberExtent44.Read(',
-              'SupportOrthoAllViewDimPlan44.Build(',
+              'SupportOrthoSmartDimPlan46.Build(',
               'REV22_44_DIMENSION_MODE=PER_MEMBER_PER_ORTHOGRAPHIC_VIEW_H_AND_V',
               'REV22_44_HV_AXES_REQUESTED=',
               'REV22_44_VIEW=',
@@ -310,7 +327,7 @@ jobs:
           }
           foreach($token in @('options.AutoDimLinear',
               'SupportOrthoDimensionSource41.Read(',
-              'SupportOrthoAllViewDimPlan44.Build(',
+              'SupportOrthoSmartDimPlan46.Build(',
               'SupportOrthoDimLinearWriter41.Write(',
               'REV22_41_DIMENSIONS_CREATED=',
               'REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=TRUE')) {
@@ -403,11 +420,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.44 all-views all-structure H/V DIMLINEAR DLL bytes: $size"
+          Write-Host "REV22.46 collision-aware auto DIMLINEAR DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_44-ALL-VIEWS-HV
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_46-SMART-AUTO-DIMENSIONS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error

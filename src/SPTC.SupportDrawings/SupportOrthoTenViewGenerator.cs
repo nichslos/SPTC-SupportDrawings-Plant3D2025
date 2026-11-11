@@ -1417,6 +1417,11 @@ public sealed class SupportOrthoTenViewGenerator
             // No revision to native cube, camera, view registration, or titles.
             string annotationStatus;
             int annotated=0;
+            // REV22.46: share the ACTUAL visible label/leader locations
+            // with the dimension planner; do not reserve hidden UI labels.
+            IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>
+                dimensionCollisionCallouts=
+                    Array.Empty<SupportOrthoMemberCalloutPlan27.Callout>();
             if(sourceAnnotations.Length>0)
             {
                 var memberCameras=ReadNativeMemberCameras(
@@ -1467,6 +1472,7 @@ public sealed class SupportOrthoTenViewGenerator
                         HasTos=options.Description&&includeSecond&&lines.Length>1};
                 }).Where(note=>note!=null)
                     .Cast<SupportOrthoMemberCalloutPlan27.Callout>().ToArray();
+                dimensionCollisionCallouts=visibleCallouts;
                 Log("REV22_38_PIPE_LABEL_FORMAT=BARE_LINE_TAG_AND_BOP");
                 annotated=CreateNativePaperMemberLeaders27(
                     targetDoc.Database,paperLayout,visibleCallouts,
@@ -1586,9 +1592,26 @@ public sealed class SupportOrthoTenViewGenerator
                 {
                     var dimCameras=ReadNativeMemberCameras(
                         targetDoc.Database,nativeMemberViewportIds);
-                    var dimensionPlan=SupportOrthoAllViewDimPlan44.Build(
+                    var dimensionPlan=SupportOrthoSmartDimPlan46.Build(
                         dimCameras,everyViewMembers.Members,
-                        paperWidth,paperHeight,units);
+                        paperWidth,paperHeight,units,
+                        dimensionCollisionCallouts,titles);
+                    Log("REV22_46_DIMENSION_MODE=COLLISION_AWARE_PER_MEMBER_HV");
+                    Log("REV22_46_AUTO_REPOSITIONED="+
+                        dimensionPlan.Repositioned);
+                    Log("REV22_46_COLLIDING_CANDIDATES_REJECTED="+
+                        dimensionPlan.CollisionCandidatesRejected);
+                    Log("REV22_46_DIMENSIONS_REQUESTED="+
+                        dimensionPlan.RequestedAxisCount);
+                    Log("REV22_46_DIMENSIONS_PLANNED="+
+                        dimensionPlan.Dimensions.Count);
+                    Log("REV22_46_DIMENSIONS_UNPLACED="+
+                        dimensionPlan.Skipped.Count(x=>
+                            x.Contains("_NO_COLLISION_FREE_DIMENSION_LANE")||
+                            x.Contains("_SPAN_TOO_SMALL_ON_PAPER")||
+                            x.Contains("_MEMBER_NOT_FULLY_IN_NATIVE_VIEW")));
+                    foreach(var skip in dimensionPlan.Skipped)
+                        Log("REV22_46_DIMENSION_SKIPPED="+skip);
                     Log("REV22_44_DIMENSION_MODE=PER_MEMBER_PER_ORTHOGRAPHIC_VIEW_H_AND_V");
                     Log("REV22_44_MEMBER_SOURCES="+
                         everyViewMembers.Members.Count);
@@ -1639,6 +1662,13 @@ public sealed class SupportOrthoTenViewGenerator
                         dimensionPlan.Dimensions,out var dimensionWarnings);
                     Log("REV22_41_DIMENSIONS_CREATED="+created);
                     Log("REV22_44_DIMENSIONS_CREATED="+created);
+                    Log("REV22_46_DIMENSIONS_CREATED="+created);
+                    Log("REV22_46_DIMENSION_COVERAGE="+
+                        (created==dimensionPlan.RequestedAxisCount?
+                            "COMPLETE":"PARTIAL")+
+                        " CREATED="+created+
+                        " REQUESTED="+dimensionPlan.RequestedAxisCount);
+                    Log("REV22_46_COLLISION_MODE=NO_FORCED_OVERLAP");
                     Log("REV22_43_OVERALL_HEIGHT_DIMENSIONS_PLANNED="+
                         dimensionPlan.Dimensions.Count(d=>
                             d.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT"));
