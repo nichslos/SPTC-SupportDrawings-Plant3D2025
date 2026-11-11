@@ -58,31 +58,42 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
     {
         source = sourceDwg;
         orthoFolder = projectOrthoFolder;
-        Text = "SPTC Support Drawing Manager  |  REV 22.35";
+        Text = "SPTC Support Drawing Manager  |  REV 22.36";
+        Icon = SupportBranding36.CreateIcon();
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(805, 660);
-        MinimumSize = new Size(780, 615);
+        ClientSize = new Size(805, 725);
+        MinimumSize = new Size(780, 700);
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
 
+        // The supplied SPTC Engineering logo is embedded; no image path needed.
+        // A larger top band keeps the full wordmark readable at Windows DPI.
+        Controls.Add(SupportBranding36.MakeLogo(18, 10, 184, 118));
         Label heading = new()
         {
-            Text = "SPTC  /  SUPPORT DRAWINGS",
+            Text = "SUPPORT DRAWING MANAGER",
             Font = new Font("Segoe UI", 13f, FontStyle.Bold),
-            Location = new Point(20, 13), Size = new Size(760, 30)
+            Location = new Point(222, 21), Size = new Size(545, 33)
         };
         Controls.Add(heading);
+        Label brandSubtitle = new()
+        {
+            Text = "SPTC Engineering  |  AutoCAD Plant 3D 2025",
+            ForeColor = Color.DimGray,
+            Location = new Point(222, 57), Size = new Size(545, 25)
+        };
+        Controls.Add(brandSubtitle);
         Label active = new()
         {
             Text = "Source: " + Path.GetFileName(sourceDwg) +
                 "     |     Project: " + Path.GetFileName(projectRoot.TrimEnd('\\','/')),
-            Location = new Point(20, 46), Size = new Size(755, 25),
+            Location = new Point(222, 94), Size = new Size(545, 24),
             AutoEllipsis = true
         };
         Controls.Add(active);
 
-        tabs.Location = new Point(18, 78);
+        tabs.Location = new Point(18, 140);
         tabs.Size = new Size(770, 435);
         tabs.Anchor = AnchorStyles.Top | AnchorStyles.Bottom |
             AnchorStyles.Left | AnchorStyles.Right;
@@ -190,10 +201,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
         notice.ForeColor = Color.DarkGoldenrod;
         orthoTab.Controls.Add(notice);
 
-        Label previewLabel = L("Preflight / configuration summary", 22, 526, 420);
+        Label previewLabel = L("Preflight / configuration summary", 22, 590, 420);
         previewLabel.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
         Controls.Add(previewLabel);
-        preview.SetBounds(20, 548, 600, 73);
+        preview.SetBounds(20, 612, 600, 73);
         preview.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         preview.Multiline = true;
         preview.ReadOnly = true;
@@ -203,13 +214,13 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
         Controls.Add(preview);
 
         Button check = new() {Text = "Preflight", Size = new Size(110, 29)};
-        check.Location = new Point(637, 548);
+        check.Location = new Point(637, 612);
         check.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         check.Click += (_,_) => ShowPreflight();
         Controls.Add(check);
 
         Button run = new() {Text = "Run selected", Size = new Size(112, 30)};
-        run.Location = new Point(637, 585);
+        run.Location = new Point(637, 649);
         run.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         run.Click += (_,_) => RunSelected();
         Controls.Add(run);
@@ -308,18 +319,24 @@ internal sealed class SupportDrawingProgressForm35 : WinForms.Form
     internal SupportDrawingProgressForm35()
     {
         Text = "SPTC  /  Ortho generation progress";
+        Icon = SupportBranding36.CreateIcon();
         Font = new Font("Segoe UI",9f);
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(605,285);
+        ClientSize = new Size(630,335);
         FormBorderStyle = FormBorderStyle.SizableToolWindow;
         ShowInTaskbar = false;
-        var title = new Label { Text = "Generating native Ortho drawing(s)",
-            Location = new Point(14,12), Size = new Size(565,26) };
+        Controls.Add(SupportBranding36.MakeLogo(14, 7, 110, 72));
+        var title = new Label
+        {
+            Text = "Generating native Ortho drawing(s)",
+            Location = new Point(136, 24), Size = new Size(475, 31),
+            Font = new Font("Segoe UI", 10f, FontStyle.Bold)
+        };
         Controls.Add(title);
-        bar.SetBounds(14,43,576,17);
+        bar.SetBounds(14,89,600,17);
         bar.Style = ProgressBarStyle.Marquee;
         Controls.Add(bar);
-        log.SetBounds(14,72,576,198);
+        log.SetBounds(14,115,600,201);
         log.ReadOnly = true;
         log.Multiline = true;
         log.ScrollBars = ScrollBars.Vertical;
