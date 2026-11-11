@@ -103,7 +103,7 @@ jobs:
             }
           }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
-              'SupportDrawingManagerForm35','selectedOverride',
+              'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
               'options.AutoSeed','options.Views.Count',
               'options.ScaleDenominator','options.LineNumber',
               'options.Bop','options.Tos','options.Description',
@@ -157,6 +157,39 @@ jobs:
           if(-not $ui.Contains('xrefNames.Checked = true') -or
              -not $ui.Contains('Nearby XREF members: label source DWG')) {
             throw 'REV22.37 XREF filename checkbox or default missing'
+          }
+          # REV22.40: exactly one persistent AutoCAD modeless PaletteSet.
+          # Reuse the same four command registrations for button-queued
+          # drawing creation; no direct native Editor calls from WinForms.
+          $palette=Get-Content "$root/SupportDrawingPalette40.cs" -Raw
+          foreach($token in @('new PaletteSet(', 'palette.Visible=true',
+              'manager.RunRequested+=QueueFromPalette',
+              'doc.SendStringToExecute(command+" "',
+              'TryTakeQueuedOrtho', 'CommandEnded+=',
+              'CommandCancelled+=','CommandFailed+=',
+              'SetRunning(true)', 'SetRunning(false)',
+              'DockEnabled=DockSides.Left')) {
+            if(-not $palette.Contains($token)) {
+              throw "REV22.40 persistent palette guard missing: $token"
+            }
+          }
+          if(-not $ui.Contains('WinForms.UserControl') -or
+             $ui.Contains('SupportDrawingManagerForm35 : WinForms.Form') -or
+             $ui.Contains('DialogResult = DialogResult.OK;') -or
+             $ui.Contains('Close();')) {
+            throw 'REV22.40 manager must be a persistent UserControl'
+          }
+          foreach($token in @('RunRequested?.Invoke(Settings)',
+              'if(IsRunning)return;', 'internal void SetRunning(',
+              'internal void UpdateProjectContext(', 'MinimumSize = new Size(780, 740)')) {
+            if(-not $ui.Contains($token)) {
+              throw "REV22.40 settings/busy guard missing: $token"
+            }
+          }
+          if($gen.Contains('ui.ShowDialog()') -or
+             -not $gen.Contains('RunQueuedOrtho(') -or
+             -not $gen.Contains('SupportDrawingPalette40.Finish(')) {
+            throw 'REV22.40 must dispatch through modeless command context'
           }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
               'SupportOrthoMemberCalloutPlan27.Build',
@@ -225,6 +258,8 @@ jobs:
         run: dotnet run --project tests/Rev236BrandingSmokeTests/Rev236BrandingSmokeTests.csproj -c Release
       - name: Test REV22.39 automatic, preset and custom 1:N scales
         run: dotnet run --project tests/Rev239ScaleSmokeTests/Rev239ScaleSmokeTests.csproj -c Release
+      - name: Test REV22.40 persistent WinForms UI and queued-run busy control
+        run: dotnet run --project tests/Rev240PaletteSmokeTests/Rev240PaletteSmokeTests.csproj -c Release
       - name: Compile production DLL
         run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release
       - name: Verify compiled DLL
@@ -234,11 +269,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.39 custom paper scale DLL bytes: $size"
+          Write-Host "REV22.40 dockable persistent palette DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_39-CUSTOM-SCALE
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_40-PERSISTENT-PALETTE
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error

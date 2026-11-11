@@ -1,5 +1,38 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
+## REV 22.40 — Persistent dockable SPTC palette
+
+Running `SPTC_SUPPORTORTHO10` now opens or focuses a single **modeless,
+dockable AutoCAD PaletteSet**. The manager is kept in memory through the
+AutoCAD session, and does **not** close after **Run selected**. Use its close
+button to hide the palette. Running the command again reopens/reuses the same
+palette and retains the configured views, custom Paper Scale, seed, naming,
+SupportFocus and annotation switches.
+
+- The palette initially floats at a practical fixed layout size; it can be
+  docked to the left/right AutoCAD edge. AutoHide is not enabled.
+- Click **Run selected** to queue the chosen operation in a proper AutoCAD
+  command context. Plant 3D selection stays in the drawing/editor, while the
+  manager remains open. It is **not** run directly from a WinForms click.
+- The same four commands remain: `SPTC_SUPPORTORTHO10`,
+  `SPTC_SUPPORTEXPORT`, `SPTC_SUPPORTBATCH`, `SPTC_SUPPORT2DBATCH`.
+  No extra CAD commands are added.
+- **Run selected**, Preflight, and settings are disabled during an active
+  operation to prevent overlapping submissions. They become editable again
+  after it finishes, fails or is cancelled.
+- A repeated `SPTC_SUPPORTORTHO10` focuses the existing palette without
+  creating a second panel. The form retains its options between runs.
+- Changing to a different project requires opening the command again;
+  manual seed selections from another project are reset for safety.
+- The existing generation engine, the automatic native 10-view placement,
+  XREF/native pipe and structural annotation logic, BOP/TOS source metadata,
+  project registration/overwrite protections and branded logo are unchanged.
+
+**Important:** this release is compiled and has a WinForms persistence/busy
+smoke test but must be tested in a **copied Plant 3D 2025 project**. Autodesk
+native Ortho generation still uses an unsupported internal API, and the CAD
+PaletteSet/command interaction cannot be fully simulated in GitHub CI.
+
 ## REV 22.39 — Custom 1:N paper scale in WinForms
 
 In the branded `SPTC_SUPPORTORTHO10` > **10-View Ortho** tab,
@@ -144,6 +177,6 @@ includes a Windows logo/image/icon smoke test in GitHub Actions.
 
 ### Build
 
-Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_39-CUSTOM-SCALE`.
+Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_40-PERSISTENT-PALETTE`.
 
 Rollback source is preserved in repository Git history and the [full pre-cleanup archive](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).
