@@ -207,6 +207,16 @@ public static class SupportOrthoDimLinearPlan41
             cameras.Count(c=>Orthogonal.Contains(c.Name)));
     }
 
+    // Pure, testable boundary for geometric *overall-height* fallback.
+    // It is not evidence of an exact beam cut length. Both source and tests
+    // use the same conservative vertical-dominance and minimum-height rule.
+    public static bool AcceptOverallZHeight(double spanX,double spanY,
+        double spanZ,double unitsToMm) =>
+        double.IsFinite(spanX)&&double.IsFinite(spanY)&&
+        double.IsFinite(spanZ)&&double.IsFinite(unitsToMm)&&
+        spanX>=0&&spanY>=0&&spanZ>0&&unitsToMm>0&&
+        spanZ*unitsToMm>=150.0&&Math.Max(spanX,spanY)<=spanZ*.70;
+
     private static int ViewPriority(string name) =>
         name.ToUpperInvariant() switch
         {
