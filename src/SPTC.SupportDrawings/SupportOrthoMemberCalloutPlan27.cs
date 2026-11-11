@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 namespace SPTC.SupportDrawings;
@@ -103,9 +104,11 @@ public static class SupportOrthoMemberCalloutPlan27
                     continue;
                 }
                 bool isXref=member.XrefDrawingName!=null;
+                // REV22.38 display only the real XREF source DWG's base
+                // name. Preserve the complete filename and reference kind
+                // on Member for source/provenance diagnostics.
                 string label=isXref
-                    ? "XREF "+(member.XrefKind??"MEMBER")+": "+
-                        member.XrefDrawingName
+                    ? Path.GetFileNameWithoutExtension(member.XrefDrawingName!)
                     : "["+member.Handle+"] "+member.Size;
                 bool isPipe=member.PipeBopSource!=null;
                 bool hasSecondLine=!isXref&&(member.HasTos||isPipe);
