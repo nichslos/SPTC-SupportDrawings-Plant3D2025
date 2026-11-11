@@ -25,6 +25,14 @@ jobs:
         run: |
           $root='src/SPTC.SupportDrawings'
           $gen=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          $commands=Get-Content "$root/SupportDrawingCommands.cs" -Raw
+          if($commands.Contains('SPTC_ORTHO19_TOP_ONECMD_TEST') -or
+             $commands.Contains('SPTC REV19:')) {
+            throw 'Obsolete REV19 NETLOAD banner has returned'
+          }
+          if(-not $commands.Contains('public void Initialize() { }')) {
+            throw 'Expected silent Initialize() for the cleaned production DLL'
+          }
           $verify=Get-Content "$root/SupportOrthoXrefUpdateAudit30.cs" -Raw
           $labels=Get-Content "$root/SupportOrthoPipeCallout29.cs" -Raw
           $audit=Get-Content "$root/SupportOrthoUpdateAudit29.cs" -Raw
