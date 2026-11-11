@@ -316,7 +316,7 @@ public sealed class SupportOrthoTenViewGenerator
         // Optional, read-only proximity scan of loaded nested XREF
         // StructureMember / genuine Plant Support entities.
         // The XREF file name is always derived from its actual source DB.
-        var xrefMembers=options.XrefMemberNames
+        var xrefMembers=(options.XrefMemberNames||options.AutoDimLinear)
             ? SupportOrthoXrefMemberDiscovery37.Scan(
                 sourceDoc.Database,geometry.Value,units)
             : new SupportOrthoXrefMemberDiscovery37.Result(
@@ -434,6 +434,19 @@ public sealed class SupportOrthoTenViewGenerator
                 plantSupports.Members.Select(x=>x.Handle))
             : new SupportOrthoDimensionSource41.Result(
                 Array.Empty<SupportOrthoDimensionSource41.Segment>(),
+                Array.Empty<string>());
+
+        // REV22.44: dedicated source list for OVERALL VIEW-PROJECTED
+        // horizontal/vertical dimensions on EVERY selected orthographic view.
+        // Extents are source model WCS, XREF extents transformed into host WCS.
+        var everyViewMembers=options.AutoDimLinear
+            ? SupportOrthoAllMemberExtent44.Read(
+                sourceDoc.Database,selectedSupportIds,
+                horizontalSteel.Members.Select(x=>x.Handle),
+                plantSupports.Members.Select(x=>x.Handle),
+                xrefNearCube,layout.PaddedCube)
+            : new SupportOrthoAllMemberExtent44.Result(
+                Array.Empty<SupportOrthoAllViewDimPlan44.Member>(),
                 Array.Empty<string>());
 
         ProjectPart part;
@@ -1573,36 +1586,62 @@ public sealed class SupportOrthoTenViewGenerator
                 {
                     var dimCameras=ReadNativeMemberCameras(
                         targetDoc.Database,nativeMemberViewportIds);
-                    var dimensionPlan=SupportOrthoDimLinearPlan41.Build(
-                        dimCameras,dimSource.Segments.Select(s=>
-                            new SupportOrthoDimLinearPlan41.Segment(
-                                s.Key,s.Kind,s.Ax,s.Ay,s.Az,
-                                s.Bx,s.By,s.Bz,s.SourceLength,
-                                s.Millimeters,s.Provenance)).ToArray(),
-                        paperWidth,paperHeight);
+                    var dimensionPlan=SupportOrthoAllViewDimPlan44.Build(
+                        dimCameras,everyViewMembers.Members,
+                        paperWidth,paperHeight,units);
+                    Log("REV22_44_DIMENSION_MODE=PER_MEMBER_PER_ORTHOGRAPHIC_VIEW_H_AND_V");
+                    Log("REV22_44_MEMBER_SOURCES="+
+                        everyViewMembers.Members.Count);
+                    foreach(string note in everyViewMembers.Diagnostics)
+                        Log("REV22_44_SOURCE_DIAGNOSTIC="+note);
+                    Log("REV22_44_ORTHOGRAPHIC_VIEW_COUNT="+
+                        dimensionPlan.OrthographicViewCount);
+                    Log("REV22_44_HV_AXES_REQUESTED="+
+                        dimensionPlan.RequestedAxisCount);
+                    Log("REV22_44_HV_AXES_PLANNED="+
+                        dimensionPlan.Dimensions.Count);
+                    Log("REV22_44_TOTAL_DIMENSIONS_SKIPPED="+
+                        dimensionPlan.Skipped.Count);
                     Log("REV22_41_DIMENSION_LAYER="+
                         SupportOrthoDimLinearPlan41.Layer);
                     Log("REV22_41_ORTHOGRAPHIC_VIEWS="+
-                        dimensionPlan.OrthographicViews);
+                        dimensionPlan.OrthographicViewCount);
                     Log("REV22_41_DIMENSIONS_PLANNED="+
                         dimensionPlan.Dimensions.Count);
-                    Log("REV22_42_COMPACT_DIMENSION_MODE=ONE_PER_KIND_AXIS_LENGTH");
-                    Log("REV22_42_REPEAT_DIMENSIONS_SUPPRESSED="+
-                        dimensionPlan.Skipped.Count(x=>
-                            x.Contains(":SOURCE_ALREADY_DIMENSIONED_IN_",
-                                StringComparison.Ordinal) ||
-                            x.Contains(":EQUAL_LENGTH_ALREADY_DIMENSIONED_BY_",
-                                StringComparison.Ordinal)));
-                    Log("REV22_42_PREFERRED_VIEWS=TOP,FRONT,LEFT,RIGHT,BACK,BOTTOM");
+                    // Historical REV22.42 compression is disabled. Unlike
+                    // before, duplicate lengths in opposite views/members
+                    // are intentionally shown independently for REV22.44.
+                    Log("REV22_42_COMPACT_DIMENSION_MODE=DISABLED_BY_REV22_44");
+                    Log("REV22_42_REPEAT_DIMENSIONS_SUPPRESSED=0");
+                    Log("REV22_42_PREFERRED_VIEWS=ALL_SELECTED_ORTHOGRAPHIC");
                     foreach(var rejected in dimensionPlan.Skipped)
+                    {
+                        Log("REV22_44_DIMENSION_SKIPPED="+rejected);
                         Log("REV22_41_DIMENSION_SKIPPED="+rejected);
+                    }
+                    foreach(var view in dimCameras.Where(c=>
+                        new[]{"TOP","BOTTOM","FRONT","BACK","LEFT","RIGHT"}
+                            .Contains(c.Name,StringComparer.OrdinalIgnoreCase)))
+                    {
+                        int horizontal=dimensionPlan.Dimensions.Count(d=>
+                            d.View==view.Name&&d.Horizontal);
+                        int vertical=dimensionPlan.Dimensions.Count(d=>
+                            d.View==view.Name&&!d.Horizontal);
+                        Log("REV22_44_VIEW="+view.Name+
+                            " RECOGNIZED_MEMBERS="+everyViewMembers.Members.Count+
+                            " HORIZONTAL_DIMS="+horizontal+
+                            " VERTICAL_DIMS="+vertical+
+                            " REQUESTED_AXES="+
+                                everyViewMembers.Members.Count*2);
+                    }
                     int created=SupportOrthoDimLinearWriter41.Write(
                         targetDoc.Database,paperLayout,
                         dimensionPlan.Dimensions,out var dimensionWarnings);
                     Log("REV22_41_DIMENSIONS_CREATED="+created);
+                    Log("REV22_44_DIMENSIONS_CREATED="+created);
                     Log("REV22_43_OVERALL_HEIGHT_DIMENSIONS_PLANNED="+
-                        dimensionPlan.Dimensions.Count(x=>
-                            x.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT"));
+                        dimensionPlan.Dimensions.Count(d=>
+                            d.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT"));
                     foreach(var warning in dimensionWarnings)
                         Log("REV22_41_DIMENSION_WRITE_WARNING="+warning);
                     foreach(var dimension in dimensionPlan.Dimensions)
