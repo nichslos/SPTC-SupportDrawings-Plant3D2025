@@ -1347,9 +1347,12 @@ public sealed class SupportOrthoTenViewGenerator
                         if(!pipeByHandle.TryGetValue(note.Handle,out var p) ||
                            (!options.LineNumber&&!options.Bop))
                             return null;
-                        string first=options.LineNumber?"LINE NO: "+p.LineTag:p.BopLabel;
+                        // Exact REV22.29 sanitation and two-line default.
+                        string[] original=SupportOrthoPipeCallout29.Compose(
+                            p.LineTag,p.BopLabel).Split('\n');
                         string pipeLabel=options.LineNumber&&options.Bop?
-                            first+"\n"+p.BopLabel:first;
+                            original[0]+"\n"+original[1]:
+                            (options.LineNumber?original[0]:original[1]);
                         return note with {Text=pipeLabel,
                             HasTos=options.LineNumber&&options.Bop};
                     }
