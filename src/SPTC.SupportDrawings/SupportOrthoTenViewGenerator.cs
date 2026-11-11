@@ -1600,11 +1600,9 @@ public sealed class SupportOrthoTenViewGenerator
                         targetDoc.Database,paperLayout,
                         dimensionPlan.Dimensions,out var dimensionWarnings);
                     Log("REV22_41_DIMENSIONS_CREATED="+created);
-                    Log("REV22_43_VERTICAL_HEIGHT_DIMENSIONS_WRITTEN="+
+                    Log("REV22_43_OVERALL_HEIGHT_DIMENSIONS_PLANNED="+
                         dimensionPlan.Dimensions.Count(x=>
-                            x.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT")-
-                        dimensionWarnings.Count(x=>
-                            x.Contains("DIM_CREATE_SKIPPED=",StringComparison.Ordinal)));
+                            x.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT"));
                     foreach(var warning in dimensionWarnings)
                         Log("REV22_41_DIMENSION_WRITE_WARNING="+warning);
                     foreach(var dimension in dimensionPlan.Dimensions)
