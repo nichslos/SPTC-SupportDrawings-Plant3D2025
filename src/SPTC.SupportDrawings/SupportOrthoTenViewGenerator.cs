@@ -470,6 +470,12 @@ public sealed class SupportOrthoTenViewGenerator
                         "Minimum safe denominator is "+fit.Denominator+". No drawing created.");
                     return false;
                 }
+                if(options.ScaleDenominator>0)
+                    fit=fit with {Denominator=options.ScaleDenominator,
+                        Scale=1.0/options.ScaleDenominator};
+                // Perform the same exact title/frame collision calculations
+                // read-only, BEFORE cloning/registering the new Ortho DWG.
+                NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
             }
         }
         catch(System.Exception ex)
