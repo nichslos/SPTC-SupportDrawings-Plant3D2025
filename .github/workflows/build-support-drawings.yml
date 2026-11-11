@@ -35,7 +35,23 @@ jobs:
           }
           $labels=Get-Content "$root/SupportOrthoPipeCallout29.cs" -Raw
           if(-not $gen.Contains('SPTC_SUPPORTORTHO10')) {throw 'Production 10-view command missing'}
-          if(-not $gen.Contains('REV22.29 TEST')) {throw 'Copied-project confirmation must remain active'}
+          # No extra modal/typed revision confirmation after the user starts
+          # SPTC_SUPPORTORTHO10; retain the independent input and write guards.
+          foreach($obsolete in @('REV22.29 TEST', 'PromptStringOptions(',
+              'MessageBox.Show(')) {
+            if($gen.Contains($obsolete)) {
+              throw "REV22.34 obsolete Ortho confirmation still found: $obsolete"
+            }
+          }
+          foreach($requiredCheck in @('SourceRegistrationVerified',
+              'IsNativeOrthoValid(part.OrthoPart, seed)',
+              'EMPTY_REGISTERED_ORTHO',
+              'if (File.Exists(dest))',
+              'if (!Guid.TryParse(')) {
+            if(-not $gen.Contains($requiredCheck)) {
+              throw "REV22.34 registration safeguard missing: $requiredCheck"
+            }
+          }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
               'SupportOrthoMemberCalloutPlan27.Build',
               'CreateNativePaperMemberLeaders27',
@@ -93,11 +109,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.33 production DLL bytes: $size"
+          Write-Host "REV22.34 production DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_33-FOUR-COMMANDS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_34-AUTO-REGISTER
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
