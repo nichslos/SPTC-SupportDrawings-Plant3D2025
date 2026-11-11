@@ -14,5 +14,9 @@
              Link="SupportOrthoDimLinearPlan41.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoAllViewDimPlan44.cs"
              Link="SupportOrthoAllViewDimPlan44.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan27.cs"
+             Link="SupportOrthoMemberCalloutPlan27.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoSmartDimPlan46.cs"
+             Link="SupportOrthoSmartDimPlan46.cs"/>
   </ItemGroup>
 </Project>
