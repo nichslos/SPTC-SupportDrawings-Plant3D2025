@@ -240,6 +240,37 @@ jobs:
               throw "REV22.42 compact DIMLINEAR log missing: $token"
             }
           }
+          # REV22.43: preserve explicit Start/End member lengths, but allow a
+          # different H= annotated overall-Z envelope for real upright Plant
+          # structure/support that exposes no usable endpoint properties.
+          # Do not infer generic block/solid dimensions or mislabeled cuts.
+          foreach($token in @('TryVerticalOverallHeight(',
+              'GEOMETRIC_OVERALL_Z_HEIGHT',
+              'SOURCE=ENTITY_WCS_EXTENTS_NOT_CUT_LENGTH',
+              'SupportOrthoDimLinearPlan41.AcceptOverallZHeight(',
+              'verifiedStructureHandles','verifiedSupportHandles',
+              'DIM_OVERALL_HEIGHT_VERIFIED=')) {
+            if(-not $dimSource.Contains($token)) {
+              throw "REV22.43 upright source evidence missing: $token"
+            }
+          }
+          foreach($token in @('AcceptOverallZHeight(',
+              'source.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT"',
+              'string measurement=(overall?"H=":"")',
+              'source.Provenance))')) {
+            if(-not $dimPlan.Contains($token)) {
+              throw "REV22.43 height vs cut-length safeguards missing: $token"
+            }
+          }
+          foreach($token in @('REV22_43_EXPLICIT_MEMBER_LENGTH_SOURCES',
+              'REV22_43_OVERALL_VERTICAL_HEIGHT_SOURCES',
+              'REV22_43_OVERALL_HEIGHT_DIMENSIONS_PLANNED',
+              'horizontalSteel.Members.Select(x=>x.Handle)',
+              'plantSupports.Members.Select(x=>x.Handle)')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.43 vertical height integration missing: $token"
+            }
+          }
           foreach($token in @('options.AutoDimLinear',
               'SupportOrthoDimensionSource41.Read(',
               'SupportOrthoDimLinearPlan41.Build(',
@@ -335,11 +366,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.42 reduced Auto DIMLINEAR Ortho DLL bytes: $size"
+          Write-Host "REV22.43 vertical member overall-height DIMLINEAR DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_42-COMPACT-DIMLINEAR
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_43-VERTICAL-HEIGHT
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error

@@ -105,5 +105,52 @@ var fallbackPlan=SupportOrthoDimLinearPlan41.Build(
 Assert(fallbackPlan.Dimensions.Count==1 &&
     fallbackPlan.Dimensions[0].View=="FRONT",
     "an off-view preferred TOP should permit a fallback FRONT dimension");
+// REV22.43: Some valid native/XREF vertical members expose their physical
+// geometry but do not publish Start/End in Plant 3D API. Their conservative
+// overall Z envelope may be measured and must be labeled as HEIGHT, never
+// silently passed off as a fabricated member cut length.
+Assert(SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
+    100,100,450,1.0),"upright support 450 mm high qualifies");
+Assert(SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
+    0.07,0.07,0.45,1000.0),"source geometry in meters is unit-safe");
+Assert(!SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
+    500,600,450,1.0),"broad assembly is not assumed a vertical member");
+Assert(!SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
+    50,50,70,1.0),"very short extents are not dimensioned as overall height");
+Assert(!SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
+    50,50,double.NaN,1.0),"invalid geometry always rejected");
+
+var uprightHeight=vertical with {
+    Key="XREF_MEMBER:VERTICAL_POST",
+    Provenance="GEOMETRIC_OVERALL_Z_HEIGHT"
+};
+var verticalOnly=SupportOrthoDimLinearPlan41.Build(
+    new[]{front,top},new[]{uprightHeight},594,841);
+Assert(verticalOnly.Dimensions.Count==1 &&
+    verticalOnly.Dimensions[0].View=="FRONT" &&
+    !verticalOnly.Dimensions[0].Horizontal &&
+    verticalOnly.Dimensions[0].Measurement=="H=400" &&
+    verticalOnly.Dimensions[0].Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT",
+    "recognized XREF vertical post gets an overall-height DIMLINEAR on FRONT");
+var mixedSheet=SupportOrthoDimLinearPlan41.Build(
+    new[]{front,top,bottom,back},
+    new[]{horizontal,uprightHeight},594,841);
+Assert(mixedSheet.Dimensions.Count==2 &&
+    mixedSheet.Dimensions.Any(d=>d.View=="TOP" &&
+        d.Measurement=="400" && d.Horizontal) &&
+    mixedSheet.Dimensions.Any(d=>d.View=="FRONT" &&
+        d.Measurement=="H=400" && !d.Horizontal),
+    "compact mode must preserve one horizontal plus one vertical dimension");
+var verticalTwin=uprightHeight with {
+    Key="XREF_MEMBER:VERTICAL_POST_2",Ax=100, Bx=100
+};
+var twinPlan=SupportOrthoDimLinearPlan41.Build(
+    new[]{front,back},
+    new[]{uprightHeight,verticalTwin},594,841);
+Assert(twinPlan.Dimensions.Count==1 &&
+    twinPlan.Skipped.Any(x=>x.Contains("EQUAL_LENGTH_ALREADY_DIMENSIONED_BY_")),
+    "identical vertical overall-height dimensions remain compact");
+Console.WriteLine("REV22.43 vertical overall-height fallback and cross-axis compact safety PASS");
+
 Console.WriteLine("REV22.42 compact DIMLINEAR across six views PASS");
 Console.WriteLine("REV22.41 verified orthographic DIMLINEAR planner PASS");

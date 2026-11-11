@@ -15,6 +15,9 @@ namespace SPTC.SupportDrawings;
 /// unique verified source length, physical H/V orientation and Plant member
 /// category ACROSS THE ENTIRE SHEET. No repeat in opposite views or for
 /// equal-size equivalent members. Source identity is retained in diagnostics.
+/// REV22.43 also accepts conservatively verified upright overall Z heights,
+/// explicitly labeled H=...; those are geometry heights, NEVER fabrication
+/// cut lengths. Horizontal-member endpoint logic remains unchanged.
 /// Skip foreshortened/diagonal projections, crowded rectangles and duplicate
 /// dimensions rather than generating misleading measurements.
 /// </summary>
@@ -27,11 +30,13 @@ public static class SupportOrthoDimLinearPlan41
 
     public sealed record Segment(string Key,string Kind,
         double Ax,double Ay,double Az,double Bx,double By,double Bz,
-        double SourceLength,double Millimeters);
+        double SourceLength,double Millimeters,
+        string Provenance="EXPLICIT_MEMBER_ENDPOINTS");
     public sealed record Dimension(
         string View,string Source,string Kind,bool Horizontal,
         double Ax,double Ay,double Bx,double By,
-        double LineX,double LineY,string Measurement);
+        double LineX,double LineY,string Measurement,
+        string Provenance="EXPLICIT_MEMBER_ENDPOINTS");
     public sealed record Result(IReadOnlyList<Dimension> Dimensions,
         IReadOnlyList<string> Skipped,int SourceCount,int OrthographicViews);
 
@@ -86,8 +91,18 @@ public static class SupportOrthoDimLinearPlan41
                 // Millimeter values are rounded exactly as they will appear
                 // in the native DIMLINEAR text (0.001 mm display precision).
                 // Do not collapse H and V or different Plant object kinds.
-                string measurement=source.Millimeters.ToString(
-                    "0.###",CultureInfo.InvariantCulture);
+                bool overall=source.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT";
+                if(overall&&!physicalV)
+                {
+                    skips.Add(camera.Name+"/"+source.Key+
+                        ":OVERALL_HEIGHT_MUST_BE_VERTICAL");
+                    continue;
+                }
+                // A geometric fallback is an overall Z envelope height,
+                // not a member's actual Start/End or cutting length.
+                string measurement=(overall?"H=":"")+
+                    source.Millimeters.ToString(
+                        "0.###",CultureInfo.InvariantCulture);
                 string valueKey=(physicalV?"V":"H")+"|"+
                     source.Kind+"|"+measurement;
                 if(usedSources.TryGetValue(source.Key,out string? firstView))
@@ -182,7 +197,8 @@ public static class SupportOrthoDimLinearPlan41
                 // skipped in TOP can still be dimensioned in another view.
                 // Model lengths, member types, and source IDs remain exact.
                 dims.Add(new Dimension(camera.Name,source.Key,source.Kind,
-                    horizontal,a.X,a.Y,b.X,b.Y,x,y,measurement));
+                    horizontal,a.X,a.Y,b.X,b.Y,x,y,measurement,
+                    source.Provenance));
                 usedSources[source.Key]=camera.Name;
                 usedValues[valueKey]=camera.Name+"/"+source.Key;
             }
@@ -190,6 +206,16 @@ public static class SupportOrthoDimLinearPlan41
         return new Result(dims,skips,sources.Count,
             cameras.Count(c=>Orthogonal.Contains(c.Name)));
     }
+
+    // Pure, testable boundary for geometric *overall-height* fallback.
+    // It is not evidence of an exact beam cut length. Both source and tests
+    // use the same conservative vertical-dominance and minimum-height rule.
+    public static bool AcceptOverallZHeight(double spanX,double spanY,
+        double spanZ,double unitsToMm) =>
+        double.IsFinite(spanX)&&double.IsFinite(spanY)&&
+        double.IsFinite(spanZ)&&double.IsFinite(unitsToMm)&&
+        spanX>=0&&spanY>=0&&spanZ>0&&unitsToMm>0&&
+        spanZ*unitsToMm>=150.0&&Math.Max(spanX,spanY)<=spanZ*.70;
 
     private static int ViewPriority(string name) =>
         name.ToUpperInvariant() switch

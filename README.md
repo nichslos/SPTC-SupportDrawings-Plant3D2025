@@ -1,5 +1,47 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
+## REV 22.43 — Vertical Structure/Support overall-height dimensions
+
+Addresses the reported case where a **vertical** support/member appears in
+the Ortho model but REV22.42 makes no dimension for it. The previous
+dimension reader required explicit `StartPoint` and `EndPoint` properties
+and therefore skipped genuine Plant 3D vertical supports lacking those
+properties. A new conservative geometric **overall Z height** fallback is
+available **only** for already-recognized structure/support entity classes
+or native Plant elements verified by the existing PnP-aware source readers.
+
+- If valid Start/End coordinates are present, they remain the authoritative
+  true *member length*. Their native DIMLINEAR text is unchanged, e.g. `450`.
+- If Start/End is unavailable **but** the entity's real, finite host-WCS
+  extents show a clearly upright part at least 150 mm tall and at most
+  70% as wide/deep as it is tall, the tool can dimension the measured
+  overall Z envelope (bottom to top). It is labeled **`H=450`**, not a
+  fabricated fabrication/cut length.
+- Only FRONT/BACK/LEFT/RIGHT views where that vertical span is actually
+  projected and fits safely are eligible. TOP/BOTTOM and diagonal/isometric
+  projections do not get an invented member-height dimension.
+- Nested XREFs use each reference's actual World transform, and source
+  entity geometry is read-only. Arbitrary solids/blocks cannot qualify
+  solely because they are tall. A PnP-vetted native Support may qualify even
+  if its runtime ObjectClass reports a generic Plant wrapper.
+- REV22.42's **one dimension per type/axis/value** sheet-wide rule remains,
+  so the same `H=...` will not repeat across opposite elevations. Pipe
+  BOP/line tags, support TOS/Size, XREF drawing-name labels, geometry,
+  paper scale, and the persistent palette are unchanged.
+- `REV22_43_OVERALL_VERTICAL_HEIGHT_SOURCES`,
+  `REV22_43_OVERALL_HEIGHT_DIMENSIONS_PLANNED`, and
+  `REV22_41_SOURCE_DIAGNOSTIC=DIM_OVERALL_HEIGHT_VERIFIED` explain
+  which geometry-based vertical heights were eligible.
+
+**Engineering distinction:** an overall envelope height may include base
+plates, fittings and offsets. Verify that the `H=...` dimension represents
+the height you want documented. It must not be used as an exact steel cut
+length. If a member is too wide, too short, unavailable, or without native
+type evidence, the generator deliberately skips rather than guesses.
+Dimensions remain static after a manual Ortho Update View. The Windows CI
+tests cover the planner and boundary logic, but a copied Plant 3D 2025
+project test is needed to validate real object types and placement.
+
 ## REV 22.42 — Fewer/repeated dimensions on Ortho sheets
 
 The uploaded one-page Ortho PDF shows the same `828.28` dimension repeated
@@ -254,6 +296,6 @@ includes a Windows logo/image/icon smoke test in GitHub Actions.
 
 ### Build
 
-Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_42-COMPACT-DIMLINEAR`.
+Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_43-VERTICAL-HEIGHT`.
 
 Rollback source is preserved in repository Git history and the [full pre-cleanup archive](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).

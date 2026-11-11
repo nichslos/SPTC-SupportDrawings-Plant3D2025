@@ -10,15 +10,17 @@ namespace SPTC.SupportDrawings;
 
 /// <summary>
 /// REV22.41 READ-ONLY verified linear endpoint extraction. Dimensions are
-/// created ONLY for actual StructureMember / Plant Support entity types with
-/// explicit Start/End positions. AABB extents are never promoted to member
-/// endpoints or interpreted as an engineering cut length.
+/// uses declared Start/End positions for member LENGTH dimensions. REV22.43
+/// adds a conservative overall-Z-height dimension for recognized vertical
+/// Plant support/structure entities lacking explicit endpoints. AABB height
+/// is explicitly identified as OVERALL_HEIGHT, NEVER as cut/member length.
 /// </summary>
 internal static class SupportOrthoDimensionSource41
 {
     internal sealed record Segment(string Key,string Kind,
         double Ax,double Ay,double Az,double Bx,double By,double Bz,
-        double SourceLength,double Millimeters);
+        double SourceLength,double Millimeters,
+        string Provenance="EXPLICIT_MEMBER_ENDPOINTS");
 
     internal sealed record Result(IReadOnlyList<Segment> Segments,
         IReadOnlyList<string> Diagnostics);
@@ -26,15 +28,30 @@ internal static class SupportOrthoDimensionSource41
     internal static Result Read(Database host,
         IEnumerable<ObjectId> native,
         IEnumerable<SupportOrthoXrefMemberDiscovery37.Item> xref,
-        double unitsToMm)
+        double unitsToMm,
+        IEnumerable<string>? verifiedStructureHandles=null,
+        IEnumerable<string>? verifiedSupportHandles=null)
     {
         if(!double.IsFinite(unitsToMm)||unitsToMm<=0)
             throw new ArgumentOutOfRangeException(nameof(unitsToMm));
         var segments=new List<Segment>();
         var diagnostics=new List<string>();
+        // Native member/support identity may have been verified by the
+        // earlier PnP-aware source readers even if ObjectClass exposes an
+        // undecorated Plant wrapper type. Only those vetted handle lists
+        // can authorize a fallback classification.
+        var known=new Dictionary<string,string>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach(string handle in verifiedStructureHandles??Array.Empty<string>())
+            known[handle]="STRUCTURE";
+        foreach(string handle in verifiedSupportHandles??Array.Empty<string>())
+            known[handle]="SUPPORT";
         foreach(var id in native.Distinct())
-            TryRead(id,Matrix3d.Identity,"NATIVE:"+id.Handle,"",
-                unitsToMm,segments,diagnostics);
+        {
+            known.TryGetValue(id.Handle.ToString(),out string? expectedKind);
+            TryRead(id,Matrix3d.Identity,"NATIVE:"+id.Handle,
+                expectedKind??"",unitsToMm,segments,diagnostics);
+        }
         foreach(var member in xref)
             TryRead(member.Id,member.ToHost,member.Key,member.Kind,
                 unitsToMm,segments,diagnostics);
@@ -67,6 +84,10 @@ internal static class SupportOrthoDimensionSource41
                        type.Contains("PipeSupport",StringComparison.OrdinalIgnoreCase)||
                        rx.Contains("PipeSupport",StringComparison.OrdinalIgnoreCase)
                         ? "SUPPORT" : "");
+            // The PnP-aware readers have already accepted known native
+            // objects. Never guess an unknown object from its geometry alone.
+            if(kind.Length==0 && expectedKind.Length>0)
+                kind=expectedKind;
             if(kind.Length==0 || (expectedKind.Length>0 &&
                 !kind.Equals(expectedKind,StringComparison.Ordinal)))
                 return;
@@ -75,6 +96,12 @@ internal static class SupportOrthoDimensionSource41
             var b=ExplicitPoint(entity,false);
             if(a==null||b==null)
             {
+                // REV22.43: This is a dimension of the ENTIRE measured
+                // geometric Z envelope, not an assumed fabrication length.
+                // Only known Plant structure/support with clear vertical
+                // dominance and usable geometry qualify.
+                if(TryVerticalOverallHeight(entity,toHost,key,kind,mm,
+                    segments,notes))return;
                 notes.Add("DIM_ENDPOINTS_NOT_DECLARED="+key+" KIND="+kind);
                 return;
             }
@@ -107,6 +134,56 @@ internal static class SupportOrthoDimensionSource41
         catch(System.Exception ex)
         {
             notes.Add("DIM_SOURCE_READ_SKIPPED="+key+":"+ex.GetType().Name);
+        }
+    }
+
+    private static bool TryVerticalOverallHeight(Entity entity,
+        Matrix3d toHost,string key,string kind,double unitsToMm,
+        List<Segment> segments,List<string> notes)
+    {
+        try
+        {
+            Extents3d ext=entity.GeometricExtents;
+            ext.TransformBy(toHost);
+            double x=ext.MaxPoint.X-ext.MinPoint.X;
+            double y=ext.MaxPoint.Y-ext.MinPoint.Y;
+            double z=ext.MaxPoint.Z-ext.MinPoint.Z;
+            if(!double.IsFinite(x)||!double.IsFinite(y)||
+               !double.IsFinite(z)||x<0||y<0||z<=0)
+            {
+                notes.Add("DIM_OVERALL_HEIGHT_BAD_EXTENTS="+key);
+                return false;
+            }
+            // Keep interpretation explicitly conservative. A wide/sloping
+            // assembly may have a real Z envelope, but should not be
+            // labeled as a single upright component without evidence.
+            // This is an *overall height* dimension, not member LENGTH.
+            if(!SupportOrthoDimLinearPlan41.AcceptOverallZHeight(
+                x,y,z,unitsToMm))
+            {
+                notes.Add("DIM_OVERALL_HEIGHT_NOT_VERTICAL_DOMINANT="+key);
+                return false;
+            }
+            double cx=(ext.MinPoint.X+ext.MaxPoint.X)*.5;
+            double cy=(ext.MinPoint.Y+ext.MaxPoint.Y)*.5;
+            var bottom=new Point3d(cx,cy,ext.MinPoint.Z);
+            var top=new Point3d(cx,cy,ext.MaxPoint.Z);
+            if(!Finite(bottom)||!Finite(top))return false;
+            segments.Add(new Segment(key,kind,bottom.X,bottom.Y,bottom.Z,
+                top.X,top.Y,top.Z,z,z*unitsToMm,
+                "GEOMETRIC_OVERALL_Z_HEIGHT"));
+            notes.Add("DIM_OVERALL_HEIGHT_VERIFIED="+key+
+                " KIND="+kind+" HEIGHT_MM="+
+                (z*unitsToMm).ToString("0.###",
+                    System.Globalization.CultureInfo.InvariantCulture)+
+                " SOURCE=ENTITY_WCS_EXTENTS_NOT_CUT_LENGTH");
+            return true;
+        }
+        catch(System.Exception ex)
+        {
+            notes.Add("DIM_OVERALL_HEIGHT_FAILED="+key+":"+
+                ex.GetType().Name);
+            return false;
         }
     }
 
