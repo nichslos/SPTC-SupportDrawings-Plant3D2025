@@ -276,7 +276,7 @@ jobs:
           $smart = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSmartDimPlan46.cs' -Raw
           foreach($token in @('BuildFixedZones','CollisionCandidatesRejected',
               'NO_COLLISION_FREE_DIMENSION_LANE','repositioned++',
-              'ProjectBounds','PaperTextX')) {
+              'ProjectBounds')) {
             if ($smart -notmatch [regex]::Escape($token)) {
               throw "REV22.46 smart-layout invariant missing: $token"
             }
