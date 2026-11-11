@@ -127,10 +127,10 @@ public static class SupportOrthoDimLinearPlan41
                     }
                     if(horizontal && (y<minY+3||y>maxY-3))continue;
                     if(vertical && (x<minX+3||x>maxX-3))continue;
-                    double left=Math.Min(a.X,b.X,x)-2.8;
-                    double right=Math.Max(a.X,b.X,x)+2.8;
-                    double bottom=Math.Min(a.Y,b.Y,y)-2.8;
-                    double top=Math.Max(a.Y,b.Y,y)+2.8;
+                    double left=Math.Min(Math.Min(a.X,b.X),x)-2.8;
+                    double right=Math.Max(Math.Max(a.X,b.X),x)+2.8;
+                    double bottom=Math.Min(Math.Min(a.Y,b.Y),y)-2.8;
+                    double top=Math.Max(Math.Max(a.Y,b.Y),y)+2.8;
                     if(left<minX||right>maxX||bottom<minY||top>maxY)
                         continue;
                     if(left<0||right>paperWidth*.78 ||
