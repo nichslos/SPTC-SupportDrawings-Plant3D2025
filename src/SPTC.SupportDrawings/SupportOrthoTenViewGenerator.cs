@@ -32,43 +32,63 @@ public sealed class SupportOrthoTenViewGenerator
         CommandFlags.Modal | CommandFlags.Session)]
     public async void Run()
     {
-        Document? sourceDoc = AcadApp.DocumentManager.MdiActiveDocument;
+        Document? sourceDoc=AcadApp.DocumentManager.MdiActiveDocument;
         if(sourceDoc==null)return;
         Editor ed=sourceDoc.Editor;
-        string source=sourceDoc.Database.Filename ?? "";
+
+        if(SupportDrawingPalette40.HasPendingOrtho)
+        {
+            // Queued by the persistent UI: execute only after AutoCAD enters
+            // the registered command's document/selection context.
+            if(!SupportDrawingPalette40.TryTakeQueuedOrtho(
+                sourceDoc,out SupportDrawingUiOptions? options) ||
+               options==null)return;
+            try
+            {
+                await RunQueuedOrtho(sourceDoc,options);
+            }
+            catch(System.Exception ex)
+            {
+                SafeWriteToActiveEditor("SPTC palette Ortho error: "+ex);
+            }
+            finally
+            {
+                SupportDrawingPalette40.Finish(
+                    "SPTC Ortho operation finished. Review progress and TXT logs.");
+            }
+            return;
+        }
+
+        if(SupportDrawingPalette40.IsBusy)
+        {
+            ed.WriteMessage("\nSPTC: Operation already running; finish it before starting another.");
+            return;
+        }
+
+        string source=sourceDoc.Database.Filename??"";
         if(string.IsNullOrWhiteSpace(source)||!File.Exists(source))
         {
             ed.WriteMessage("\nSPTC: Save a Plant 3D project-registered source DWG first.");
             return;
         }
         ProjectPart part;
-        try { part=CurrentOrthoProject(); }
+        try {part=CurrentOrthoProject();}
         catch(System.Exception ex)
         {
             ed.WriteMessage("\nSPTC project preflight failed: "+ex.Message);
             return;
         }
-        using var ui=new SupportDrawingManagerForm35(
-            source,part.ProjectRoot,part.OrthoFolder);
-        if(ui.ShowDialog()!=WinForms.DialogResult.OK || ui.Settings==null)return;
-        SupportDrawingUiOptions options=ui.Settings;
-        if(options.Operation!="ortho")
-        {
-            string command=options.Operation switch
-            {
-                "export"=>"SPTC_SUPPORTEXPORT",
-                "batch"=>"SPTC_SUPPORTBATCH",
-                "2dbatch"=>"SPTC_SUPPORT2DBATCH",
-                _=>""
-            };
-            if(command.Length>0)
-            {
-                ed.WriteMessage("\nSPTC: Starting "+command+"...");
-                sourceDoc.SendStringToExecute(command+" ",true,false,false);
-            }
-            return;
-        }
+        SupportDrawingPalette40.ShowOrFocus(
+            sourceDoc,part.ProjectRoot,part.OrthoFolder);
+        // REV22.40: No modal ShowDialog. Running the command again focuses
+        // the existing palette and preserves all editable UI options.
+    }
 
+    private async Task RunQueuedOrtho(Document sourceDoc,
+        SupportDrawingUiOptions options)
+    {
+        Editor ed=sourceDoc.Editor;
+        string source=sourceDoc.Database.Filename??"";
         var progress=new SupportDrawingProgressForm35();
         try
         {
