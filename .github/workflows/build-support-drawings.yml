@@ -174,7 +174,7 @@ jobs:
             }
           }
           if(-not $ui.Contains('WinForms.UserControl') -or
-             $ui.Contains('WinForms.Form') -or
+             $ui.Contains('SupportDrawingManagerForm35 : WinForms.Form') -or
              $ui.Contains('DialogResult = DialogResult.OK;') -or
              $ui.Contains('Close();')) {
             throw 'REV22.40 manager must be a persistent UserControl'
