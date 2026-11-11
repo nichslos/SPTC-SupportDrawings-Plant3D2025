@@ -40,7 +40,32 @@ jobs:
           foreach($obsolete in @('REV22.29 TEST', 'PromptStringOptions(',
               'MessageBox.Show(')) {
             if($gen.Contains($obsolete)) {
-              throw "REV22.34 obsolete Ortho confirmation still found: $obsolete"
+              throw "REV22.35 obsolete Ortho confirmation still found: $obsolete"
+            }
+          }
+          $ui=Get-Content "$root/SupportDrawingManagerForm35.cs" -Raw
+          foreach($option in @('SupportFocus','AutoSeed','DrawingPrefix',
+              'ScaleDenominator','Views','LineNumber','Bop','Tos',
+              'Description','BatchOrtho','SupportDrawingProgressForm35')) {
+            if(-not $ui.Contains($option)) {
+              throw "REV22.35 UI option missing: $option"
+            }
+          }
+          foreach($token in @('GenerateOne','SupportDrawingUiOptions',
+              'SupportDrawingManagerForm35','selectedOverride',
+              'options.AutoSeed','options.Views.Count',
+              'options.ScaleDenominator','options.LineNumber',
+              'options.Bop','options.Tos','options.Description',
+              'SPTC_REV22_35_BATCH_REPORT','File.AppendAllText(')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.35 native integration missing: $token"
+            }
+          }
+          foreach($token in @('SourceRegistrationVerified',
+              'IsNativeOrthoValid(part.OrthoPart, seed)',
+              'EMPTY_REGISTERED_ORTHO','if (File.Exists(dest))')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.35 project preflight missing: $token"
             }
           }
           foreach($requiredCheck in @('SourceRegistrationVerified',
@@ -49,7 +74,7 @@ jobs:
               'if (File.Exists(dest))',
               'if (!Guid.TryParse(')) {
             if(-not $gen.Contains($requiredCheck)) {
-              throw "REV22.34 registration safeguard missing: $requiredCheck"
+              throw "REV22.35 registration safeguard missing: $requiredCheck"
             }
           }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
@@ -109,11 +134,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.34 production DLL bytes: $size"
+          Write-Host "REV22.35 UI DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_34-AUTO-REGISTER
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_35-UI
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
