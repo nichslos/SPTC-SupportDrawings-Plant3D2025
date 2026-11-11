@@ -62,6 +62,20 @@ internal static class SupportOrthoDimLinearWriter41
                 {
                     LayerId=layerId
                 };
+                // REV22.45: a short 50/75/100 mm projected span at
+                // 1:30 can be narrower than its text or arrowheads.
+                // Let AutoCAD move those elements OUTSIDE the witness
+                // lines rather than squeezing/hiding their content.
+                // Only the paper dimension is changed, never the model.
+                double measuredPaperSpan=item.Horizontal
+                    ? Math.Abs(item.Bx-item.Ax)
+                    : Math.Abs(item.By-item.Ay);
+                if(measuredPaperSpan<8.0)
+                {
+                    dim.Dimatfit=3;
+                    dim.Dimtix=false;
+                    dim.Dimtofl=true;
+                }
                 paper.AppendEntity(dim);
                 tr.AddNewlyCreatedDBObject(dim,true);
                 created++;
