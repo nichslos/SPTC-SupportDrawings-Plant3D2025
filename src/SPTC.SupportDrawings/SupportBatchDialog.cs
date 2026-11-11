@@ -22,7 +22,8 @@ internal sealed class SupportBatchDialog : WinForms.Form
 
     public SupportBatchDialog(IReadOnlyList<(ObjectId id, string name)> supports)
     {
-        Text = "SPTC Support Drawing Batch Export - REV 03";
+        Text = "SPTC Support Drawing Batch Export";
+        Icon = SupportBranding36.CreateIcon();
         Font = new System.Drawing.Font("Segoe UI", 9f);
         StartPosition = WinForms.FormStartPosition.CenterScreen;
         ClientSize = new Size(660, 505);
@@ -30,18 +31,20 @@ internal sealed class SupportBatchDialog : WinForms.Form
         FormBorderStyle = WinForms.FormBorderStyle.Sizable;
         MaximizeBox = false;
 
+        // Small embedded wordmark; keep all existing batch controls and logic.
+        Controls.Add(SupportBranding36.MakeLogo(14, 5, 76, 46));
         var header = new WinForms.Label
         {
             Text = "Select supports to export (each BLOCK INSERT = one drawing)",
-            Location = new Point(14, 12), Size = new Size(620, 25),
+            Location = new Point(101, 15), Size = new Size(535, 25),
             Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
         };
         Controls.Add(header);
 
         list.CheckOnClick = true;
         list.IntegralHeight = false;
-        list.Location = new Point(14, 42);
-        list.Size = new Size(632, 300);
+        list.Location = new Point(14, 55);
+        list.Size = new Size(632, 287);
         list.Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Bottom
                     | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right;
         for (int i = 0; i < supports.Count; i++)
