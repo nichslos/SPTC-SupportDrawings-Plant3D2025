@@ -33,13 +33,132 @@ public sealed class SupportOrthoTenViewGenerator
     public async void Run()
     {
         Document? sourceDoc = AcadApp.DocumentManager.MdiActiveDocument;
-        if (sourceDoc == null) return;
-        Editor ed = sourceDoc.Editor;
+        if(sourceDoc==null)return;
+        Editor ed=sourceDoc.Editor;
+        string source=sourceDoc.Database.Filename ?? "";
+        if(string.IsNullOrWhiteSpace(source)||!File.Exists(source))
+        {
+            ed.WriteMessage("\nSPTC: Save a Plant 3D project-registered source DWG first.");
+            return;
+        }
+        ProjectPart part;
+        try { part=CurrentOrthoProject(); }
+        catch(System.Exception ex)
+        {
+            ed.WriteMessage("\nSPTC project preflight failed: "+ex.Message);
+            return;
+        }
+        using var ui=new SupportDrawingManagerForm35(
+            source,part.ProjectRoot,part.OrthoFolder);
+        if(ui.ShowDialog()!=WinForms.DialogResult.OK || ui.Settings==null)return;
+        SupportDrawingUiOptions options=ui.Settings;
+        if(options.Operation!="ortho")
+        {
+            string command=options.Operation switch
+            {
+                "export"=>"SPTC_SUPPORTEXPORT",
+                "batch"=>"SPTC_SUPPORTBATCH",
+                "2dbatch"=>"SPTC_SUPPORT2DBATCH",
+                _=>""
+            };
+            if(command.Length>0)
+            {
+                ed.WriteMessage("\nSPTC: Starting "+command+"...");
+                sourceDoc.SendStringToExecute(command+" ",true,false,false);
+            }
+            return;
+        }
+
+        var progress=new SupportDrawingProgressForm35();
+        try
+        {
+            if(options.BatchOrtho)
+            {
+                var selection=ed.GetSelection(new PromptSelectionOptions
+                {
+                    MessageForAdding="\nSelect each support BLOCK reference for a separate native Ortho DWG: "
+                });
+                if(selection.Status!=PromptStatus.OK)return;
+                var ids=new List<ObjectId>();
+                using(Transaction tr=sourceDoc.Database.TransactionManager.StartTransaction())
+                {
+                    foreach(var id in selection.Value.GetObjectIds().Distinct())
+                        if(tr.GetObject(id,OpenMode.ForRead,false) is BlockReference)
+                            ids.Add(id);
+                }
+                if(ids.Count==0)
+                {
+                    ed.WriteMessage("\nSPTC batch: no support block references were selected.");
+                    return;
+                }
+                progress.Show();
+                int passed=0,failed=0;
+                var report=new StringBuilder();
+                report.AppendLine("SPTC_REV22_35_BATCH_REPORT");
+                report.AppendLine("SOURCE="+source);
+                report.AppendLine("SUPPORT_COUNT="+ids.Count);
+                foreach(ObjectId id in ids)
+                {
+                    try
+                    {
+                        AcadApp.DocumentManager.MdiActiveDocument=sourceDoc;
+                        progress.Report("Starting support handle "+id.Handle);
+                        bool ok=await GenerateOne(sourceDoc,new[]{id},options,progress);
+                        if(ok)passed++; else failed++;
+                        report.AppendLine("HANDLE="+id.Handle+" STATUS="+(ok?"PASS":"FAIL"));
+                        progress.Report("Support "+id.Handle+": "+(ok?"PASS":"FAIL"));
+                    }
+                    catch(System.Exception ex)
+                    {
+                        failed++;
+                        report.AppendLine("HANDLE="+id.Handle+" STATUS=FAIL ERROR="+ex.Message);
+                        progress.Report("Support "+id.Handle+" FAILED: "+ex.Message);
+                    }
+                }
+                report.AppendLine("PASS="+passed+" FAIL="+failed);
+                try
+                {
+                    string output=Path.Combine(Path.GetDirectoryName(source)!,
+                        Path.GetFileNameWithoutExtension(source)+"_SPTC_BATCH_"+
+                        DateTime.UtcNow.ToString("yyyyMMdd_HHmmss",
+                            CultureInfo.InvariantCulture)+".txt");
+                    File.WriteAllText(output,report.ToString(),new UTF8Encoding(false));
+                    progress.Report("Batch report: "+output);
+                }
+                catch(System.Exception ex)
+                {
+                    progress.Report("Could not write batch report: "+ex.Message);
+                }
+            }
+            else
+            {
+                bool ok=await GenerateOne(sourceDoc,null,options,progress);
+                progress.Report("Single Ortho result: "+(ok?"PASS":"FAIL / SEE TXT"));
+            }
+        }
+        catch(System.Exception ex)
+        {
+            progress.Report("SPTC command error: "+ex);
+            SafeWriteToActiveEditor("SPTC generation stopped: "+ex.Message);
+        }
+        finally
+        {
+            progress.Complete();
+            if(!progress.Visible)progress.Show();
+        }
+    }
+
+    private async Task<bool> GenerateOne(Document sourceDoc,
+        ObjectId[]? selectedOverride,SupportDrawingUiOptions options,
+        SupportDrawingProgressForm35 progress)
+    {
+        Editor ed=sourceDoc.Editor;
+        bool succeeded=false;
         string source = Path.GetFullPath(sourceDoc.Database.Filename ?? "");
         if (!File.Exists(source))
         {
             ed.WriteMessage("\nREV22.29: Open a saved project-registered 3D model before running the test.");
-            return;
+            return false;
         }
 
         NativeOrthoProjectCheck.Result sourceCheck;
@@ -47,12 +166,12 @@ public sealed class SupportOrthoTenViewGenerator
         catch (System.Exception ex)
         {
             ed.WriteMessage("\nREV22.29: Native source check failed: " + ex.Message);
-            return;
+            return false;
         }
         if (!sourceCheck.SourceRegistrationVerified)
         {
             ed.WriteMessage("\nREV22.29: Source 3D drawing is not verified project-registered. No changes.");
-            return;
+            return false;
         }
 
         double units = sourceDoc.Database.Insunits.ToString() switch
@@ -63,30 +182,29 @@ public sealed class SupportOrthoTenViewGenerator
         if (units <= 0)
         {
             ed.WriteMessage("\nREV22.29: Unsupported source units; expected a physical unit like Millimeters.");
-            return;
+            return false;
         }
 
         // REV22.29: Keep Original mode available as an exact fallback.
         // SupportFocus mode calculates the XY cube only from STRUCTURAL
         // support selection, not full long-pipe GeometricExtents.
-        var modePrompt=new PromptKeywordOptions(
-            "\nREV22.29 OrthoCube mode [SupportFocus/Original] <SupportFocus>: ")
-        { AllowNone=true };
-        modePrompt.Keywords.Add("SupportFocus");
-        modePrompt.Keywords.Add("Original");
-        modePrompt.Keywords.Default="SupportFocus";
-        PromptResult modeChoice=ed.GetKeywords(modePrompt);
-        if(modeChoice.Status!=PromptStatus.OK&&
-           modeChoice.Status!=PromptStatus.None)return;
-        bool supportFocus=!string.Equals(
-            modeChoice.StringResult,"Original",StringComparison.OrdinalIgnoreCase);
-        PromptSelectionResult selection = ed.GetSelection(new PromptSelectionOptions
+        // UI selection replaces the old command-line mode prompt.
+        bool supportFocus=options.SupportFocus;
+        ObjectId[] selectedIds;
+        if(selectedOverride!=null)selectedIds=selectedOverride;
+        else
         {
-            MessageForAdding = supportFocus
-                ? "\nREV22.29: Select STRUCTURE MEMBERS and/or Plant 3D SUPPORT objects (pipes at NEXT selection): "
-                : "\nREV22.29 ORIGINAL: Select all structure entities for ONE support: "
-        });
-        if (selection.Status != PromptStatus.OK) return;
+            PromptSelectionResult selection=ed.GetSelection(new PromptSelectionOptions
+            {
+                MessageForAdding=supportFocus
+                    ? "\nSPTC: Select STRUCTURE MEMBERS and/or Plant 3D SUPPORT objects: "
+                    : "\nSPTC: Select support entities for Original OrthoCube mode: "
+            });
+            if(selection.Status!=PromptStatus.OK)return false;
+            selectedIds=selection.Value.GetObjectIds();
+        }
+        if(!progress.Visible)progress.Show();
+        progress.Report("Support selection received: "+selectedIds.Length+" object(s)");
 
         var handles = new List<string>();
         var selectedSupportIds = new List<ObjectId>();
@@ -95,7 +213,7 @@ public sealed class SupportOrthoTenViewGenerator
         int misselectedPipeEntities = 0;
         using (Transaction tr = sourceDoc.Database.TransactionManager.StartTransaction())
         {
-            foreach (ObjectId id in selection.Value.GetObjectIds().Distinct())
+            foreach (ObjectId id in selectedIds.Distinct())
             {
                 try
                 {
@@ -123,7 +241,7 @@ public sealed class SupportOrthoTenViewGenerator
             ed.WriteMessage("\nREV22.29: Select valid structural support entities only. "+
                 "Invalid extents="+invalidExtents+
                 " accidentally selected pipe objects="+misselectedPipeEntities);
-            return;
+            return false;
         }
 
         // REV22.29: read only the actual selected support objects.
@@ -188,7 +306,7 @@ public sealed class SupportOrthoTenViewGenerator
             s.StartsWith("REV22_29_SCAN_FAILED=",StringComparison.Ordinal)))
         {
             ed.WriteMessage("\nREV22.29: Pipe scan failed. No files changed.");
-            return;
+            return false;
         }
 
         NativeOrthoLayout.Plan layout;
@@ -216,7 +334,7 @@ public sealed class SupportOrthoTenViewGenerator
         catch (System.Exception ex)
         {
             ed.WriteMessage("\nREV22.29: Invalid support OrthoCube: " + ex.Message);
-            return;
+            return false;
         }
         // REV22.29: source-authenticated pipe metadata only.
         // XREF source ObjectIds and nested transforms come from loaded XREF DBs.
@@ -231,7 +349,7 @@ public sealed class SupportOrthoTenViewGenerator
                 "See diagnostics below. No Ortho drawing created.");
             foreach(string note in xrefRead.Diagnostics)
                 ed.WriteMessage("\nREV22.29 XREF: "+note);
-            return;
+            return false;
         }
         var pipeRead=new SupportOrthoPlantPipe27.Result(
             nativeRead.Pipes.Concat(xrefRead.Pipes).ToArray(),
@@ -254,47 +372,122 @@ public sealed class SupportOrthoTenViewGenerator
         catch (System.Exception ex)
         {
             ed.WriteMessage("\nREV22.29: Cannot resolve current Plant Ortho project: " + ex.Message);
-            return;
+            return false;
         }
 
-        string initial = Directory.Exists(Path.Combine(part.OrthoFolder, "DWGs")) ?
-            Path.Combine(part.OrthoFolder, "DWGs") : part.OrthoFolder;
-        using var picker = new WinForms.OpenFileDialog
+        // REV22.35: discover only native, project-registered and EMPTY seeds.
+        // Never treat a previous generated Ortho or an arbitrary DWG as a seed.
+        string seed="";
+        if(options.AutoSeed)
         {
-            Title = "REV22.29 - Select an EMPTY Project Manager-created native Ortho seed (not DWT)",
-            Filter = "AutoCAD drawing (*.dwg)|*.dwg", CheckFileExists = true,
-            InitialDirectory = initial, RestoreDirectory = true
-        };
-        if (picker.ShowDialog() != WinForms.DialogResult.OK) return;
-        string seed = Path.GetFullPath(picker.FileName);
+            try
+            {
+                var candidates=Directory.EnumerateFiles(part.OrthoFolder,
+                    "*.dwg",SearchOption.AllDirectories)
+                    .Where(p=>NativeOrthoRegistrationNames.IsInsideProjectDirectory(
+                        p,part.OrthoFolder))
+                    .OrderByDescending(p=>Path.GetFileName(p).Contains(
+                        "SEED",StringComparison.OrdinalIgnoreCase))
+                    .ThenBy(p=>p,StringComparer.OrdinalIgnoreCase);
+                foreach(string path in candidates)
+                {
+                    try
+                    {
+                        if(IsNativeOrthoValid(part.OrthoPart,path) &&
+                           ViewCatalog(part.OrthoPart,path)=="EMPTY_REGISTERED_ORTHO")
+                        {
+                            seed=Path.GetFullPath(path);
+                            break;
+                        }
+                    }
+                    catch(System.Exception) { /* Reject this candidate, continue scan. */ }
+                }
+            }
+            catch(System.Exception ex)
+            {
+                ed.WriteMessage("\nSPTC auto-seed scan error: "+ex.Message);
+                return false;
+            }
+            if(seed.Length==0)
+            {
+                ed.WriteMessage("\nSPTC: No registered EMPTY native Ortho seed found in project Orthos. Create one in Project Manager.");
+                return false;
+            }
+        }
+        else
+        {
+            seed=Path.GetFullPath(options.SeedPath);
+        }
+        progress.Report("Preflight: source registered; native seed "+Path.GetFileName(seed));
         if (!NativeOrthoRegistrationNames.IsInsideProjectDirectory(seed, part.ProjectRoot) ||
             !NativeOrthoRegistrationNames.IsInsideProjectDirectory(seed, part.OrthoFolder))
         {
             ed.WriteMessage("\nREV22.29: Seed must be within the active project's registered Orthos folder.");
-            return;
+            return false;
         }
         if (!IsNativeOrthoValid(part.OrthoPart, seed))
         {
             ed.WriteMessage("\nREV22.29: Seed failed native OrthoDocUtils.IsValidOrthoDrawing.");
-            return;
+            return false;
         }
         string seedState = ViewCatalog(part.OrthoPart, seed);
         if (seedState != "EMPTY_REGISTERED_ORTHO")
         {
             ed.WriteMessage("\nREV22.29: Seed must be registered and EMPTY; found: " + seedState);
-            return;
+            return false;
         }
 
         string suffix = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss",
             CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N")[..6];
         string file = NativeOrthoRegistrationNames.NewOrthoDrawingFileName(source, handles, suffix)
             .Replace("_ORTHO_R14_", "_ORTHO_R229XREF_", StringComparison.Ordinal);
+        if(!string.IsNullOrWhiteSpace(options.DrawingPrefix))
+            file=options.DrawingPrefix+"_"+file; // Keep unique source/handle/time suffix.
+
         string dest = Path.Combine(Path.GetDirectoryName(seed)!, file);
         if (File.Exists(dest))
         {
             ed.WriteMessage("\nREV22.29: Destination DWG exists. No changes.");
-            return;
+            return false;
         }
+        // Preflight the actual seed sheet before project writes. A requested
+        // scale must be no more magnified than the proven ten-view fit.
+        try
+        {
+            using(var previewDb=new Database(false,true))
+            {
+                previewDb.ReadDwgFile(seed,
+                    FileOpenMode.OpenForReadAndAllShare,true,null);
+                previewDb.CloseInput(true);
+                string previewLayout=FindPaperLayout(previewDb);
+                (double w,double h)=CurrentPaper(previewDb,previewLayout);
+                var fit=NativeOrthoTenViewPlan.Build(layout,w,h);
+                if(options.ScaleDenominator>0 &&
+                   options.ScaleDenominator<fit.Denominator)
+                {
+                    ed.WriteMessage("\nSPTC preflight: Requested 1:"+
+                        options.ScaleDenominator+" cannot fit the ten-view layout. "+
+                        "Minimum safe denominator is "+fit.Denominator+". No drawing created.");
+                    return false;
+                }
+                if(options.ScaleDenominator>0)
+                    fit=fit with {Denominator=options.ScaleDenominator,
+                        Scale=1.0/options.ScaleDenominator};
+                // Perform the same exact title/frame collision calculations
+                // read-only, BEFORE cloning/registering the new Ortho DWG.
+                NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
+            }
+        }
+        catch(System.Exception ex)
+        {
+            ed.WriteMessage("\nSPTC preflight failed before drawing registration: "+ex.Message);
+            return false;
+        }
+        progress.Report("Preflight PASS. Output: "+Path.GetFileName(dest)+
+            " | Views: "+string.Join(",",options.Views)+
+            " | Scale: "+(options.ScaleDenominator>0?
+                "1:"+options.ScaleDenominator:"automatic"));
+
 
         // The public SDK, not this command, decides the final viewport insertion.
         // No false claim that the proposed TOP center is passed into CreateOrthos.
@@ -310,10 +503,19 @@ public sealed class SupportOrthoTenViewGenerator
         var log = new StringBuilder(6000);
         void Log(string msg)
         {
-            log.AppendLine(DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture) +
-                " " + msg);
-            try { File.WriteAllText(report, log.ToString(), new UTF8Encoding(false)); }
+            string line=DateTimeOffset.UtcNow.ToString("O",CultureInfo.InvariantCulture)+
+                " "+msg+Environment.NewLine;
+            log.Append(line);
+            // Append-only rather than repeatedly rewriting a growing TXT.
+            try { File.AppendAllText(report,line,new UTF8Encoding(false)); }
             catch { /* command window is still available for diagnostics */ }
+            if(msg.Contains("_BEGIN",StringComparison.Ordinal) &&
+               msg.StartsWith("STEP6_",StringComparison.Ordinal))
+                progress.Report("Generating "+msg["STEP6_".Length..^"_BEGIN".Length]+" native view");
+            if(msg.StartsWith("FINAL_STATUS=",StringComparison.Ordinal) ||
+               msg.StartsWith("ERROR=",StringComparison.Ordinal) ||
+               msg.StartsWith("NATIVE_EXCEPTION=",StringComparison.Ordinal))
+                progress.Report(msg);
         }
 
         bool cloned = false, registrationAttempted = false;
@@ -433,6 +635,13 @@ public sealed class SupportOrthoTenViewGenerator
                 layout.PaddedCube.MaxY,layout.PaddedCube.MaxZ));
             Log("ONE_CLICK_ANCHOR_REQUIRED=TRUE");
             Log("PUBLIC_API_ONLY=FALSE");
+            Log("REV22_35_SELECTED_VIEWS="+string.Join(",",options.Views));
+            Log("REV22_35_SCALE_REQUEST="+
+                (options.ScaleDenominator==0?"AUTO":"1:"+options.ScaleDenominator));
+            Log("REV22_35_ANNOTATION_OPTIONS=LINE:"+options.LineNumber+
+                " BOP:"+options.Bop+" TOS:"+options.Tos+
+                " DESCRIPTION:"+options.Description);
+            Log("REV22_35_BATCH_MODE="+options.BatchOrtho);
 
             // REV16-proven native DWG seed clone; never clone a DWT.
             using (var db = new Database(false, true))
@@ -499,6 +708,11 @@ public sealed class SupportOrthoTenViewGenerator
             (double paperWidth, double paperHeight) = CurrentPaper(targetDoc.Database, paperLayout);
             NativeOrthoTenViewPlan.Plan candidate =
                 NativeOrthoTenViewPlan.Build(layout, paperWidth, paperHeight);
+            if(options.ScaleDenominator>0)
+                candidate=candidate with {
+                    Denominator=options.ScaleDenominator,
+                    Scale=1.0/options.ScaleDenominator
+                };
             Log("STEP4_SHEET_LAYOUT=" + paperLayout);
             Log("STEP4_SHEET_MM=" + Point(paperWidth,paperHeight,0));
             Log("STEP4_COMMON_SCALE=1:" + candidate.Denominator);
@@ -610,6 +824,7 @@ public sealed class SupportOrthoTenViewGenerator
             var resolved=new List<(NativeOrthoTenViewPlan.Slot Slot,object ViewEnum,string TypeName)>();
             foreach(var slot in candidate.Views)
             {
+                if(!options.HasView(slot.Name))continue;
                 string selected=slot.EnumName;
                 if(slot.Name=="SIDE"&&!available.Any(x=>x.Equals(selected,StringComparison.OrdinalIgnoreCase)) &&
                     available.Any(x=>x.Equals("Side",StringComparison.OrdinalIgnoreCase)))
@@ -673,10 +888,12 @@ public sealed class SupportOrthoTenViewGenerator
                     throw new InvalidOperationException("REV22.29 "+
                         spec.Slot.Name+" maps to Current View in native Editor.");
             }
-            if(candidate.Views.Count!=10 || resolved.Count!=10)
-                throw new InvalidOperationException("REV22 requires ten native views.");
-            if(resolved.Select(v=>v.Slot.EnumName).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=10)
-                throw new InvalidOperationException("REV22 duplicate view-type enum detected.");
+            if(candidate.Views.Count!=10 || resolved.Count!=options.Views.Count ||
+               resolved.Count==0)
+                throw new InvalidOperationException("SPTC native view selection does not match requested presets.");
+            if(resolved.Select(v=>v.Slot.EnumName)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Count()!=resolved.Count)
+                throw new InvalidOperationException("SPTC duplicate native view-type enum detected.");
             Type[] expectedNativeSignature={
                 typeof(StringCollection),typeof(string),typeof(string),
                 typeof(Point3d),typeof(Point3d),nativeEnum,typeof(Point3d),
@@ -723,8 +940,8 @@ public sealed class SupportOrthoTenViewGenerator
                 autoPlacement.TitleShiftY.ToString("0.###",CultureInfo.InvariantCulture));
             Log("STEP5_AUTO_GROUP_SHIFTED="+autoPlacement.WasShifted);
             targetDoc.Editor.WriteMessage(
-                "\nREV22.29: Automatically placing all TEN native Ortho "+
-                "views and their titles. No insertion click required. "+
+                "\nSPTC: Automatically placing "+resolved.Count+" selected native Ortho "+
+                "view(s) and titles. No insertion click required. "+
                 "TOP center: ("+
                 autoPlacement.FinalTopX.ToString("0.###",CultureInfo.InvariantCulture)+
                 ", "+autoPlacement.FinalTopY.ToString("0.###",CultureInfo.InvariantCulture)+").");
@@ -1046,8 +1263,10 @@ public sealed class SupportOrthoTenViewGenerator
                 }
                 finally { if(cube is IDisposable disposeCube)disposeCube.Dispose(); }
             }
-            Log("STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True");
-            Log("STEP10_REV22_TEN_GROUP_PLACED_AUTOMATICALLY=True");
+            Log("STEP10_SELECTED_NATIVE_VIEWS_REGISTERED="+completed.Count);
+            Log("STEP10_REV22_GROUP_PLACED_AUTOMATICALLY=True");
+            if(completed.Count==10)
+                Log("STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True");
             var newFrames=PaperViewports(targetDoc.Database,paperLayout)
                 .Where(v=>!priorHandles.Contains(v.Handle)).ToList();
             Log("STEP10_NEW_PAPER_VIEWPORT_COUNT="+newFrames.Count);
@@ -1073,24 +1292,25 @@ public sealed class SupportOrthoTenViewGenerator
             Log("STEP10_ACTUAL_VIEWPORT_OVERLAP_DETECTED="+overlaps);
             Log("STEP10_POSSIBLE_TITLEBLOCK_COLLISION="+possibleTitleBlock);
             Log("STEP10_PLACEMENT_PROBE="+
-                (newFrames.Count>=10?"INSPECTED":"INCONCLUSIVE_VERIFY_VISUALLY"));
+                (newFrames.Count>=options.Views.Count?"INSPECTED":"INCONCLUSIVE_VERIFY_VISUALLY"));
             Log("NATIVE_ORTHO_VIEW_COUNT="+completed.Count);
-            if(completed.Count!=10||newFrames.Count!=10||overlaps||possibleTitleBlock)
+            if(completed.Count!=options.Views.Count||
+               newFrames.Count!=options.Views.Count||overlaps||possibleTitleBlock)
                 throw new InvalidOperationException(
-                    "REV22.29: Native view frame checks failed; titles not created.");
+                    "SPTC: Selected native view frames failed layout checks; titles not created.");
             // Generate paper-space MText independently of native view metadata,
             // OrthoCube geometry or AutoCAD model contents.
             var titles=NativeOrthoViewTitlePlan.BuildTitles(
                 confirmedFrames.Select(f=>new NativeOrthoViewTitlePlan.Frame(
                     f.Name,f.X,f.Y,f.W,f.H)).ToArray(),
-                paperWidth,paperHeight);
+                paperWidth,paperHeight,allowSubset:options.Views.Count!=10);
             Log("STEP10_TITLE_LAYER="+NativeOrthoViewTitlePlan.TitleLayer);
             var titleHandles=CreateNativePaperTitles(
                 targetDoc.Database,paperLayout,titles);
             Log("STEP10_VIEW_TITLE_COUNT="+titleHandles.Count);
-            if(titleHandles.Count!=10)
+            if(titleHandles.Count!=options.Views.Count)
                 throw new InvalidOperationException(
-                    "REV22.29 did not append all ten paper-space titles.");
+                    "SPTC did not append every selected native paper-space title.");
             for(int k=0;k<titles.Count;k++)
             {
                 Log("STEP10_TITLE_"+titles[k].Name+"="+titles[k].Text+
@@ -1116,16 +1336,43 @@ public sealed class SupportOrthoTenViewGenerator
                         " TWIST="+camera.TwistRadians+
                         " SCALE="+camera.Scale);
                 var plan=SupportOrthoMemberCalloutPlan27.Build(
-                    memberCameras,titles,sourceAnnotations,paperWidth,paperHeight);
+                    memberCameras,titles,sourceAnnotations,paperWidth,paperHeight,
+                    allowSubset:options.Views.Count!=10);
                 // REV22.29: preserve full source XREF key in the diagnostics;
                 // ONLY change the actual visible two-line PIPE annotation.
                 // Structural members and Support TOS retain their REV22.28 text.
                 var pipeByHandle=pipeRead.Pipes.ToDictionary(p=>p.Handle,
                     StringComparer.OrdinalIgnoreCase);
+                // Apply presentation-only annotation toggles after source-grounded
+                // camera/callout planning. This never modifies native pipe
+                // properties, support data or viewport geometry.
                 var visibleCallouts=plan.Callouts.Select(note=>
-                    note.IsPipe&&pipeByHandle.TryGetValue(note.Handle,out var p)
-                        ? note with {Text=SupportOrthoPipeCallout29.Compose(
-                            p.LineTag,p.BopLabel)} : note).ToArray();
+                {
+                    if(note.IsPipe)
+                    {
+                        if(!pipeByHandle.TryGetValue(note.Handle,out var p) ||
+                           (!options.LineNumber&&!options.Bop))
+                            return null;
+                        // Exact REV22.29 sanitation and two-line default.
+                        string[] original=SupportOrthoPipeCallout29.Compose(
+                            p.LineTag,p.BopLabel).Split('\n');
+                        string pipeLabel=options.LineNumber&&options.Bop?
+                            original[0]+"\n"+original[1]:
+                            (options.LineNumber?original[0]:original[1]);
+                        return note with {Text=pipeLabel,
+                            HasTos=options.LineNumber&&options.Bop};
+                    }
+                    bool includeSecond=options.Tos&&note.HasTos;
+                    if(!options.Description&&!includeSecond)return null;
+                    string[] lines=note.Text.Replace("\r\n","\n").Split('\n');
+                    string firstLine=options.Description?lines[0]:
+                        (lines.Length>1?lines[1]:"TOS unavailable");
+                    string label=options.Description&&includeSecond&&lines.Length>1?
+                        firstLine+"\n"+lines[1]:firstLine;
+                    return note with {Text=label,
+                        HasTos=options.Description&&includeSecond&&lines.Length>1};
+                }).Where(note=>note!=null)
+                    .Cast<SupportOrthoMemberCalloutPlan27.Callout>().ToArray();
                 Log("REV22_29_PIPE_LABEL_FORMAT=LINE_NO_AND_BOP_WITHOUT_XREF_PATH");
                 annotated=CreateNativePaperMemberLeaders27(
                     targetDoc.Database,paperLayout,visibleCallouts,
@@ -1149,17 +1396,18 @@ public sealed class SupportOrthoTenViewGenerator
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 var supportHandles=plantSupports.Members.Select(m=>m.Handle)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                int steelTosLabels=plan.Callouts.Count(x=>x.HasTos&&
-                    steelHandles.Contains(x.Handle));
-                int supportTosLabels=plan.Callouts.Count(x=>x.HasTos&&
-                    supportHandles.Contains(x.Handle));
+                int steelTosLabels=options.Tos?
+                    visibleCallouts.Count(x=>steelHandles.Contains(x.Handle)):0;
+                int supportTosLabels=options.Tos?
+                    visibleCallouts.Count(x=>supportHandles.Contains(x.Handle)):0;
                 Log("STEP10_HORIZONTAL_TOS_LABEL_COUNT="+steelTosLabels);
                 Log("STEP10_SUPPORT_TOS_LABEL_COUNT="+supportTosLabels);
-                Log("STEP10_TOTAL_TOS_LABEL_COUNT="+plan.TosLines);
+                Log("STEP10_TOTAL_TOS_LABEL_COUNT="+
+                    (steelTosLabels+supportTosLabels));
                 Log("STEP10_TOTAL_TOS_APPROX_LABEL_COUNT="+
-                    plan.ApproximateTosLines);
-                int pipeBopLabels=plan.Callouts.Count(c=>
-                    c.IsPipe&&c.HasTos);
+                    (options.Tos?plan.ApproximateTosLines:0));
+                int pipeBopLabels=options.Bop?
+                    visibleCallouts.Count(c=>c.IsPipe):0;
                 Log("STEP10_PIPE_BOP_LABEL_COUNT="+pipeBopLabels);
                 // REV22.29 uses separately measured single-line DBText
                 // entities. No MText word wrap or artificial paragraph flow.
@@ -1180,10 +1428,17 @@ public sealed class SupportOrthoTenViewGenerator
                     Log("STEP10_MEMBER_ANNOTATION_SKIP="+warn);
                 foreach(var noLabels in plan.ViewWithoutLabels)
                     Log("STEP10_MEMBER_ANNOTATION_VIEW_EMPTY="+noLabels);
-                int target=10*sourceAnnotations.Length;
-                int steelTosTarget=10*horizontalSteel.HorizontalCount;
-                int supportTosTarget=10*plantSupports.Members.Count;
-                int pipeBopTarget=10*pipeRead.Pipes.Count;
+                int perViewExpected=sourceAnnotations.Count(m=>
+                    m.PipeBopSource!=null
+                        ? options.LineNumber||options.Bop
+                        : options.Description||(options.Tos&&m.HasTos));
+                int target=options.Views.Count*perViewExpected;
+                int steelTosTarget=options.Tos?
+                    options.Views.Count*horizontalSteel.HorizontalCount:0;
+                int supportTosTarget=options.Tos?
+                    options.Views.Count*plantSupports.Members.Count:0;
+                int pipeBopTarget=options.Bop?
+                    options.Views.Count*pipeRead.Pipes.Count:0;
                 annotationStatus=annotated==target&&
                     steelTosLabels==steelTosTarget&&
                     supportTosLabels==supportTosTarget&&
@@ -1206,8 +1461,10 @@ public sealed class SupportOrthoTenViewGenerator
             Log("UPDATE_VIEW_MANUAL_TEST_REQUIRED=TRUE");
             Log("FINAL_STATUS=TEN_NATIVE_VIEWS_AND_TITLES_MEMBER_LEADERS_"+
                 annotationStatus);
+            succeeded=annotationStatus=="PASS" ||
+                annotationStatus=="NO_NATIVE_STEEL_OR_PLANT_SUPPORTS";
             SafeWriteToActiveEditor(
-                "REV22.29: TEN native views and titles created. "+
+                "SPTC: "+options.Views.Count+" native views and titles created. "+
                 annotated+" per-member leader annotations; "+
                 annotationStatus+". Save and verify Update View.");
 
@@ -1277,6 +1534,7 @@ public sealed class SupportOrthoTenViewGenerator
             // Never let eNotApplicable from WriteMessage mask the real exception.
             SafeWriteToActiveEditor("REV22 RESULT: " + report);
         }
+        return succeeded;
     }
 
     // REV22.29 read-only API reflection; verified from native DLL metadata:
@@ -1456,9 +1714,9 @@ public sealed class SupportOrthoTenViewGenerator
                 vp.TwistAngle,vp.CustomScale));
         }
         tr.Commit();
-        if(views.Count!=10)
+        if(views.Count!=ids.Count||views.Count==0||views.Count>10)
             throw new InvalidOperationException(
-                "REV22.29 member labels require TEN genuine native cameras.");
+                "SPTC labels require all selected native view cameras.");
         return views;
     }
 
@@ -1723,8 +1981,8 @@ public sealed class SupportOrthoTenViewGenerator
         Database db,string paperLayout,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles)
     {
-        if(titles==null||titles.Count!=10)
-            throw new ArgumentException("REV22.29 requires exactly ten titles.");
+        if(titles==null||titles.Count<1||titles.Count>10)
+            throw new ArgumentException("SPTC selected native view title count invalid.");
         using Transaction tr=db.TransactionManager.StartTransaction();
         var layouts=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,OpenMode.ForRead);
         if(!layouts.Contains(paperLayout))

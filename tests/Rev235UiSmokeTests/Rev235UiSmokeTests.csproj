@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoViewTitlePlan.cs" Link="NativeOrthoViewTitlePlan.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan17.cs" Link="SupportOrthoMemberCalloutPlan17.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan27.cs" Link="SupportOrthoMemberCalloutPlan27.cs"/>
+  </ItemGroup>
+</Project>
