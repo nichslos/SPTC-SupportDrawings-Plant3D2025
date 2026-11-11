@@ -1,5 +1,55 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
+## REV 22.44 — Every orthographic view, every structure/support member, H and V
+
+This revision changes the **default-on Auto H/V dimensions: all Ortho
+members/views** option to meet the new drawing requirement illustrated by
+the 2026-11-11 six-view PDF. Previous REV22.42/43 deliberately kept only
+one representative dimension across the whole drawing; they often left
+BOTTOM, LEFT, RIGHT and BACK without a dimension.
+
+- **Each selected TOP/BOTTOM/FRONT/BACK/LEFT/RIGHT native view** now
+  independently attempts **two DIMLINEAR entities per recognized Plant
+  StructureMember or Plant Support**, one horizontally and one vertically.
+  An identical length or member shown in another view is **not suppressed**.
+  This applies to PnP-verified native source members and qualifying Plant
+  members in resolved nested XREFs (in their host WCS positions).
+- Values are the **overall horizontal and vertical view-projected geometric
+  envelope** of the source member, computed from eight corners of its
+  WCS GeometricExtents and the **actual saved native viewport camera/scale**.
+  **These are NOT member cutting/centerline lengths**; e.g. a vertical post
+  can have separate plan footprint dimensions in TOP and its overall height
+  in FRONT. An assembly's overall envelope may contain more than just the
+  bare steel.
+- Native AutoCAD RotatedDimension entities are placed in **paper space**
+  on the existing `SPTC_AUTO_DIMLINEAR` layer. A paper-size length is NOT
+  misreported as a model millimeter length: the displayed number is
+  calculated from the actual native viewport projection and source units.
+- Multiple dimension line lanes are tried to avoid text/line crowding and
+  the Ortho viewport frames. A zero/too small projected axis, an
+  unrecognized source, a partial/off-view member, or insufficient paper
+  space is **skipped**, with a precise `REV22_44_DIMENSION_SKIPPED` reason.
+  Thus no plugin can guarantee both dimensions for every object if the
+  drawing is too small to place them legibly.
+- **Isometric NW/NE/SW/SE views remain excluded from linear H/V
+  dimensions.** Their apparent projected lengths are foreshortened and
+  must not be represented as true DIMLINEAR measurements. They can still
+  show existing pipe, support and member leader annotations.
+- Result TXT contains `REV22_44_DIMENSION_MODE`,
+  `REV22_44_MEMBER_SOURCES`, `REV22_44_HV_AXES_REQUESTED`,
+  `REV22_44_HV_AXES_PLANNED`, `REV22_44_DIMENSIONS_CREATED`, and
+  per-view `REV22_44_VIEW` lines with horizontal/vertical counts.
+  Individual dimensions keep their real member handle/XREF reference ID.
+
+**Safety and limitations:** Source models, loaded XREFs and PnP tables are
+never written. SupportFocus, four existing AutoCAD commands, branded
+persistent palette, custom Paper Scale, Ortho creation, BOP/TOS and member
+leader annotations remain unchanged. Dimensions are native but **not
+associative to model modifications**; manually updating an existing Ortho
+will not refresh the plugin-authored dimensions. Generate a fresh Ortho
+from a copied Plant 3D 2025 project and visually check the new H/V dimensions
+before using it for engineering deliverables.
+
 ## REV 22.43 — Vertical Structure/Support overall-height dimensions
 
 Addresses the reported case where a **vertical** support/member appears in
@@ -296,6 +346,6 @@ includes a Windows logo/image/icon smoke test in GitHub Actions.
 
 ### Build
 
-Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_43-VERTICAL-HEIGHT`.
+Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_44-ALL-VIEWS-HV`.
 
 Rollback source is preserved in repository Git history and the [full pre-cleanup archive](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).
