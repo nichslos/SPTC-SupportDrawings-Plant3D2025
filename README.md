@@ -1,10 +1,10 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
-**REV 22.33 — Exactly four production commands.**
+**REV 22.34 — Automatic native Ortho registration, exactly four production commands.**
 
 The tested ten-view native Ortho generation code and its XREF Pipe Line Number Tag / BOP, support TOS, structure annotations, and automatic ten-view placement are unchanged. This revision trims registered AutoCAD commands and obsolete diagnostic code.
 
-## Commands included in REV 22.33
+## Commands included in REV 22.34
 
 | AutoCAD command | Function |
 | --- | --- |
@@ -32,11 +32,13 @@ The previously removed REV22.29 and REV22.30 validation commands also remain abs
 1. Close AutoCAD Plant 3D **2025** completely before replacing an old DLL (previous DLL registrations are kept in the existing AutoCAD process).
 2. Open a copied or backed-up Plant 3D 2025 project.
 3. Run `NETLOAD` and select the new `SPTC.SupportDrawings.dll`.
-4. Use `SPTC_SUPPORTORTHO10` for the proven ten-view workflow, or one of the three export/batch commands above.
+4. Run `SPTC_SUPPORTORTHO10`, select the support and an existing, project-registered **empty native Ortho seed**. The new, uniquely named Ortho DWG is then cloned and registered **without any Yes/No confirmation popup or typed `REV22.29 TEST` confirmation**.
 5. Validate generated Ortho geometry and support annotations in Plant 3D. Autodesk native Ortho generation still uses an unsupported internal API and should be run on copied projects.
+
+**Automatic does not mean unattended:** you still select the support and empty seed. The command still verifies source-project registration, that the seed is native/registered/empty, that the destination does not already exist, and that registration succeeded. It does not overwrite an existing DWG. Invoking the command now directly authorizes the creation of a new Ortho project drawing once those conditions pass.
 
 ## Build and rollback
 
-GitHub Actions (`windows-latest`, .NET 8) enforces an exact four-command allowlist, runs source/geometry/callout regression checks, compiles the DLL, and uploads `SPTC-SupportDrawings-Plant3D2025-REV22_33-FOUR-COMMANDS`.
+GitHub Actions (`windows-latest`, .NET 8) enforces an exact four-command allowlist, runs source/geometry/callout regression checks, compiles the DLL, and uploads `SPTC-SupportDrawings-Plant3D2025-REV22_34-AUTO-REGISTER`.
 
 The complete earlier project and test history is recoverable from Git commits or the [REV22.30 archive branch](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).
