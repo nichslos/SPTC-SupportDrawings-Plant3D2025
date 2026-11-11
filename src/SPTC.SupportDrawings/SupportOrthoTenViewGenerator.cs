@@ -423,6 +423,16 @@ public sealed class SupportOrthoTenViewGenerator
             throw new InvalidOperationException(
                 "REV22.29 duplicate Pipe/Structure Member/Support handle.");
 
+        // REV22.41: capture verified structural/support endpoints while the
+        // source XREF and native model databases are still accessible.
+        // No geometric bounding-box dimensions are guessed.
+        var dimSource=options.AutoDimLinear
+            ? SupportOrthoDimensionSource41.Read(
+                sourceDoc.Database,selectedSupportIds,xrefNearCube,units)
+            : new SupportOrthoDimensionSource41.Result(
+                Array.Empty<SupportOrthoDimensionSource41.Segment>(),
+                Array.Empty<string>());
+
         ProjectPart part;
         try { part = CurrentOrthoProject(); }
         catch (System.Exception ex)
@@ -1539,6 +1549,63 @@ public sealed class SupportOrthoTenViewGenerator
                 Log("STEP10_INDIVIDUAL_MEMBER_ANNOTATION_COUNT=0");
                 Log("STEP10_MEMBER_ANNOTATIONS_CHECK="+annotationStatus);
             }
+            // REV22.41 paper-space native DIMLINEAR annotations.
+            // Orthogonal six-view subset only; ISO projections are never
+            // given misleading rotated dimensions. A dimension is planned
+            // only for a model member with actual source Start/End data.
+            Log("REV22_41_AUTO_DIMLINEAR_ENABLED="+options.AutoDimLinear);
+            Log("REV22_41_VERIFIED_SOURCE_SEGMENTS="+
+                dimSource.Segments.Count);
+            foreach(string diagnostic in dimSource.Diagnostics)
+                Log("REV22_41_SOURCE_DIAGNOSTIC="+diagnostic);
+            if(options.AutoDimLinear)
+            {
+                try
+                {
+                    var dimCameras=ReadNativeMemberCameras(
+                        targetDoc.Database,nativeMemberViewportIds);
+                    var dimensionPlan=SupportOrthoDimLinearPlan41.Build(
+                        dimCameras,dimSource.Segments.Select(s=>
+                            new SupportOrthoDimLinearPlan41.Segment(
+                                s.Key,s.Kind,s.Ax,s.Ay,s.Az,
+                                s.Bx,s.By,s.Bz,s.SourceLength,
+                                s.Millimeters)).ToArray(),
+                        paperWidth,paperHeight);
+                    Log("REV22_41_DIMENSION_LAYER="+
+                        SupportOrthoDimLinearPlan41.Layer);
+                    Log("REV22_41_ORTHOGRAPHIC_VIEWS="+
+                        dimensionPlan.OrthographicViews);
+                    Log("REV22_41_DIMENSIONS_PLANNED="+
+                        dimensionPlan.Dimensions.Count);
+                    foreach(var rejected in dimensionPlan.Skipped)
+                        Log("REV22_41_DIMENSION_SKIPPED="+rejected);
+                    int created=SupportOrthoDimLinearWriter41.Write(
+                        targetDoc.Database,paperLayout,
+                        dimensionPlan.Dimensions,out var dimensionWarnings);
+                    Log("REV22_41_DIMENSIONS_CREATED="+created);
+                    foreach(var warning in dimensionWarnings)
+                        Log("REV22_41_DIMENSION_WRITE_WARNING="+warning);
+                    foreach(var dimension in dimensionPlan.Dimensions)
+                        Log("REV22_41_DIM_SOURCE="+dimension.View+
+                            " SOURCE="+dimension.Source+
+                            " KIND="+dimension.Kind+
+                            " ORIENTATION="+
+                                (dimension.Horizontal?"HORIZONTAL":"VERTICAL")+
+                            " TEXT="+dimension.Measurement+
+                            " MM VERIFIED_ENDPOINTS=TRUE");
+                    Log("REV22_41_DIMENSION_RESULT="+
+                        (created==dimensionPlan.Dimensions.Count?
+                            "PASS":"PARTIAL"));
+                }
+                catch(System.Exception ex)
+                {
+                    // Do not risk breaking verified native view registration
+                    // because optional dimensions could not be generated.
+                    Log("REV22_41_DIMENSION_RESULT=FAILED:"+ex.GetType().Name+
+                        ":"+ex.Message);
+                }
+            }
+            Log("REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=TRUE");
             Log("UPDATE_VIEW_MANUAL_TEST_REQUIRED=TRUE");
             Log("FINAL_STATUS=TEN_NATIVE_VIEWS_AND_TITLES_MEMBER_LEADERS_"+
                 annotationStatus);
