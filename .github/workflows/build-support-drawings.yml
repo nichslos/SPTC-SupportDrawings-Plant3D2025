@@ -56,6 +56,23 @@ jobs:
               throw "Obsolete audit command still registered: $cmd"
             }
           }
+          # All command registrations in the shipped source must equal exactly these four.
+          $required=@('SPTC_SUPPORTORTHO10','SPTC_SUPPORTEXPORT',
+              'SPTC_SUPPORTBATCH','SPTC_SUPPORT2DBATCH') | Sort-Object
+          $actual=@()
+          foreach($hit in [regex]::Matches($sourceText,
+              '\[\s*CommandMethod\s*\(\s*"([^"]+)"')) {
+            $actual+= $hit.Groups[1].Value
+          }
+          $actual=@($actual | Sort-Object)
+          if($actual.Count -ne 4 -or
+             @(Compare-Object -ReferenceObject $required -DifferenceObject $actual).Count -gt 0) {
+            throw "REV22.33 requires exactly four commands. Found: $($actual -join ', ')"
+          }
+          foreach($diagnostic in @('NativeOrthoTopPreflight.cs',
+              'NativeOrthoIsoReferenceComparison.cs')) {
+            if(Test-Path "$root/$diagnostic") {throw "Legacy command file still shipped: $diagnostic"}
+          }
           if(-not $labels.Contains('"LINE NO: "+tag')) {throw 'Compact XREF tag formatting missing'}
           if(Get-ChildItem $root -Filter '*Test.cs') {
             throw 'Historical development command clones must not ship in the active source tree'
@@ -76,11 +93,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.32 production DLL bytes: $size"
+          Write-Host "REV22.33 production DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_32-PRODUCTION
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_33-FOUR-COMMANDS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error

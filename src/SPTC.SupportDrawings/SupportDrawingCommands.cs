@@ -14,8 +14,8 @@ using WinForms = System.Windows.Forms;
 namespace SPTC.SupportDrawings;
 
 /// <summary>
-/// SPTC SupportDrawings commands for support export, inspection and
-/// Plant 3D native Ortho workflows.
+/// Support export and batch-drawing production commands.
+/// Native Ortho ten-view generation is registered separately.
 /// </summary>
 public sealed class SupportDrawingCommands : IExtensionApplication
 {
@@ -54,168 +54,6 @@ public sealed class SupportDrawingCommands : IExtensionApplication
             ed.WriteMessage("\nOpen the DWG layout and VERIFY geometry, units, orientation, and all dimensions.");
         }
         catch (System.Exception e) { ed.WriteMessage("\nSupport export failed: " + e.Message); }
-    }
-
-    // REV08: Native Plant 3D Ortho creation is an interactive project workflow.
-    // Start from the registered 3D model, not from our independent linework DWG.
-    // Avoid driving the OrthoCube and project dialogs with blind keystrokes.
-    [CommandMethod("SPTC_SUPPORT2D", CommandFlags.Modal)]
-    public void StartNativeOrtho()
-    {
-        Document? doc = AcadApp.DocumentManager.MdiActiveDocument;
-        if (doc == null) return;
-        Editor editor = doc.Editor;
-
-        if (string.IsNullOrWhiteSpace(doc.Database.Filename))
-        {
-            editor.WriteMessage("\nREV13: Save the source model DWG inside the active Plant 3D project first.");
-            return;
-        }
-
-        // REV13: derive the source and Plant project from the active document.
-        // Never assume a named sample DWG, fixed project, zone, or object handle.
-        NativeOrthoProjectCheck.Result source = NativeOrthoProjectCheck.Inspect(doc.Database.Filename);
-        editor.WriteMessage("\nREV13 source 3D model: " + doc.Database.Filename);
-        editor.WriteMessage("\nREV13 active project: " + source.ProjectSummary);
-        editor.WriteMessage("\nREV13 project registration: " + source.RegistrationStatus);
-        if (!source.SourceRegistrationVerified)
-            editor.WriteMessage("\nWARNING: Ortho source registration is unverified. Plant 3D may reject this drawing.");
-
-        editor.WriteMessage("\nSPTC REV13: Select the support members to frame with Plant 3D OrthoCube.");
-        editor.WriteMessage("\nIMPORTANT: Native PLANTORTHOCREATE uses the model and OrthoCube. Selection is guidance, not an automatic Ortho-only filter.");
-        PromptSelectionResult selection = editor.GetSelection(new PromptSelectionOptions
-        {
-            MessageForAdding = "\nSelect support steel members in the SOURCE project 3D model: "
-        });
-        if (selection.Status != PromptStatus.OK) return;
-
-        int count = 0;
-        Extents3d? selectedBounds = null;
-        using (Transaction transaction = doc.Database.TransactionManager.StartTransaction())
-        {
-            foreach (ObjectId id in selection.Value.GetObjectIds())
-            {
-                if (transaction.GetObject(id, OpenMode.ForRead, false) is not Entity entity)
-                    continue;
-                count++;
-                try
-                {
-                    Extents3d ext = entity.GeometricExtents;
-                    if (selectedBounds.HasValue)
-                    {
-                        Extents3d current = selectedBounds.Value;
-                        current.AddExtents(ext);
-                        selectedBounds = current;
-                    }
-                    else selectedBounds = ext;
-                }
-                catch (Autodesk.AutoCAD.Runtime.Exception)
-                {
-                    // Native Plant 3D objects may expose only approximate or no
-                    // AutoCAD extents. This must not prevent the native Ortho dialog.
-                }
-            }
-        }
-        if (count == 0)
-        {
-            editor.WriteMessage("\nREV13: No valid source entities selected. Ortho was not started.");
-            return;
-        }
-
-        editor.WriteMessage($"\nREV13 selected {count} support entities.");
-        if (selectedBounds.HasValue)
-        {
-            Extents3d ext = selectedBounds.Value;
-            editor.WriteMessage(string.Format(CultureInfo.InvariantCulture,
-                "\nSource bounding box: MIN({0:0.###}, {1:0.###}, {2:0.###}) MAX({3:0.###}, {4:0.###}, {5:0.###}), source drawing units.",
-                ext.MinPoint.X, ext.MinPoint.Y, ext.MinPoint.Z,
-                ext.MaxPoint.X, ext.MaxPoint.Y, ext.MaxPoint.Z));
-        }
-
-        editor.WriteMessage("\nNext: choose Create New Ortho DWG (or an existing project Ortho),");
-        editor.WriteMessage("\nposition and resize the OrthoCube around ONLY these supports, select Front/Top/Side,");
-        editor.WriteMessage("\nchoose scale, press Create, then place the Ortho viewport in the drawing.");
-        editor.WriteMessage("\nPlant 3D generates the project-linked 2D DWG. This remains INTERACTIVE.");
-        editor.WriteMessage("\nFor fully unattended automation API feasibility, run SPTC_ORTHOAUTOPROBE and review its report.");
-
-        try
-        {
-            // Queue the native Plant 3D command after our modal managed
-            // command ends; interactive UI and OrthoCube belong to Plant 3D.
-            doc.SendStringToExecute("_.PLANTORTHOCREATE ", true, false, false);
-        }
-        catch (System.Exception ex)
-        {
-            editor.WriteMessage("\nREV13 unable to start PLANTORTHOCREATE: " + ex.Message);
-            editor.WriteMessage("\nTry running PLANTORTHOCREATE manually in the original project model DWG.");
-        }
-    }
-
-    [CommandMethod("SPTC_SUPPORT2DLINEWORK", CommandFlags.Modal)]
-    public void Export2D()
-    {
-        Document? doc = AcadApp.DocumentManager.MdiActiveDocument;
-        if (doc == null) return;
-        Editor editor = doc.Editor;
-        PromptSelectionResult selection = editor.GetSelection(new PromptSelectionOptions
-        {
-            MessageForAdding = "\nSelect support linework or blocks for projected 2D geometry: "
-        });
-        if (selection.Status != PromptStatus.OK) return;
-
-        using var dialog = new WinForms.SaveFileDialog
-        {
-            Title = "SPTC REV07 - Save 2D Orthographic Linework",
-            Filter = "AutoCAD Drawing (*.dwg)|*.dwg",
-            FileName = "SUPPORT_2D_PROJECTION.dwg",
-            DefaultExt = "dwg",
-            AddExtension = true,
-            OverwritePrompt = true
-        };
-        if (dialog.ShowDialog() != WinForms.DialogResult.OK) return;
-        try
-        {
-            Support2DExporter.Result result =
-                Support2DExporter.Export(doc.Database, selection.Value.GetObjectIds(), dialog.FileName);
-            editor.WriteMessage($"\nREV07 projected DWG: {dialog.FileName}");
-            editor.WriteMessage($"\nGenerated {result.Lines2D} 2D LINE entities from {result.ExtractedSegments} 3D edges; " +
-                $"collapsed {result.SkippedCollapsed}, unsupported {result.Unsupported}, approx curves/decompositions {result.Approximated}.");
-            editor.WriteMessage($"\nReview unsupported geometry report: {result.Report}");
-            editor.WriteMessage("\nREV07: BRep extraction attempts real Solid3d edges from Plant 3D components, including structural steel.");
-            editor.WriteMessage("\nWARNING: curve sampling is approximate; no solid silhouette or hidden-line removal. Not a fabrication drawing.");
-        }
-        catch (Support2DGeometryException ex)
-        {
-            // A separate, explicitly labeled 3D view-based sheet is safer than
-            // inventing a rectangular 2D pipe outline from bounding extents.
-            string fallback = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dialog.FileName))!,
-                Path.GetFileNameWithoutExtension(dialog.FileName) + "_3D_VIEWPORT_FALLBACK.dwg");
-            if (File.Exists(fallback))
-            {
-                editor.WriteMessage("\nREV07: 2D extraction unsupported. Fallback file already exists, so nothing overwritten.");
-                editor.WriteMessage("\n" + ex.Message);
-                return;
-            }
-            try
-            {
-                SheetExporter.Export(doc.Database, selection.Value.GetObjectIds(), fallback,
-                    "VISUAL FALLBACK - NOT 2D FABRICATION");
-                editor.WriteMessage("\nREV07: 2D extraction unavailable; produced a 3D VIEWPORT FALLBACK instead: " + fallback);
-                editor.WriteMessage("\nThis DWG contains the native 3D model in viewports, NOT flattened 2D geometry.");
-                editor.WriteMessage("\n" + ex.Message);
-            }
-            catch (System.Exception fallbackError)
-            {
-                editor.WriteMessage("\nREV07: 2D extraction and visual fallback both failed: " + fallbackError.Message);
-                Write2DDiagnostic(editor, dialog.FileName, fallbackError, "3D viewport fallback");
-                editor.WriteMessage("\n" + ex.Message);
-            }
-        }
-        catch (System.Exception ex)
-        {
-            editor.WriteMessage("\nREV07 2D export stopped: " + ex.GetType().Name + ": " + ex.Message);
-            Write2DDiagnostic(editor, dialog.FileName, ex, "SPTC_SUPPORT2D");
-        }
     }
 
     [CommandMethod("SPTC_SUPPORT2DBATCH", CommandFlags.Modal)]
@@ -301,45 +139,6 @@ public sealed class SupportDrawingCommands : IExtensionApplication
         }
         editor.WriteMessage($"\nREV07 batch finished: {passed} actual 2D DWGs, {fallbackCount} explicitly labeled 3D viewport fallback DWGs, {failed} failures/skips.");
     }
-
-    [CommandMethod("SPTC_SUPPORTINSPECT", CommandFlags.Modal)]
-    public void Inspect()
-    {
-        Document? doc = AcadApp.DocumentManager.MdiActiveDocument;
-        if (doc == null) return;
-        Editor ed = doc.Editor;
-        PromptSelectionResult result = ed.GetSelection(new PromptSelectionOptions
-        {
-            MessageForAdding = "\nSelect support objects or block inserts to inspect: "
-        });
-        if (result.Status != PromptStatus.OK) return;
-
-        using var dialog = new WinForms.SaveFileDialog
-        {
-            Title = "SPTC - Save Support Entity Audit",
-            Filter = "CSV File (*.csv)|*.csv",
-            FileName = "SPTC_Support_Entity_Audit.csv",
-            DefaultExt = "csv",
-            AddExtension = true,
-            OverwritePrompt = true
-        };
-        if (dialog.ShowDialog() != WinForms.DialogResult.OK) return;
-        try
-        {
-            SupportEntityAudit.Summary summary =
-                SupportEntityAudit.WriteReport(doc.Database, result.Value.GetObjectIds(), dialog.FileName);
-            ed.WriteMessage($"\nSPTC REV03 audit saved: {dialog.FileName}");
-            ed.WriteMessage($"\nSelected entities: {summary.SelectedEntities}; 1-level block members: {summary.DefinitionEntities}; support candidates: {summary.SupportCandidates}; selected without extents: {summary.MissingExtents}.");
-            ed.WriteMessage("\nClassifications are identification hints, not validated Plant 3D support/BOM data.");
-        }
-        catch (System.Exception ex)
-        {
-            ed.WriteMessage("\nSPTC support audit failed: " + ex.Message);
-        }
-    }
-
-    [CommandMethod("SPTC_SUPPORTMANAGER", CommandFlags.Modal)]
-    public void OpenManager() => ExportBatch();
 
     [CommandMethod("SPTC_SUPPORTBATCH", CommandFlags.Modal)]
     public void ExportBatch()
