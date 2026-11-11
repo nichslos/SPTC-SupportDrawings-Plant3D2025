@@ -24,12 +24,13 @@ public static class SupportOrthoMemberCalloutPlan27
 
     public sealed record Member(string Handle,string Size,
         double X,double Y,double Z,bool HasTos,string? TosText,string TosSource,
-        string? PipeBopText=null,string? PipeBopSource=null);
+        string? PipeBopText=null,string? PipeBopSource=null,
+        string? XrefDrawingName=null,string? XrefKind=null);
     public sealed record Callout(
         string View,string Handle,string Text,bool HasTos,
         double AnchorX,double AnchorY,double LaneX,
         double LabelX,double LabelTop,double LabelWidth,double LabelHeight,
-        bool IsPipe=false);
+        bool IsPipe=false,bool IsXrefMember=false);
     public sealed record Result(
         IReadOnlyList<Callout> Callouts,
         IReadOnlyList<string> Skipped,
@@ -101,11 +102,16 @@ public static class SupportOrthoMemberCalloutPlan27
                     skips.Add(camera.Name+":"+member.Handle+":OUTSIDE_VIEW");
                     continue;
                 }
-                string label="["+member.Handle+"] "+member.Size;
+                bool isXref=member.XrefDrawingName!=null;
+                string label=isXref
+                    ? "XREF "+(member.XrefKind??"MEMBER")+": "+
+                        member.XrefDrawingName
+                    : "["+member.Handle+"] "+member.Size;
                 bool isPipe=member.PipeBopSource!=null;
-                bool hasSecondLine=member.HasTos||isPipe;
+                bool hasSecondLine=!isXref&&(member.HasTos||isPipe);
                 string? secondary=null;
-                if(isPipe)
+                if(isXref) secondary=null;
+                else if(isPipe)
                     secondary=member.PipeBopText??"BOP: N/A";
                 else if(member.HasTos)
                     secondary=member.TosText==null?"TOS: N/A":
@@ -139,11 +145,38 @@ public static class SupportOrthoMemberCalloutPlan27
                 Math.Max(0,projected.Count-1)*RowSpacingMm;
             if(total>topSafe-bottomSafe+1e-6)
             {
-                // Keep all properly stored structural Size values intact,
-                // never write overlapping paper-space labels.
-                skips.Add(camera.Name+":NOT_ENOUGH_LABEL_HEIGHT");
-                empty.Add(camera.Name);
-                continue;
+                // Optional XREF filenames must NEVER crowd out previously
+                // validated native steel/support and pipe annotations.
+                // Keep original ten-view behavior when no XREFs are present.
+                var required=projected.Where(t=>
+                    t.Member.XrefDrawingName==null).ToList();
+                var extras=projected.Where(t=>
+                    t.Member.XrefDrawingName!=null).ToList();
+                double needed=required.Sum(t=>t.Height)+
+                    Math.Max(0,required.Count-1)*RowSpacingMm;
+                if(needed>topSafe-bottomSafe+1e-6)
+                {
+                    skips.Add(camera.Name+":NOT_ENOUGH_LABEL_HEIGHT");
+                    empty.Add(camera.Name);
+                    continue;
+                }
+                while(extras.Count>0)
+                {
+                    int count=required.Count+extras.Count;
+                    double size=needed+extras.Sum(t=>t.Height)+
+                        (count>1?Math.Max(0,count-1)*RowSpacingMm-
+                            Math.Max(0,required.Count-1)*RowSpacingMm:0);
+                    if(size<=topSafe-bottomSafe+1e-6)break;
+                    var dropped=extras[^1];
+                    skips.Add(camera.Name+":"+dropped.Member.Handle+
+                        ":XREF_FILENAME_NO_LABEL_SPACE");
+                    extras.RemoveAt(extras.Count-1);
+                }
+                projected=required.Concat(extras).OrderByDescending(t=>t.Y)
+                    .ThenBy(t=>t.Member.Handle,
+                        StringComparer.OrdinalIgnoreCase).ToList();
+                total=projected.Sum(t=>t.Height)+
+                    Math.Max(0,projected.Count-1)*RowSpacingMm;
             }
             double rowTop=Math.Min(topSafe,
                 Math.Max(bottomSafe+total,
@@ -164,7 +197,8 @@ public static class SupportOrthoMemberCalloutPlan27
                 notes.Add(new Callout(camera.Name,item.Member.Handle,
                     item.Text,item.HasTos,item.X,item.Y,lane,
                     x,labelTop,width,item.Height,
-                    item.Member.PipeBopSource!=null));
+                    item.Member.PipeBopSource!=null,
+                    item.Member.XrefDrawingName!=null));
                 placed++;
             }
             if(placed==0)empty.Add(camera.Name);

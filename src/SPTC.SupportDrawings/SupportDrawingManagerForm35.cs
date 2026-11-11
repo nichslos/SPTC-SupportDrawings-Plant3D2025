@@ -25,7 +25,8 @@ internal sealed record SupportDrawingUiOptions(
     bool Bop,
     bool Tos,
     bool Description,
-    bool BatchOrtho)
+    bool BatchOrtho,
+    bool XrefMemberNames)
 {
     public static readonly string[] AllViews =
         {"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK","NW","NE","SW","SE"};
@@ -48,6 +49,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
     private readonly CheckBox tos = new();
     private readonly CheckBox description = new();
     private readonly CheckBox batch = new();
+    private readonly CheckBox xrefNames = new();
     private readonly TextBox preview = new();
     private readonly string source;
     private readonly string orthoFolder;
@@ -193,11 +195,15 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
         description.Text = "Support / Structure description"; description.Checked = true;
         orthoTab.Controls.AddRange(new Control[] {line,bop,tos,description});
 
-        batch.SetBounds(407, 306, 305, 49);
+        xrefNames.SetBounds(407, 298, 314, 29);
+        xrefNames.Text = "Nearby XREF members: label source DWG";
+        xrefNames.Checked = true;
+        orthoTab.Controls.Add(xrefNames);
+        batch.SetBounds(407, 332, 310, 45);
         batch.Text = "Batch Ortho: one native Ortho DWG per\r\nselected support BLOCK reference";
         batch.Checked = false;
         orthoTab.Controls.Add(batch);
-        Label notice = L("Batch runs sequentially. Start with a copied project.",407,358,330);
+        Label notice = L("Batch runs sequentially. Start with a copied project.",407,386,330);
         notice.ForeColor = Color.DarkGoldenrod;
         orthoTab.Controls.Add(notice);
 
@@ -266,7 +272,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
             "Project Ortho folder: " + orthoFolder + "\r\n" +
             "Seed: " + (autoSeed.Checked ? "Auto (registered / empty)" : seed.Text) +
             "   |   Views: " + string.Join(",",chosen) +
-            "   |   Scale: " + scale.Text;
+            "   |   Scale: " + scale.Text +
+            "   |   XREF member names: " + (xrefNames.Checked?"On":"Off");
     }
 
     private void RunSelected()
@@ -305,7 +312,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.Form
             tab, cubeMode.SelectedIndex==0,
             autoSeed.Checked, seed.Text.Trim(), prefix.Text.Trim(), denominator,
             selected, line.Checked,bop.Checked,tos.Checked,
-            description.Checked,batch.Checked);
+            description.Checked,batch.Checked,xrefNames.Checked);
         DialogResult = DialogResult.OK;
         Close();
     }

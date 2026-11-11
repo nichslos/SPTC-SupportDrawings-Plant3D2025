@@ -293,6 +293,19 @@ public sealed class SupportOrthoTenViewGenerator
             sourceDoc.Database,geometry.Value,units);
         var localPipeBounds=pipeDiscovery.Candidates
             .Select(p=>p.WorldBounds).ToList();
+        // Optional, read-only proximity scan of loaded nested XREF
+        // StructureMember / genuine Plant Support entities.
+        // The XREF file name is always derived from its actual source DB.
+        var xrefMembers=options.XrefMemberNames
+            ? SupportOrthoXrefMemberDiscovery37.Scan(
+                sourceDoc.Database,geometry.Value,units)
+            : new SupportOrthoXrefMemberDiscovery37.Result(
+                Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),
+                Array.Empty<string>());
+        ed.WriteMessage("\nSPTC nearby XREF STRUCTURE/SUPPORT objects: "+
+            xrefMembers.Items.Count);
+        foreach(string diagnostic in xrefMembers.Diagnostics)
+            ed.WriteMessage("\nSPTC XREF: "+diagnostic);
         var selectedPipeIds=pipeDiscovery.Candidates
             .Where(p=>!p.FromXref).Select(p=>p.Id).Distinct().ToList();
         SupportFocusedCubePlanner.Result? focusPlan=null;
@@ -314,16 +327,24 @@ public sealed class SupportOrthoTenViewGenerator
         {
             if(supportFocus)
             {
-                var autoPlan=SupportFocusedCubePlanner.BuildAutomatic(
+                var pipeOnlyPlan=SupportFocusedCubePlanner.BuildAutomatic(
                     geometry.Value,localPipeBounds,units);
-                focusPlan=autoPlan.Cube;
-                focusXYClearanceMm=autoPlan.XYClearanceMm;
-                focusPipeReachMm=autoPlan.PipeVerticalReachMm;
-                if(localPipeBounds.Count>0 && focusPlan.PipesAccepted==0)
+                // Retain the proven "no eligible pipe" preflight exactly.
+                if(localPipeBounds.Count>0 &&
+                   pipeOnlyPlan.Cube.PipesAccepted==0)
                     throw new InvalidOperationException(
                         "No selected pipe intersects the automatically computed "+
                         "support cube. Reselect nearby pipes or use Original mode.");
-                ed.WriteMessage("\nREV22.29: Calculated XY clearance="+
+                var focusCandidates=localPipeBounds.Concat(
+                    xrefMembers.Items.Select(x=>x.WorldBounds)).ToArray();
+                var autoPlan=xrefMembers.Items.Count>0
+                    ? SupportFocusedCubePlanner.BuildAutomatic(
+                        geometry.Value,focusCandidates,units)
+                    : pipeOnlyPlan;
+                focusPlan=autoPlan.Cube;
+                focusXYClearanceMm=autoPlan.XYClearanceMm;
+                focusPipeReachMm=autoPlan.PipeVerticalReachMm;
+                 ed.WriteMessage("\nREV22.29: Calculated XY clearance="+
                     focusXYClearanceMm.ToString("0.###",CultureInfo.InvariantCulture)+
                     " mm; pipe elevation reach="+
                     focusPipeReachMm.ToString("0.###",CultureInfo.InvariantCulture)+" mm.");
@@ -361,7 +382,22 @@ public sealed class SupportOrthoTenViewGenerator
             new SupportOrthoMemberCalloutPlan27.Member(
                 p.Handle,"Line Number Tag: "+p.LineTag,p.X,p.Y,p.Z,
                 false,null,"NOT_STEEL_TOS",p.BopLabel,p.BopSource)).ToArray();
-        sourceAnnotations=sourceAnnotations.Concat(pipeAnnotations).ToArray();
+        // Optional XREF members receive source-DWG-name labels only.
+        // We do NOT guess Structure Size, Support Description, TOS or
+        // associated source PnP properties from foreign XREF databases.
+        var xrefNearCube=SupportOrthoXrefMemberDiscovery37.Inside(
+            xrefMembers.Items,layout.PaddedCube);
+        var xrefAnnotations=xrefNearCube.Select(x=>
+        {
+            var position=SupportOrthoXrefMemberDiscovery37.ClippedCenter(
+                x.WorldBounds,layout.PaddedCube);
+            return new SupportOrthoMemberCalloutPlan27.Member(
+                x.Key,"XREF "+x.Kind+": "+x.DrawingName,
+                position.X,position.Y,position.Z,false,null,
+                "XREF_SOURCE_DWG",null,null,x.DrawingName,x.Kind);
+        }).ToArray();
+        sourceAnnotations=sourceAnnotations.Concat(pipeAnnotations)
+            .Concat(xrefAnnotations).ToArray();
         if(sourceAnnotations.Select(m=>m.Handle).Distinct(
             StringComparer.OrdinalIgnoreCase).Count()!=sourceAnnotations.Length)
             throw new InvalidOperationException(
@@ -542,6 +578,16 @@ public sealed class SupportOrthoTenViewGenerator
             Log("REV22_29_PNP_SUPPORT_CANDIDATES="+plantSupports.CandidateCount);
             Log("REV22_29_PNP_SUPPORT_LINKED_ROWS="+plantSupports.LinkedRowCount);
             Log("REV22_29_SELECTED_PIPE_IDS="+selectedPipeIds.Count);
+            Log("REV22_37_XREF_MEMBER_NAMES_ENABLED="+options.XrefMemberNames);
+            Log("REV22_37_NEARBY_XREF_MEMBER_COUNT="+xrefMembers.Items.Count);
+            Log("REV22_37_XREF_MEMBER_IN_CUBE_COUNT="+xrefNearCube.Length);
+            foreach(var xrefMember in xrefNearCube)
+                Log("REV22_37_XREF_SOURCE="+xrefMember.Key+
+                    " KIND="+xrefMember.Kind+
+                    " SOURCE_DWG="+xrefMember.DrawingName+
+                    " SOURCE_FILE="+xrefMember.DrawingPath);
+            foreach(string diagnostic in xrefMembers.Diagnostics)
+                Log("REV22_37_XREF_DIAGNOSTIC="+diagnostic);
             Log("REV22_29_PIPE_CANDIDATES="+pipeRead.Candidates);
             Log("REV22_29_PIPE_PNP_LINKED_ROWS="+pipeRead.LinkedRows);
             Log("REV22_29_PIPE_ANNOTATION_SOURCES="+pipeRead.Pipes.Count);
@@ -1348,6 +1394,8 @@ public sealed class SupportOrthoTenViewGenerator
                 // properties, support data or viewport geometry.
                 var visibleCallouts=plan.Callouts.Select(note=>
                 {
+                    if(note.IsXrefMember)
+                        return options.XrefMemberNames?note:null;
                     if(note.IsPipe)
                     {
                         if(!pipeByHandle.TryGetValue(note.Handle,out var p) ||
@@ -1429,9 +1477,10 @@ public sealed class SupportOrthoTenViewGenerator
                 foreach(var noLabels in plan.ViewWithoutLabels)
                     Log("STEP10_MEMBER_ANNOTATION_VIEW_EMPTY="+noLabels);
                 int perViewExpected=sourceAnnotations.Count(m=>
-                    m.PipeBopSource!=null
+                    m.XrefDrawingName==null &&
+                    (m.PipeBopSource!=null
                         ? options.LineNumber||options.Bop
-                        : options.Description||(options.Tos&&m.HasTos));
+                        : options.Description||(options.Tos&&m.HasTos)));
                 int target=options.Views.Count*perViewExpected;
                 int steelTosTarget=options.Tos?
                     options.Views.Count*horizontalSteel.HorizontalCount:0;
@@ -1439,7 +1488,19 @@ public sealed class SupportOrthoTenViewGenerator
                     options.Views.Count*plantSupports.Members.Count:0;
                 int pipeBopTarget=options.Bop?
                     options.Views.Count*pipeRead.Pipes.Count:0;
-                annotationStatus=annotated==target&&
+                // XREF file-name notes are best-effort; failure/overflow
+                // must not turn a completely correct native annotation
+                // result into PARTIAL.
+                int xrefPlanned=visibleCallouts.Count(c=>c.IsXrefMember);
+                int xrefWriteSkips=nativeTextWarnings.Count(w=>
+                    w.Contains("/XREF_MEMBER:",StringComparison.Ordinal));
+                int xrefWritten=Math.Max(0,xrefPlanned-xrefWriteSkips);
+                int nativeWritten=annotated-xrefWritten;
+                Log("REV22_37_XREF_FILENAME_LABELS_PLANNED="+xrefPlanned);
+                Log("REV22_37_XREF_FILENAME_LABELS_WRITTEN="+xrefWritten);
+                Log("REV22_37_XREF_FILENAME_LABELS_WRITE_SKIPPED="+xrefWriteSkips);
+                Log("REV22_37_NATIVE_LABELS_WRITTEN="+nativeWritten);
+                annotationStatus=nativeWritten==target&&
                     steelTosLabels==steelTosTarget&&
                     supportTosLabels==supportTosTarget&&
                     pipeBopLabels==pipeBopTarget?"PASS":"PARTIAL";

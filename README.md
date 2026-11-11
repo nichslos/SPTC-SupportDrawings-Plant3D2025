@@ -1,5 +1,49 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
+## REV 22.37 — Nearby XREF Structure/Support source DWG annotations
+
+**New default-on option:** `Nearby XREF members: label source DWG` in
+`SPTC_SUPPORTORTHO10` > **10-View Ortho** > **Annotations**.
+
+When SupportFocus is selected (and also when Original mode is used), the
+generator searches a limited support-centered envelope for real Plant 3D
+`StructureMember` and clearly identified native Pipe/Plant Support objects
+inside **resolved, loaded XREFs**, including nested XREFs. It transforms their
+actual source extents into host drawing WCS, then retains only objects that
+intersect the final OrthoCube. Nearby XREF structure/support candidates can
+extend the *vertical* SupportFocus extent within the existing safety cap;
+the selected host support still determines horizontal footprint.
+
+Each matched member is given an actual paper-space source callout such as:
+
+```text
+XREF STRUCTURE: STEEL_SUPPORTS_01.dwg
+XREF SUPPORT: PIPE_SUPPORTS_A.dwg
+```
+
+The displayed DWG filename is read from the **actual source XREF database
+filename**, not assumed from the block name. The full source path, nested
+reference identity, detected object type, and annotation counts are written to
+the generation TXT using the `REV22_37_XREF_...` markers.
+
+XREF filenames use the existing native paper-space leader/callout planner. They
+are **lower priority** than existing native Structure Member Size/TOS and Pipe
+Line Number Tag/BOP labels. If there is not enough safe room, optional XREF
+filenames are skipped and reported rather than crowding out the known-good
+annotations. The new setting is optional; uncheck it to retain exactly the
+previous XREF annotation behavior.
+
+**Scope:** Only verifiably native structure or support objects are labelled;
+ordinary XREF lines, basic 3D solids, and generic block references are not
+misidentified as Plant supports. Source member size, support TOS, and other
+unavailable PnP properties are not invented. A loaded XREF is required;
+unresolved XREFs are skipped with diagnostics. The code does **not** edit source
+DWGs, XREF models, PnP rows, or alter pipe/steel annotation calculations.
+
+Four existing AutoCAD commands are unchanged. The SPTC Engineering branded UI
+remains intact. The code requires a live Plant 3D 2025 copied-project test to
+confirm XREF object type recognition and paper-space callout readability.
+
 ## REV 22.36 — SPTC Engineering branded WinForms UI
 
 The supplied **SPTC Engineering** logo is now embedded directly in the DLL as a
@@ -50,6 +94,6 @@ includes a Windows logo/image/icon smoke test in GitHub Actions.
 
 ### Build
 
-Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_36-BRANDED`.
+Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_37-XREF-MEMBERS`.
 
 Rollback source is preserved in repository Git history and the [full pre-cleanup archive](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).
