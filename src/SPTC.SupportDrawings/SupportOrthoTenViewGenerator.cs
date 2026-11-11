@@ -629,6 +629,13 @@ public sealed class SupportOrthoTenViewGenerator
                 layout.PaddedCube.MaxY,layout.PaddedCube.MaxZ));
             Log("ONE_CLICK_ANCHOR_REQUIRED=TRUE");
             Log("PUBLIC_API_ONLY=FALSE");
+            Log("REV22_35_SELECTED_VIEWS="+string.Join(",",options.Views));
+            Log("REV22_35_SCALE_REQUEST="+
+                (options.ScaleDenominator==0?"AUTO":"1:"+options.ScaleDenominator));
+            Log("REV22_35_ANNOTATION_OPTIONS=LINE:"+options.LineNumber+
+                " BOP:"+options.Bop+" TOS:"+options.Tos+
+                " DESCRIPTION:"+options.Description);
+            Log("REV22_35_BATCH_MODE="+options.BatchOrtho);
 
             // REV16-proven native DWG seed clone; never clone a DWT.
             using (var db = new Database(false, true))
@@ -1330,10 +1337,33 @@ public sealed class SupportOrthoTenViewGenerator
                 // Structural members and Support TOS retain their REV22.28 text.
                 var pipeByHandle=pipeRead.Pipes.ToDictionary(p=>p.Handle,
                     StringComparer.OrdinalIgnoreCase);
+                // Apply presentation-only annotation toggles after source-grounded
+                // camera/callout planning. This never modifies native pipe
+                // properties, support data or viewport geometry.
                 var visibleCallouts=plan.Callouts.Select(note=>
-                    note.IsPipe&&pipeByHandle.TryGetValue(note.Handle,out var p)
-                        ? note with {Text=SupportOrthoPipeCallout29.Compose(
-                            p.LineTag,p.BopLabel)} : note).ToArray();
+                {
+                    if(note.IsPipe)
+                    {
+                        if(!pipeByHandle.TryGetValue(note.Handle,out var p) ||
+                           (!options.LineNumber&&!options.Bop))
+                            return null;
+                        string first=options.LineNumber?"LINE NO: "+p.LineTag:p.BopLabel;
+                        string label=options.LineNumber&&options.Bop?
+                            first+"\n"+p.BopLabel:first;
+                        return note with {Text=label,
+                            HasTos=options.LineNumber&&options.Bop};
+                    }
+                    bool includeSecond=options.Tos&&note.HasTos;
+                    if(!options.Description&&!includeSecond)return null;
+                    string[] lines=note.Text.Replace("\r\n","\n").Split('\n');
+                    string firstLine=options.Description?lines[0]:
+                        (lines.Length>1?lines[1]:"TOS unavailable");
+                    string label=options.Description&&includeSecond&&lines.Length>1?
+                        firstLine+"\n"+lines[1]:firstLine;
+                    return note with {Text=label,
+                        HasTos=options.Description&&includeSecond&&lines.Length>1};
+                }).Where(note=>note!=null)
+                    .Cast<SupportOrthoMemberCalloutPlan27.Callout>().ToArray();
                 Log("REV22_29_PIPE_LABEL_FORMAT=LINE_NO_AND_BOP_WITHOUT_XREF_PATH");
                 annotated=CreateNativePaperMemberLeaders27(
                     targetDoc.Database,paperLayout,visibleCallouts,
@@ -1357,17 +1387,18 @@ public sealed class SupportOrthoTenViewGenerator
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 var supportHandles=plantSupports.Members.Select(m=>m.Handle)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                int steelTosLabels=plan.Callouts.Count(x=>x.HasTos&&
-                    steelHandles.Contains(x.Handle));
-                int supportTosLabels=plan.Callouts.Count(x=>x.HasTos&&
-                    supportHandles.Contains(x.Handle));
+                int steelTosLabels=options.Tos?
+                    visibleCallouts.Count(x=>steelHandles.Contains(x.Handle)):0;
+                int supportTosLabels=options.Tos?
+                    visibleCallouts.Count(x=>supportHandles.Contains(x.Handle)):0;
                 Log("STEP10_HORIZONTAL_TOS_LABEL_COUNT="+steelTosLabels);
                 Log("STEP10_SUPPORT_TOS_LABEL_COUNT="+supportTosLabels);
-                Log("STEP10_TOTAL_TOS_LABEL_COUNT="+plan.TosLines);
+                Log("STEP10_TOTAL_TOS_LABEL_COUNT="+
+                    (steelTosLabels+supportTosLabels));
                 Log("STEP10_TOTAL_TOS_APPROX_LABEL_COUNT="+
-                    plan.ApproximateTosLines);
-                int pipeBopLabels=plan.Callouts.Count(c=>
-                    c.IsPipe&&c.HasTos);
+                    (options.Tos?plan.ApproximateTosLines:0));
+                int pipeBopLabels=options.Bop?
+                    visibleCallouts.Count(c=>c.IsPipe):0;
                 Log("STEP10_PIPE_BOP_LABEL_COUNT="+pipeBopLabels);
                 // REV22.29 uses separately measured single-line DBText
                 // entities. No MText word wrap or artificial paragraph flow.
@@ -1388,10 +1419,17 @@ public sealed class SupportOrthoTenViewGenerator
                     Log("STEP10_MEMBER_ANNOTATION_SKIP="+warn);
                 foreach(var noLabels in plan.ViewWithoutLabels)
                     Log("STEP10_MEMBER_ANNOTATION_VIEW_EMPTY="+noLabels);
-                int target=options.Views.Count*sourceAnnotations.Length;
-                int steelTosTarget=options.Views.Count*horizontalSteel.HorizontalCount;
-                int supportTosTarget=options.Views.Count*plantSupports.Members.Count;
-                int pipeBopTarget=options.Views.Count*pipeRead.Pipes.Count;
+                int perViewExpected=sourceAnnotations.Count(m=>
+                    m.PipeBopSource!=null
+                        ? options.LineNumber||options.Bop
+                        : options.Description||(options.Tos&&m.HasTos));
+                int target=options.Views.Count*perViewExpected;
+                int steelTosTarget=options.Tos?
+                    options.Views.Count*horizontalSteel.HorizontalCount:0;
+                int supportTosTarget=options.Tos?
+                    options.Views.Count*plantSupports.Members.Count:0;
+                int pipeBopTarget=options.Bop?
+                    options.Views.Count*pipeRead.Pipes.Count:0;
                 annotationStatus=annotated==target&&
                     steelTosLabels==steelTosTarget&&
                     supportTosLabels==supportTosTarget&&
