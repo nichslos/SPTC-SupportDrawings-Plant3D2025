@@ -1,44 +1,40 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
-**REV 22.34 — Automatic native Ortho registration, exactly four production commands.**
+## REV 22.35 — Support Drawing Manager (UI + automation)
 
-The tested ten-view native Ortho generation code and its XREF Pipe Line Number Tag / BOP, support TOS, structure annotations, and automatic ten-view placement are unchanged. This revision trims registered AutoCAD commands and obsolete diagnostic code.
+**Production command registration stays at exactly four:** `SPTC_SUPPORTORTHO10`, `SPTC_SUPPORTEXPORT`, `SPTC_SUPPORTBATCH`, `SPTC_SUPPORT2DBATCH`. This version adds a WinForms **Support Drawing Manager** that opens when `SPTC_SUPPORTORTHO10` is called, with four operation tabs. Choosing another tab dispatches the corresponding existing export/batch command rather than creating extra AutoCAD commands.
 
-## Commands included in REV 22.34
+### Features
 
-| AutoCAD command | Function |
-| --- | --- |
-| `SPTC_SUPPORTORTHO10` | Generate 10 native Ortho views with pipe/support annotations |
-| `SPTC_SUPPORTEXPORT` | Export one selected support drawing |
-| `SPTC_SUPPORTBATCH` | Batch export support drawing DWGs |
-| `SPTC_SUPPORT2DBATCH` | Batch export 2D support drawings (with existing 3D fallback) |
+- **OrthoCube mode**: SupportFocus (default) or Original.
+- **Seed**: automatically identify a project-registered **empty native Ortho DWG** in the active project Orthos directory. Manual seed picker remains available. Reject unregistered/nonempty seeds.
+- **Preflight**: source/project summary, selected options, native seed verification, unique output name, safe scale fit and write/registration guards. Fail before any new DWG write on incompatible scale/seed.
+- **DWG prefix**: optional validated filename prefix, with the previously verified unique source/handle/time suffix preserved. Existing destination filenames are never overwritten.
+- **Native view selection**: choose any subset of TOP, BOTTOM, LEFT, RIGHT, FRONT, BACK, NW, NE, SW, SE (all 10 selected by default). The original all-ten layout and auto-fit path are preserved; subsets retain their original paper slots.
+- **Scale**: automatic (default) or 1:10 through 1:500 menu. Unsafe manual magnification fails preflight before cloning/registering. Defaults preserve the original ten-view fit.
+- **Annotation switches**: independently show/hide Pipe Line Number Tag, Pipe BOP, Support/Structure TOS, Support/Structure description (all ON by default).
+- **Batch Ortho**: select multiple source BLOCK references and generate one native Ortho per selected block, sequentially. Each output uses an independent unique name and source selection; writes a timestamped `_SPTC_BATCH_*.txt` PASS/FAIL report. Use only in copied projects until runtime verified.
+- **Progress**: nonmodal generation status for per-view work and final result. Generation TXT is now append-only (avoids repeated full-file rewrites).
+- **Four operation tabs**: Ten-view Ortho, Single Support Export, Support Batch, and 2D Batch. Existing support/batch dialogs remain unchanged when dispatched.
 
-**No other SPTC commands are registered in this DLL.**
+### Safety and current limitations
 
-## Commands removed from production registration
+- Native Ortho generation still uses Autodesk's **unsupported internal** `GenerateOrthos` API. **Use a copied or backed-up Plant 3D 2025 project**.
+- The form does not eliminate support selection. Batch Ortho requires separate BLOCK reference(s) representing individual supports; it does **not** infer separate supports from arbitrary loose member selections.
+- Batch drawing registration has not been verified in a live Plant 3D session yet. The default single-support, 10-view configuration remains the recommended operational path until tested.
+- The seeded native sheet must be project-registered and empty, and source/model registration is checked. No existing DWG is overwritten. Native Update View and generated CAD linework still require visual validation.
+- The generator retains internal REV22.29 output log identifiers for compatibility/history; the public command is `SPTC_SUPPORTORTHO10`.
 
-- `SPTC_SUPPORT2D` (interactive Ortho launcher)
-- `SPTC_SUPPORT2DLINEWORK` (single-selection 2D exporter)
-- `SPTC_SUPPORTINSPECT` (entity-audit launcher)
-- `SPTC_SUPPORTMANAGER` (duplicate alias for batch export)
-- `SPTC_ORTHO17_TOP_PREFLIGHT` (legacy diagnostic)
-- `SPTC_ORTHO22_6_CAPTURE_NATIVE_ISO` (legacy diagnostic)
-- `SPTC_ORTHO22_6_COMPARE_NATIVE_ISO` (legacy diagnostic)
+### Install
 
-The previously removed REV22.29 and REV22.30 validation commands also remain absent. Shared support export, Plant Ortho and pipe annotation helpers required by the retained four commands are kept. Internal legacy identifiers and `_REV22_29_RESULT.txt` output naming remain compatible with the previously verified 10-view generator.
+1. Close Plant 3D completely; replace the old `SPTC.SupportDrawings.dll`.
+2. In a copied project open a saved registered source 3D DWG with resolved XREFs.
+3. `NETLOAD` the REV22.35 DLL and run `SPTC_SUPPORTORTHO10`.
+4. Choose the form tab and settings, click **Preflight** to inspect options, then **Run selected**.
+5. When generating Ortho drawings, select one support or select multiple block supports if Batch Ortho is enabled. Review all generated DWGs, paper annotations and TXT logs.
 
-## Install and test
+### Build
 
-1. Close AutoCAD Plant 3D **2025** completely before replacing an old DLL (previous DLL registrations are kept in the existing AutoCAD process).
-2. Open a copied or backed-up Plant 3D 2025 project.
-3. Run `NETLOAD` and select the new `SPTC.SupportDrawings.dll`.
-4. Run `SPTC_SUPPORTORTHO10`, select the support and an existing, project-registered **empty native Ortho seed**. The new, uniquely named Ortho DWG is then cloned and registered **without any Yes/No confirmation popup or typed `REV22.29 TEST` confirmation**.
-5. Validate generated Ortho geometry and support annotations in Plant 3D. Autodesk native Ortho generation still uses an unsupported internal API and should be run on copied projects.
+Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_35-UI`.
 
-**Automatic does not mean unattended:** you still select the support and empty seed. The command still verifies source-project registration, that the seed is native/registered/empty, that the destination does not already exist, and that registration succeeded. It does not overwrite an existing DWG. Invoking the command now directly authorizes the creation of a new Ortho project drawing once those conditions pass.
-
-## Build and rollback
-
-GitHub Actions (`windows-latest`, .NET 8) enforces an exact four-command allowlist, runs source/geometry/callout regression checks, compiles the DLL, and uploads `SPTC-SupportDrawings-Plant3D2025-REV22_34-AUTO-REGISTER`.
-
-The complete earlier project and test history is recoverable from Git commits or the [REV22.30 archive branch](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).
+Rollback source is preserved in repository Git history and the [full pre-cleanup archive](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).
