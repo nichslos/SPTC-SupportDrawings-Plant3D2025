@@ -12,5 +12,7 @@
              Link="NativeOrthoViewTitlePlan.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDimLinearPlan41.cs"
              Link="SupportOrthoDimLinearPlan41.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoAllViewDimPlan44.cs"
+             Link="SupportOrthoAllViewDimPlan44.cs"/>
   </ItemGroup>
 </Project>
