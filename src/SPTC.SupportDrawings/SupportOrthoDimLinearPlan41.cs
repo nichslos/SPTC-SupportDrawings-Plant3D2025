@@ -11,6 +11,10 @@ namespace SPTC.SupportDrawings;
 /// Only six orthogonal views. Sources require explicit verified endpoints.
 /// Source length controls displayed millimeter dimension text; paper
 /// projected endpoints control witness/dimension line placement.
+/// REV22.42: compact drafting output — one representative dimension per
+/// unique verified source length, physical H/V orientation and Plant member
+/// category ACROSS THE ENTIRE SHEET. No repeat in opposite views or for
+/// equal-size equivalent members. Source identity is retained in diagnostics.
 /// Skip foreshortened/diagonal projections, crowded rectangles and duplicate
 /// dimensions rather than generating misleading measurements.
 /// </summary>
@@ -42,15 +46,23 @@ public static class SupportOrthoDimLinearPlan41
             throw new ArgumentException("REV22.41 invalid dimension inputs.");
         var dims=new List<Dimension>();
         var skips=new List<string>();
-        foreach(var camera in cameras)
+        // Prefer canonical views irrespective of user-selected view order.
+        // TOP is favored for horizontal members, FRONT for vertical members;
+        // BOTTOM/BACK are the last-resort opposing views.
+        var usedSources=new Dictionary<string,string>(
+            StringComparer.OrdinalIgnoreCase);
+        var usedValues=new Dictionary<string,string>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach(var camera in cameras.Where(c=>Orthogonal.Contains(c.Name))
+            .OrderBy(c=>ViewPriority(c.Name)))
         {
-            if(!Orthogonal.Contains(camera.Name))continue;
             if(!double.IsFinite(camera.Scale)||camera.Scale<=0)
                 throw new ArgumentException("REV22.41 invalid native view scale.");
             var regions=new List<(double L,double B,double R,double T)>();
             double minX=camera.X-camera.W/2+3,maxX=camera.X+camera.W/2-3;
             double minY=camera.Y-camera.H/2+3,maxY=camera.Y+camera.H/2-3;
-            foreach(var source in sources)
+            foreach(var source in sources.OrderBy(x=>x.Key,
+                StringComparer.OrdinalIgnoreCase))
             {
                 if(!Finite(source))
                 {
@@ -69,6 +81,25 @@ public static class SupportOrthoDimLinearPlan41
                 if(!physicalH&&!physicalV)
                 {
                     skips.Add(camera.Name+"/"+source.Key+":NON_HORIZONTAL_VERTICAL_MEMBER");
+                    continue;
+                }
+                // Millimeter values are rounded exactly as they will appear
+                // in the native DIMLINEAR text (0.001 mm display precision).
+                // Do not collapse H and V or different Plant object kinds.
+                string measurement=source.Millimeters.ToString(
+                    "0.###",CultureInfo.InvariantCulture);
+                string valueKey=(physicalV?"V":"H")+"|"+
+                    source.Kind+"|"+measurement;
+                if(usedSources.TryGetValue(source.Key,out string? firstView))
+                {
+                    skips.Add(camera.Name+"/"+source.Key+
+                        ":SOURCE_ALREADY_DIMENSIONED_IN_"+firstView);
+                    continue;
+                }
+                if(usedValues.TryGetValue(valueKey,out string? representative))
+                {
+                    skips.Add(camera.Name+"/"+source.Key+
+                        ":EQUAL_LENGTH_ALREADY_DIMENSIONED_BY_"+representative);
                     continue;
                 }
                 var a=SupportOrthoMemberCalloutPlan17.Project(camera,
@@ -147,18 +178,30 @@ public static class SupportOrthoDimLinearPlan41
                     skips.Add(camera.Name+"/"+source.Key+":NO_NONOVERLAPPING_DIMLINE");
                     continue;
                 }
-                // Millimeter text is explicitly grounded in verified source
-                // 3D endpoints. Paper DIMLINEAR measurements otherwise
-                // report scaled paper distances, which would be incorrect.
-                string measurement=source.Millimeters.ToString(
-                    "0.###",CultureInfo.InvariantCulture);
+                // Record only successfully placed dimensions; a member
+                // skipped in TOP can still be dimensioned in another view.
+                // Model lengths, member types, and source IDs remain exact.
                 dims.Add(new Dimension(camera.Name,source.Key,source.Kind,
                     horizontal,a.X,a.Y,b.X,b.Y,x,y,measurement));
+                usedSources[source.Key]=camera.Name;
+                usedValues[valueKey]=camera.Name+"/"+source.Key;
             }
         }
         return new Result(dims,skips,sources.Count,
             cameras.Count(c=>Orthogonal.Contains(c.Name)));
     }
+
+    private static int ViewPriority(string name) =>
+        name.ToUpperInvariant() switch
+        {
+            "TOP"=>0,
+            "FRONT"=>1,
+            "LEFT"=>2,
+            "RIGHT"=>3,
+            "BACK"=>4,
+            "BOTTOM"=>5,
+            _=>int.MaxValue
+        };
 
     private static bool Finite(Segment s) =>
         double.IsFinite(s.Ax)&&double.IsFinite(s.Ay)&&
