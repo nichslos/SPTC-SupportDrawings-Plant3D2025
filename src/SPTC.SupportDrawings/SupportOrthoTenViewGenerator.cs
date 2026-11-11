@@ -375,16 +375,50 @@ public sealed class SupportOrthoTenViewGenerator
             return false;
         }
 
-        string initial = Directory.Exists(Path.Combine(part.OrthoFolder, "DWGs")) ?
-            Path.Combine(part.OrthoFolder, "DWGs") : part.OrthoFolder;
-        using var picker = new WinForms.OpenFileDialog
+        // REV22.35: discover only native, project-registered and EMPTY seeds.
+        // Never treat a previous generated Ortho or an arbitrary DWG as a seed.
+        string seed="";
+        if(options.AutoSeed)
         {
-            Title = "REV22.29 - Select an EMPTY Project Manager-created native Ortho seed (not DWT)",
-            Filter = "AutoCAD drawing (*.dwg)|*.dwg", CheckFileExists = true,
-            InitialDirectory = initial, RestoreDirectory = true
-        };
-        if (picker.ShowDialog() != WinForms.DialogResult.OK) return false;
-        string seed = Path.GetFullPath(picker.FileName);
+            try
+            {
+                var candidates=Directory.EnumerateFiles(part.OrthoFolder,
+                    "*.dwg",SearchOption.AllDirectories)
+                    .Where(p=>NativeOrthoRegistrationNames.IsInsideProjectDirectory(
+                        p,part.OrthoFolder))
+                    .OrderByDescending(p=>Path.GetFileName(p).Contains(
+                        "SEED",StringComparison.OrdinalIgnoreCase))
+                    .ThenBy(p=>p,StringComparer.OrdinalIgnoreCase);
+                foreach(string path in candidates)
+                {
+                    try
+                    {
+                        if(IsNativeOrthoValid(part.OrthoPart,path) &&
+                           ViewCatalog(part.OrthoPart,path)=="EMPTY_REGISTERED_ORTHO")
+                        {
+                            seed=Path.GetFullPath(path);
+                            break;
+                        }
+                    }
+                    catch(System.Exception) { /* Reject this candidate, continue scan. */ }
+                }
+            }
+            catch(System.Exception ex)
+            {
+                ed.WriteMessage("\nSPTC auto-seed scan error: "+ex.Message);
+                return false;
+            }
+            if(seed.Length==0)
+            {
+                ed.WriteMessage("\nSPTC: No registered EMPTY native Ortho seed found in project Orthos. Create one in Project Manager.");
+                return false;
+            }
+        }
+        else
+        {
+            seed=Path.GetFullPath(options.SeedPath);
+        }
+        progress.Report("Preflight: source registered; native seed "+Path.GetFileName(seed));
         if (!NativeOrthoRegistrationNames.IsInsideProjectDirectory(seed, part.ProjectRoot) ||
             !NativeOrthoRegistrationNames.IsInsideProjectDirectory(seed, part.OrthoFolder))
         {
@@ -407,12 +441,47 @@ public sealed class SupportOrthoTenViewGenerator
             CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N")[..6];
         string file = NativeOrthoRegistrationNames.NewOrthoDrawingFileName(source, handles, suffix)
             .Replace("_ORTHO_R14_", "_ORTHO_R229XREF_", StringComparison.Ordinal);
+        if(!string.IsNullOrWhiteSpace(options.DrawingPrefix))
+            file=options.DrawingPrefix+"_"+file; // Keep unique source/handle/time suffix.
+
         string dest = Path.Combine(Path.GetDirectoryName(seed)!, file);
         if (File.Exists(dest))
         {
             ed.WriteMessage("\nREV22.29: Destination DWG exists. No changes.");
             return false;
         }
+        // Preflight the actual seed sheet before project writes. A requested
+        // scale must be no more magnified than the proven ten-view fit.
+        try
+        {
+            using(var previewDb=new Database(false,true))
+            {
+                previewDb.ReadDwgFile(seed,
+                    FileOpenMode.OpenForReadAndAllShare,true,null);
+                previewDb.CloseInput(true);
+                string previewLayout=FindPaperLayout(previewDb);
+                (double w,double h)=CurrentPaper(previewDb,previewLayout);
+                var fit=NativeOrthoTenViewPlan.Build(layout,w,h);
+                if(options.ScaleDenominator>0 &&
+                   options.ScaleDenominator<fit.Denominator)
+                {
+                    ed.WriteMessage("\nSPTC preflight: Requested 1:"+
+                        options.ScaleDenominator+" cannot fit the ten-view layout. "+
+                        "Minimum safe denominator is "+fit.Denominator+". No drawing created.");
+                    return false;
+                }
+            }
+        }
+        catch(System.Exception ex)
+        {
+            ed.WriteMessage("\nSPTC preflight failed before drawing registration: "+ex.Message);
+            return false;
+        }
+        progress.Report("Preflight PASS. Output: "+Path.GetFileName(dest)+
+            " | Views: "+string.Join(",",options.Views)+
+            " | Scale: "+(options.ScaleDenominator>0?
+                "1:"+options.ScaleDenominator:"automatic"));
+
 
         // The public SDK, not this command, decides the final viewport insertion.
         // No false claim that the proposed TOP center is passed into CreateOrthos.
@@ -428,10 +497,19 @@ public sealed class SupportOrthoTenViewGenerator
         var log = new StringBuilder(6000);
         void Log(string msg)
         {
-            log.AppendLine(DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture) +
-                " " + msg);
-            try { File.WriteAllText(report, log.ToString(), new UTF8Encoding(false)); }
+            string line=DateTimeOffset.UtcNow.ToString("O",CultureInfo.InvariantCulture)+
+                " "+msg+Environment.NewLine;
+            log.Append(line);
+            // Append-only rather than repeatedly rewriting a growing TXT.
+            try { File.AppendAllText(report,line,new UTF8Encoding(false)); }
             catch { /* command window is still available for diagnostics */ }
+            if(msg.Contains("_BEGIN",StringComparison.Ordinal) &&
+               msg.StartsWith("STEP6_",StringComparison.Ordinal))
+                progress.Report("Generating "+msg["STEP6_".Length..^"_BEGIN".Length]+" native view");
+            if(msg.StartsWith("FINAL_STATUS=",StringComparison.Ordinal) ||
+               msg.StartsWith("ERROR=",StringComparison.Ordinal) ||
+               msg.StartsWith("NATIVE_EXCEPTION=",StringComparison.Ordinal))
+                progress.Report(msg);
         }
 
         bool cloned = false, registrationAttempted = false;
@@ -617,6 +695,11 @@ public sealed class SupportOrthoTenViewGenerator
             (double paperWidth, double paperHeight) = CurrentPaper(targetDoc.Database, paperLayout);
             NativeOrthoTenViewPlan.Plan candidate =
                 NativeOrthoTenViewPlan.Build(layout, paperWidth, paperHeight);
+            if(options.ScaleDenominator>0)
+                candidate=candidate with {
+                    Denominator=options.ScaleDenominator,
+                    Scale=1.0/options.ScaleDenominator
+                };
             Log("STEP4_SHEET_LAYOUT=" + paperLayout);
             Log("STEP4_SHEET_MM=" + Point(paperWidth,paperHeight,0));
             Log("STEP4_COMMON_SCALE=1:" + candidate.Denominator);
