@@ -140,7 +140,11 @@ public static class SupportOrthoSmartDimPlan46
             // Short/local dimensions are placed before long overall ones.
             // This creates progressively outward dimension stacks, but does
             // not change their exact source-projected model measurements.
-            var occupied=new List<Rect>();
+            // Witness lines may meet each other at shared source corners.
+            // Reject text/line crossings, but do not treat legitimate
+            // witness-to-witness junctions as text clashes.
+            var occupiedCore=new List<Rect>();
+            var occupiedWitnesses=new List<Rect>();
             foreach(var req in requests.OrderBy(x=>x.Span)
                        .ThenBy(x=>x.Source.Member.Key,
                            StringComparer.OrdinalIgnoreCase)
@@ -206,7 +210,11 @@ public static class SupportOrthoSmartDimPlan46
                            envelopes.Any(e=>e!=req.Source &&
                                (dimLine.Intersects(e.Bounds,.4)||
                                 textZone.Intersects(e.Bounds,.4)))||
-                           pieces.Any(p=>occupied.Any(o=>p.Intersects(o,.45))))
+                           new[]{dimLine,textZone}.Any(p=>
+                               occupiedCore.Any(o=>p.Intersects(o,.45))||
+                               occupiedWitnesses.Any(o=>p.Intersects(o,.45)))||
+                           new[]{witness1,witness2}.Any(p=>
+                               occupiedCore.Any(o=>p.Intersects(o,.45))))
                         {
                             rejected++;
                             continue;
@@ -223,7 +231,10 @@ public static class SupportOrthoSmartDimPlan46
                         placements.Add(new Placement(camera.Name,
                             measure.Source,dimLine,textZone,witness1,
                             witness2));
-                        occupied.AddRange(pieces);
+                        occupiedCore.Add(dimLine);
+                        occupiedCore.Add(textZone);
+                        occupiedWitnesses.Add(witness1);
+                        occupiedWitnesses.Add(witness2);
                         if(attempt>1)repositioned++;
                         placed=true;
                         break;
