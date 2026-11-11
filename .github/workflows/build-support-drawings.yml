@@ -43,6 +43,31 @@ jobs:
               throw "REV22.35 obsolete Ortho confirmation still found: $obsolete"
             }
           }
+          # Logo is included in the assembly, never loaded from an external path.
+          $brand=Get-Content "$root/SupportBranding36.cs" -Raw
+          $logoDefs=[regex]::Matches($brand,
+              'private const string (LogoPng|MarkPng) = "([A-Za-z0-9+/=]+)";')
+          if($logoDefs.Count -ne 2) {
+            throw 'SPTC embedded wordmark/window-mark assets missing'
+          }
+          foreach($definition in $logoDefs) {
+            $bytes=[Convert]::FromBase64String(
+                $definition.Groups[2].Value)
+            if($bytes.Length -lt 500 -or
+               [Convert]::ToHexString($bytes,0,8) -ne '89504E470D0A1A0A') {
+              throw "SPTC branding PNG is corrupt: $($definition.Groups[1].Value)"
+            }
+            Write-Host "$($definition.Groups[1].Value) embedded PNG bytes: $($bytes.Length)"
+          }
+          $manager=Get-Content "$root/SupportDrawingManagerForm35.cs" -Raw
+          $batchUi=Get-Content "$root/SupportBatchDialog.cs" -Raw
+          foreach($token in @('SupportBranding36.MakeLogo',
+              'SupportBranding36.CreateIcon')) {
+            if(-not $manager.Contains($token) -or
+               -not $batchUi.Contains($token)) {
+              throw "SPTC branding absent from UI: $token"
+            }
+          }
           $ui=Get-Content "$root/SupportDrawingManagerForm35.cs" -Raw
           foreach($option in @('SupportFocus','AutoSeed','DrawingPrefix',
               'ScaleDenominator','Views','LineNumber','Bop','Tos',
@@ -136,11 +161,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.35 UI DLL bytes: $size"
+          Write-Host "REV22.36 branded DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_35-UI
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_36-BRANDED
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
