@@ -76,6 +76,17 @@ internal static class SupportOrthoDimLinearWriter41
                     dim.Dimtix=false;
                     dim.Dimtofl=true;
                 }
+                // REV22.46: obey the collision planner's reserved text
+                // position rather than letting an automatic style move
+                // text back across another dimension or leader.
+                if(item.PaperTextX.HasValue&&item.PaperTextY.HasValue &&
+                   double.IsFinite(item.PaperTextX.Value)&&
+                   double.IsFinite(item.PaperTextY.Value))
+                {
+                    dim.UsingDefaultTextPosition=false;
+                    dim.TextPosition=new Point3d(
+                        item.PaperTextX.Value,item.PaperTextY.Value,0);
+                }
                 paper.AppendEntity(dim);
                 tr.AddNewlyCreatedDBObject(dim,true);
                 created++;
