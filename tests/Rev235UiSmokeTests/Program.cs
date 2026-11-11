@@ -47,8 +47,28 @@ var xrefPlan=SupportOrthoMemberCalloutPlan27.Build(cameras,titles,
 Check(xrefPlan.Callouts.Count==2,"XREF labels per selected view");
 Check(xrefPlan.Callouts.All(c=>
     c.IsXrefMember&&!c.IsPipe&&!c.HasTos &&
-    c.Text=="XREF STRUCTURE: SUPPORT_100A.dwg"),
-    "actual source drawing filename and structural classification");
+    c.Text=="SUPPORT_100A"),
+    "XREF source drawing base name without label prefixes or extension");
+
+// Both StructureMember and Plant Support share the same clean filename
+// presentation, while the source Kind and full path remain in metadata.
+var xrefSupport=xref with {
+    Handle="XREF_MEMBER:MODEL/XREF:2/43",
+    XrefDrawingName="SUPP-2.DWG",XrefKind="SUPPORT"
+};
+var supportPlan=SupportOrthoMemberCalloutPlan27.Build(cameras,titles,
+    new[]{xrefSupport},594,841,true);
+Check(supportPlan.Callouts.Count==2 &&
+    supportPlan.Callouts.All(c=>c.Text=="SUPP-2"),
+    "XREF SUPPORT label must omit prefix and uppercase .DWG extension");
+var xrefVersioned=xref with {
+    Handle="XREF_MEMBER:MODEL/XREF:3/44",
+    XrefDrawingName="SUPP-1.REV03.dwg"
+};
+var versionPlan=SupportOrthoMemberCalloutPlan27.Build(cameras,titles,
+    new[]{xrefVersioned},594,841,true);
+Check(versionPlan.Callouts.All(c=>c.Text=="SUPP-1.REV03"),
+    "Only final DWG extension removed; embedded dots remain");
 
 var native=new SupportOrthoMemberCalloutPlan27.Member(
     "NATIVE-1","C100",0,0,0,false,null,"NONE");
