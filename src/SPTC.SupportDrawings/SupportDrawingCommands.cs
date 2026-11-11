@@ -14,15 +14,13 @@ using WinForms = System.Windows.Forms;
 namespace SPTC.SupportDrawings;
 
 /// <summary>
-/// SPTC SUPPORT DRAWINGS - REV 19.
-/// Clones a selected support into its own DWG and arranges four true 3D model
-/// viewports on an A3-like paper-space sheet. It is not a flattened fabrication drawing.
+/// SPTC SupportDrawings commands for support export, inspection and
+/// Plant 3D native Ortho workflows.
 /// </summary>
 public sealed class SupportDrawingCommands : IExtensionApplication
 {
-    public void Initialize() =>
-        AcadApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
-            "\nSPTC REV19: SPTC_ORTHO19_TOP_ONECMD_TEST selects support, clones/registers a native Ortho and attempts auto TOP via PUBLIC CreateOrthos. COPIED PROJECT ONLY.");
+    // Avoid obsolete REV19 banners or unnecessary output on NETLOAD.
+    public void Initialize() { }
     public void Terminate() { }
 
     [CommandMethod("SPTC_SUPPORTEXPORT", CommandFlags.Modal)]
