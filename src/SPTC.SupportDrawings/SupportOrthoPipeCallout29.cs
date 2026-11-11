@@ -13,7 +13,9 @@ public static class SupportOrthoPipeCallout29
     {
         string tag=OneLine(lineNumberTag,"Not available");
         string bop=OneLine(bopLabel,"BOP: N/A");
-        return "LINE NO: "+tag+"\n"+bop;
+        // REV22.38 visible annotation: keep source tag verbatim, but do
+        // not print the redundant "LINE NO:" prefix. BOP is unchanged.
+        return tag+"\n"+bop;
     }
 
     private static string OneLine(string? value,string fallback)
