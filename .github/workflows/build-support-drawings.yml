@@ -102,6 +102,36 @@ jobs:
               throw "REV22.35 registration safeguard missing: $requiredCheck"
             }
           }
+          # REV22.37: the XREF source DWG must come from its real
+          # loaded Database.Filename, never a guessed block reference name.
+          $xref=Get-Content "$root/SupportOrthoXrefMemberDiscovery37.cs" -Raw
+          $plan=Get-Content "$root/SupportOrthoMemberCalloutPlan27.cs" -Raw
+          foreach($part in @('GetXrefDatabase(false)','xdb.Filename',
+              'Path.GetFileName(sourceFile)','StructureMember',
+              'SupportOrthoSupportLabel24.IsSupportClass',
+              'ext.TransformBy(toHost)','Inside(','ClippedCenter(')) {
+            if(-not $xref.Contains($part)) {
+              throw "REV22.37 XREF scan invariant missing: $part"
+            }
+          }
+          foreach($part in @('options.XrefMemberNames',
+              'xrefMembers.Items','xrefNearCube',
+              'XREF_SOURCE_DWG','REV22_37_XREF_SOURCE=',
+              'xrefWritten','nativeWritten')) {
+            if(-not $gen.Contains($part)) {
+              throw "REV22.37 XREF integration missing: $part"
+            }
+          }
+          foreach($part in @('XrefDrawingName','IsXrefMember',
+              'XREF_FILENAME_NO_LABEL_SPACE')) {
+            if(-not $plan.Contains($part)) {
+              throw "REV22.37 annotation priority missing: $part"
+            }
+          }
+          if(-not $ui.Contains('xrefNames.Checked = true') -or
+             -not $ui.Contains('Nearby XREF members: label source DWG')) {
+            throw 'REV22.37 XREF filename checkbox or default missing'
+          }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
               'SupportOrthoMemberCalloutPlan27.Build',
               'CreateNativePaperMemberLeaders27',
@@ -163,11 +193,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.36 branded DLL bytes: $size"
+          Write-Host "REV22.37 XREF DWG annotation DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_36-BRANDED
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_37-XREF-MEMBERS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
