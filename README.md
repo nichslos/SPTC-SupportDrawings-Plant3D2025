@@ -1,45 +1,36 @@
-# SPTC SupportDrawings — Plant 3D 2025
+# SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
-**Production cleanup REV 22.31** — retains the verified REV 22.29 native 10-view generator, nested-XREF pipe detection, Line Number Tag/BOP text, support TOS, automatic ten-view placement, and REV 22.30 read-only XREF verification.
+**REV 22.32 — Production-only plugin.** The verified ten-view native Ortho generator, automatic native/XREF pipe detection, compact Line Number Tag / BOP annotations, structural member and support TOS, and existing support export and inspection commands remain intact.
 
 ## Production commands
 
-| Purpose | AutoCAD command |
+| Function | AutoCAD command |
 | --- | --- |
-| Generate 10 native Ortho views and pipe/support annotations | `SPTC_SUPPORTORTHO10` |
-| Verify loaded XREF pipe metadata and leader alignment after Update View | `SPTC_ORTHO22_30_VALIDATE_XREF_UPDATE` |
-| Audit whether original pipe DBText persisted after Update View | `SPTC_ORTHO22_29_AUDIT_UPDATE` |
-| Existing support export, Support2D, inspection and batch operations | `SPTC_SUPPORTEXPORT`, `SPTC_SUPPORT2D`, `SPTC_SUPPORTINSPECT`, `SPTC_SUPPORTBATCH` |
+| Generate 10 native Ortho views, with Pipe/Support annotations | `SPTC_SUPPORTORTHO10` |
+| Export one support | `SPTC_SUPPORTEXPORT` |
+| Start native interactive Ortho workflow | `SPTC_SUPPORT2D` |
+| Inspect selected support | `SPTC_SUPPORTINSPECT` |
+| Batch export support drawings | `SPTC_SUPPORTBATCH` |
+| Other existing support/export commands | Retained without modification |
 
-The generator is the **same verified code** as REV 22.29, with its class and public AutoCAD command renamed. The source generation log and saved Ortho DWG still use the **REV22_29** naming conventions so both audit commands remain compatible. Do **not** rename that log or edit its source entries.
+**The completed validation commands have been removed:** `SPTC_ORTHO22_29_AUDIT_UPDATE` and `SPTC_ORTHO22_30_VALIDATE_XREF_UPDATE`. Their associated audit implementation and audit-only smoke tests are absent from the active production DLL and codebase.
 
-## Using the production generator
+## Generate ten native views
 
-1. In a backed-up Plant 3D 2025 project, open a saved project-registered model with resolved pipe XREFs.
-2. `NETLOAD` the `SPTC.SupportDrawings.dll` built by this repository.
-3. Run `SPTC_SUPPORTORTHO10`; select the support and complete the same copied-project/empty Ortho seed safety confirmation as REV 22.29.
-4. The plugin creates ten standard Ortho viewports automatically and writes a `_REV22_29_RESULT.txt` beside the Ortho DWG.
-5. Open the generated Ortho and its source model together. After **manual** Update View, run `SPTC_ORTHO22_29_AUDIT_UPDATE` and `SPTC_ORTHO22_30_VALIDATE_XREF_UPDATE` if required.
+1. Work in a copied/backed-up AutoCAD Plant 3D 2025 project.
+2. Open a saved project-registered source DWG with its pipe XREFs resolved.
+3. `NETLOAD` the new `SPTC.SupportDrawings.dll`.
+4. Run `SPTC_SUPPORTORTHO10`; select your support and follow the existing empty Ortho seed and copied-project safety prompts.
+5. The generator auto-places ten native Ortho views and adds the same two-line pipe `LINE NO` / `BOP EL.` labels plus Support/Structure annotations as the tested REV 22.29 code.
 
-The verification commands do not update the DWG or source PnP database. `PASS` still does **not** establish freshness of Autodesk's generated model linework or that the disk XREF was reloaded.
+**Compatibility note:** Internal REV22.29 labels and `_REV22_29_RESULT.txt` generation naming are intentionally left unchanged. They are provenance of the validated generator, not evidence that the removed test commands are still present. No annotation or geometry logic was modified in this revision.
 
-## Build and tests
+## CI build and tests
 
-Automatic GitHub Actions builds run on `main` pushes and pull requests, using the **standard `windows-latest` runner** and .NET 8. The workflow runs:
-- Support geometry, viewport and metadata smoke tests;
-- Compact two-line XREF pipe label smoke tests;
-- Strict original-manifest parsing smoke tests;
-- Production command/safety invariants and full x64 DLL compilation.
+GitHub Actions runs automatically on `main` pushes and pull requests (standard `windows-latest`, .NET 8), verifying the production command and its copied-project guards, ensuring the obsolete audit commands and files are gone, testing geometry/view-helpers and compact XREF callout formatting, compiling `SPTC.SupportDrawings.dll`, and uploading `SPTC-SupportDrawings-Plant3D2025-REV22_32-PRODUCTION`.
 
-Download the artifact `SPTC-SupportDrawings-Plant3D2025-REV22_31-CLEAN` from a successful workflow run; extract the DLL for `NETLOAD`.
+## Recovery / historical test code
 
-## Cleanup and rollback
+Previously validated REV22.29/22.30 source and audit code remain available in repository Git history, including the dedicated [pre-cleanup full test-history branch](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history). This branch is not loaded in the production DLL.
 
-- Replaced 35+ old experimental full-generator classes with a single production 10-view generator. Earlier experimental command names (ending in `_TEST`) are **not included** in this cleaned DLL.
-- Removed the obsolete support source README and early test probe/staging files from the active branch.
-- Condensed the 88 KB CI script while retaining executable smoke tests and key safety assertions.
-- **Full prior source and CI workflow are preserved** in Git branch [`archive-rev22-30-full-test-history`](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history). The preceding compiled REV 22.30 artifact is also available in the previous run history.
-
-Autodesk Plant 3D's native Ortho generation still uses an unsupported internal API and must be run on a copied/backed-up project first. Compilation and smoke tests do not replace live CAD validation.
-
-See [REV 22.29 label/audit guide](docs/REV22_29_COMPACT_PIPE_UPDATE_AUDIT.md) and [REV 22.30 XREF verification guide](docs/REV22_30_XREF_UPDATE_VALIDATION.md) for diagnostics.
+The generator still invokes an unsupported internal Autodesk Ortho API, so a successful CI build does not replace live testing in a copied or backed-up project.
