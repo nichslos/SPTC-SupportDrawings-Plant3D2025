@@ -214,7 +214,7 @@ jobs:
             }
           }
           foreach($token in @('new RotatedDimension(', 'db.Dimstyle',
-              'layout.BlockTableRecordId','DimensionText',
+              'layout.BlockTableRecordId','item.Measurement,db.Dimstyle',
               'SPTC_AUTO_DIMLINEAR')) {
             if(-not (($dimWriter+$dimPlan).Contains($token))) {
               throw "REV22.41 paper dimension writer missing: $token"
