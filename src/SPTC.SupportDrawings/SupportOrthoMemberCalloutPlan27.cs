@@ -39,16 +39,20 @@ public static class SupportOrthoMemberCalloutPlan27
     public static Result Build(
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles,
-        IReadOnlyList<Member> members,double paperW,double paperH)
+        IReadOnlyList<Member> members,double paperW,double paperH,
+        bool allowSubset=false)
     {
-        if(cameras==null||cameras.Count!=10||members==null||
-           titles==null||titles.Count!=10||
+        if(cameras==null||cameras.Count<1||cameras.Count>10||members==null||
+           titles==null||titles.Count!=cameras.Count||
+           (!allowSubset&&cameras.Count!=10)||
            !double.IsFinite(paperW)||!double.IsFinite(paperH)||
            paperW<=0||paperH<=0)
-            throw new ArgumentException("REV22.27 requires ten views/titles.");
-        if(cameras.Select(c=>c.Name).Distinct(StringComparer.Ordinal).Count()!=10||
-           titles.Select(t=>t.Name).Distinct(StringComparer.Ordinal).Count()!=10)
-            throw new ArgumentException("REV22.27 duplicate view or title.");
+            throw new ArgumentException("Native member callout view/title count invalid.");
+        if(cameras.Select(c=>c.Name).Distinct(StringComparer.Ordinal).Count()!=cameras.Count||
+           titles.Select(t=>t.Name).Distinct(StringComparer.Ordinal).Count()!=titles.Count||
+           cameras.Select(c=>c.Name).Except(titles.Select(t=>t.Name),
+              StringComparer.Ordinal).Any())
+            throw new ArgumentException("Member callout view/title names do not match.");
         foreach(var c in cameras)
             NativeOrthoViewTitlePlan.CaptionFor(c.Name);
         if(members.Select(m=>m.Handle).Distinct(StringComparer.OrdinalIgnoreCase)
