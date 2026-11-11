@@ -49,7 +49,7 @@ jobs:
             if(Test-Path "$root/$legacy") {throw "Completed audit still ships: $legacy"}
           }
           $sourceText=(Get-ChildItem $root -Filter '*.cs' |
-            Get-Content -Raw | Out-String)
+            ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n"
           foreach($cmd in @('SPTC_ORTHO22_29_AUDIT_UPDATE',
               'SPTC_ORTHO22_30_VALIDATE_XREF_UPDATE')) {
             if($sourceText.Contains($cmd)) {
