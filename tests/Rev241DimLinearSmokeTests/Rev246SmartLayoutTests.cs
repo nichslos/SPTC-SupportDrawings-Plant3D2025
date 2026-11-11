@@ -91,8 +91,8 @@ internal static class Rev246SmartLayoutTests
         // A fully blocked sheet must SKIP rather than force overlapping
         // dimensions. This synthetic label is a reserved 130 mm corridor.
         var obstruction=new SupportOrthoMemberCalloutPlan27.Callout(
-            "TOP","A","A",false,90,595,95,96,720,
-            400,145);
+            "TOP","A",new string('X',160),false,90,595,95,135,750,
+            400,180);
         var blocked=SupportOrthoSmartDimPlan46.Build(
             new[]{top},new[]{member},594,841,1.0,
             new[]{obstruction});
