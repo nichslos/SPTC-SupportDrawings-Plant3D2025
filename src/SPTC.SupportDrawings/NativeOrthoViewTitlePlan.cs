@@ -64,9 +64,10 @@ public static class NativeOrthoViewTitlePlan
     }
 
     public static IReadOnlyList<Title> BuildTitles(
-        IReadOnlyList<Frame> actual,double paperWidth,double paperHeight)
+        IReadOnlyList<Frame> actual,double paperWidth,double paperHeight,
+        bool allowSubset=false)
     {
-        ValidateFrames(actual,paperWidth,paperHeight);
+        ValidateFrames(actual,paperWidth,paperHeight,allowSubset);
         var result=actual.Select(f=>new Title(
             f.Name,CaptionFor(f.Name),f.X,
             f.Y-f.H/2-GapBelowFrameMm,f.W,CaptionBandHeightMm)).ToArray();
@@ -107,15 +108,19 @@ public static class NativeOrthoViewTitlePlan
         ax0<bx1 && bx0<ax1 && ay0<by1 && by0<ay1;
 
     private static void ValidateFrames(
-        IReadOnlyList<Frame>? frames,double paperW,double paperH)
+        IReadOnlyList<Frame>? frames,double paperW,double paperH,
+        bool allowSubset=false)
     {
-        if(frames==null||frames.Count!=10||!double.IsFinite(paperW)||
+        if(frames==null||frames.Count<1||frames.Count>10||
+           (!allowSubset&&frames.Count!=10)||!double.IsFinite(paperW)||
            !double.IsFinite(paperH)||paperW<=0||paperH<=0)
-            throw new ArgumentException("REV22.13 requires ten valid paper viewports.");
-        if(frames.Select(f=>f.Name).Distinct(StringComparer.Ordinal).Count()!=10 ||
-           ViewNames.Except(frames.Select(f=>f.Name),StringComparer.Ordinal).Any())
+            throw new ArgumentException("Native view title frame count or paper size invalid.");
+        if(frames.Select(f=>f.Name).Distinct(StringComparer.Ordinal).Count()!=frames.Count ||
+           frames.Any(f=>!ViewNames.Contains(f.Name,StringComparer.Ordinal)) ||
+           (!allowSubset && ViewNames.Except(frames.Select(f=>f.Name),
+                StringComparer.Ordinal).Any()))
             throw new ArgumentException(
-                "REV22.13 titles must match all ten native preset labels exactly.");
+                "Native titles must use unique standard view preset names.");
         foreach(var f in frames)
             if(!double.IsFinite(f.X)||!double.IsFinite(f.Y)||
                !double.IsFinite(f.W)||!double.IsFinite(f.H)||
