@@ -1,5 +1,33 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
+## REV 22.39 — Custom 1:N paper scale in WinForms
+
+In the branded `SPTC_SUPPORTORTHO10` > **10-View Ortho** tab,
+**Paper scale** now offers `Custom 1:N...` alongside all the existing
+`Automatic` and preset values. Selecting **Custom** reveals a numeric
+denominator field, default `25`. Enter **N** to request an exact `1:N`
+scale, e.g. `37` for `1:37` or `125` for `1:125`.
+
+- Positive **integer** denominators **1 through 1,000,000** are accepted;
+  zero, negative values, invalid entries and over-limit values are rejected.
+- The Preflight / configuration summary displays the resolved `1:N` value.
+- The existing read-only native sheet-fit and title/viewport collision
+  preflight rejects unsafe magnification **before** creating or registering
+  a new native Ortho DWG. A requested scale smaller than the calculated
+  minimum denominator cannot be forced through.
+- Exact custom N is forwarded to the existing native camera,
+  title/viewport layout, and registration pipeline. **Automatic** mode
+  remains the default and preserves the original scale behavior.
+- No changes to geometry extraction, XREF discovery, structure/support
+  or pipe callouts, BOP/TOS formatting, the SPTC Engineering logo,
+  the other three export commands or the total four AutoCAD commands.
+
+The UI becomes slightly taller to accommodate the custom input without
+overlapping existing controls. Windows CI tests preset compatibility,
+custom denominators, invalid input and unchanged sheet-fit guards.
+Test generated native view scales visually inside a copied Plant 3D 2025
+project before using this new option on production drawings.
+
 ## REV 22.38 — Simplified drawing annotations
 
 Only **displayed annotation text** changes; line tags, BOP elevations,
@@ -116,6 +144,6 @@ includes a Windows logo/image/icon smoke test in GitHub Actions.
 
 ### Build
 
-Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_38-SIMPLE-LABELS`.
+Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_39-CUSTOM-SCALE`.
 
 Rollback source is preserved in repository Git history and the [full pre-cleanup archive](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).
