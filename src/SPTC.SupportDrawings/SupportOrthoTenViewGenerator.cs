@@ -811,6 +811,7 @@ public sealed class SupportOrthoTenViewGenerator
             var resolved=new List<(NativeOrthoTenViewPlan.Slot Slot,object ViewEnum,string TypeName)>();
             foreach(var slot in candidate.Views)
             {
+                if(!options.HasView(slot.Name))continue;
                 string selected=slot.EnumName;
                 if(slot.Name=="SIDE"&&!available.Any(x=>x.Equals(selected,StringComparison.OrdinalIgnoreCase)) &&
                     available.Any(x=>x.Equals("Side",StringComparison.OrdinalIgnoreCase)))
@@ -874,10 +875,12 @@ public sealed class SupportOrthoTenViewGenerator
                     throw new InvalidOperationException("REV22.29 "+
                         spec.Slot.Name+" maps to Current View in native Editor.");
             }
-            if(candidate.Views.Count!=10 || resolved.Count!=10)
-                throw new InvalidOperationException("REV22 requires ten native views.");
-            if(resolved.Select(v=>v.Slot.EnumName).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=10)
-                throw new InvalidOperationException("REV22 duplicate view-type enum detected.");
+            if(candidate.Views.Count!=10 || resolved.Count!=options.Views.Count ||
+               resolved.Count==0)
+                throw new InvalidOperationException("SPTC native view selection does not match requested presets.");
+            if(resolved.Select(v=>v.Slot.EnumName)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Count()!=resolved.Count)
+                throw new InvalidOperationException("SPTC duplicate native view-type enum detected.");
             Type[] expectedNativeSignature={
                 typeof(StringCollection),typeof(string),typeof(string),
                 typeof(Point3d),typeof(Point3d),nativeEnum,typeof(Point3d),
@@ -924,8 +927,8 @@ public sealed class SupportOrthoTenViewGenerator
                 autoPlacement.TitleShiftY.ToString("0.###",CultureInfo.InvariantCulture));
             Log("STEP5_AUTO_GROUP_SHIFTED="+autoPlacement.WasShifted);
             targetDoc.Editor.WriteMessage(
-                "\nREV22.29: Automatically placing all TEN native Ortho "+
-                "views and their titles. No insertion click required. "+
+                "\nSPTC: Automatically placing "+resolved.Count+" selected native Ortho "+
+                "view(s) and titles. No insertion click required. "+
                 "TOP center: ("+
                 autoPlacement.FinalTopX.ToString("0.###",CultureInfo.InvariantCulture)+
                 ", "+autoPlacement.FinalTopY.ToString("0.###",CultureInfo.InvariantCulture)+").");
@@ -1247,8 +1250,10 @@ public sealed class SupportOrthoTenViewGenerator
                 }
                 finally { if(cube is IDisposable disposeCube)disposeCube.Dispose(); }
             }
-            Log("STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True");
-            Log("STEP10_REV22_TEN_GROUP_PLACED_AUTOMATICALLY=True");
+            Log("STEP10_SELECTED_NATIVE_VIEWS_REGISTERED="+completed.Count);
+            Log("STEP10_REV22_GROUP_PLACED_AUTOMATICALLY=True");
+            if(completed.Count==10)
+                Log("STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True");
             var newFrames=PaperViewports(targetDoc.Database,paperLayout)
                 .Where(v=>!priorHandles.Contains(v.Handle)).ToList();
             Log("STEP10_NEW_PAPER_VIEWPORT_COUNT="+newFrames.Count);
@@ -1274,24 +1279,25 @@ public sealed class SupportOrthoTenViewGenerator
             Log("STEP10_ACTUAL_VIEWPORT_OVERLAP_DETECTED="+overlaps);
             Log("STEP10_POSSIBLE_TITLEBLOCK_COLLISION="+possibleTitleBlock);
             Log("STEP10_PLACEMENT_PROBE="+
-                (newFrames.Count>=10?"INSPECTED":"INCONCLUSIVE_VERIFY_VISUALLY"));
+                (newFrames.Count>=options.Views.Count?"INSPECTED":"INCONCLUSIVE_VERIFY_VISUALLY"));
             Log("NATIVE_ORTHO_VIEW_COUNT="+completed.Count);
-            if(completed.Count!=10||newFrames.Count!=10||overlaps||possibleTitleBlock)
+            if(completed.Count!=options.Views.Count||
+               newFrames.Count!=options.Views.Count||overlaps||possibleTitleBlock)
                 throw new InvalidOperationException(
-                    "REV22.29: Native view frame checks failed; titles not created.");
+                    "SPTC: Selected native view frames failed layout checks; titles not created.");
             // Generate paper-space MText independently of native view metadata,
             // OrthoCube geometry or AutoCAD model contents.
             var titles=NativeOrthoViewTitlePlan.BuildTitles(
                 confirmedFrames.Select(f=>new NativeOrthoViewTitlePlan.Frame(
                     f.Name,f.X,f.Y,f.W,f.H)).ToArray(),
-                paperWidth,paperHeight);
+                paperWidth,paperHeight,allowSubset:options.Views.Count!=10);
             Log("STEP10_TITLE_LAYER="+NativeOrthoViewTitlePlan.TitleLayer);
             var titleHandles=CreateNativePaperTitles(
                 targetDoc.Database,paperLayout,titles);
             Log("STEP10_VIEW_TITLE_COUNT="+titleHandles.Count);
-            if(titleHandles.Count!=10)
+            if(titleHandles.Count!=options.Views.Count)
                 throw new InvalidOperationException(
-                    "REV22.29 did not append all ten paper-space titles.");
+                    "SPTC did not append every selected native paper-space title.");
             for(int k=0;k<titles.Count;k++)
             {
                 Log("STEP10_TITLE_"+titles[k].Name+"="+titles[k].Text+
@@ -1317,7 +1323,8 @@ public sealed class SupportOrthoTenViewGenerator
                         " TWIST="+camera.TwistRadians+
                         " SCALE="+camera.Scale);
                 var plan=SupportOrthoMemberCalloutPlan27.Build(
-                    memberCameras,titles,sourceAnnotations,paperWidth,paperHeight);
+                    memberCameras,titles,sourceAnnotations,paperWidth,paperHeight,
+                    allowSubset:options.Views.Count!=10);
                 // REV22.29: preserve full source XREF key in the diagnostics;
                 // ONLY change the actual visible two-line PIPE annotation.
                 // Structural members and Support TOS retain their REV22.28 text.
@@ -1381,10 +1388,10 @@ public sealed class SupportOrthoTenViewGenerator
                     Log("STEP10_MEMBER_ANNOTATION_SKIP="+warn);
                 foreach(var noLabels in plan.ViewWithoutLabels)
                     Log("STEP10_MEMBER_ANNOTATION_VIEW_EMPTY="+noLabels);
-                int target=10*sourceAnnotations.Length;
-                int steelTosTarget=10*horizontalSteel.HorizontalCount;
-                int supportTosTarget=10*plantSupports.Members.Count;
-                int pipeBopTarget=10*pipeRead.Pipes.Count;
+                int target=options.Views.Count*sourceAnnotations.Length;
+                int steelTosTarget=options.Views.Count*horizontalSteel.HorizontalCount;
+                int supportTosTarget=options.Views.Count*plantSupports.Members.Count;
+                int pipeBopTarget=options.Views.Count*pipeRead.Pipes.Count;
                 annotationStatus=annotated==target&&
                     steelTosLabels==steelTosTarget&&
                     supportTosLabels==supportTosTarget&&
@@ -1410,7 +1417,7 @@ public sealed class SupportOrthoTenViewGenerator
             succeeded=annotationStatus=="PASS" ||
                 annotationStatus=="NO_NATIVE_STEEL_OR_PLANT_SUPPORTS";
             SafeWriteToActiveEditor(
-                "REV22.29: TEN native views and titles created. "+
+                "SPTC: "+options.Views.Count+" native views and titles created. "+
                 annotated+" per-member leader annotations; "+
                 annotationStatus+". Save and verify Update View.");
 
@@ -1660,9 +1667,9 @@ public sealed class SupportOrthoTenViewGenerator
                 vp.TwistAngle,vp.CustomScale));
         }
         tr.Commit();
-        if(views.Count!=10)
+        if(views.Count!=ids.Count||views.Count==0||views.Count>10)
             throw new InvalidOperationException(
-                "REV22.29 member labels require TEN genuine native cameras.");
+                "SPTC labels require all selected native view cameras.");
         return views;
     }
 
@@ -1927,8 +1934,8 @@ public sealed class SupportOrthoTenViewGenerator
         Database db,string paperLayout,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles)
     {
-        if(titles==null||titles.Count!=10)
-            throw new ArgumentException("REV22.29 requires exactly ten titles.");
+        if(titles==null||titles.Count<1||titles.Count>10)
+            throw new ArgumentException("SPTC selected native view title count invalid.");
         using Transaction tr=db.TransactionManager.StartTransaction();
         var layouts=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,OpenMode.ForRead);
         if(!layouts.Contains(paperLayout))
