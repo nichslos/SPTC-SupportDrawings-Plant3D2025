@@ -1401,7 +1401,7 @@ public sealed class SupportOrthoTenViewGenerator
                         if(!pipeByHandle.TryGetValue(note.Handle,out var p) ||
                            (!options.LineNumber&&!options.Bop))
                             return null;
-                        // Exact REV22.29 sanitation and two-line default.
+                        // Preserve REV22.29 source sanitation; REV22.38 omits\n                        // only the display prefix on the pipe line tag.
                         string[] original=SupportOrthoPipeCallout29.Compose(
                             p.LineTag,p.BopLabel).Split('\n');
                         string pipeLabel=options.LineNumber&&options.Bop?
@@ -1421,7 +1421,7 @@ public sealed class SupportOrthoTenViewGenerator
                         HasTos=options.Description&&includeSecond&&lines.Length>1};
                 }).Where(note=>note!=null)
                     .Cast<SupportOrthoMemberCalloutPlan27.Callout>().ToArray();
-                Log("REV22_29_PIPE_LABEL_FORMAT=LINE_NO_AND_BOP_WITHOUT_XREF_PATH");
+                Log("REV22_38_PIPE_LABEL_FORMAT=BARE_LINE_TAG_AND_BOP");
                 annotated=CreateNativePaperMemberLeaders27(
                     targetDoc.Database,paperLayout,visibleCallouts,
                     out var nativeTextWarnings);

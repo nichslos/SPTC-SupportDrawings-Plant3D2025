@@ -1,5 +1,27 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
+## REV 22.38 — Simplified drawing annotations
+
+Only **displayed annotation text** changes; line tags, BOP elevations,
+XREF provenance, source filenames in logs, 10-view generation, placement,
+leader geometry, and all four production commands are unchanged.
+
+| Before (REV 22.37) | After (REV 22.38) |
+| --- | --- |
+| `LINE NO: 100A-TEST-001` | `100A-TEST-001` |
+| `BOP EL. +1117.5745 mm` | `BOP EL. +1117.5745 mm` (unchanged) |
+| `XREF STRUCTURE: SUPP-1.dwg` | `SUPP-1` |
+| `XREF SUPPORT: SUPP-2.dwg` | `SUPP-2` |
+
+The actual XREF source `.dwg` filename and structure/support classification
+remain in the TXT diagnostics; only paper-space labels omit the category
+prefix and final extension. Repeated member labels stay repeated, because
+the source links and leaders are kept independent.
+
+Run `SPTC_SUPPORTORTHO10` after `NETLOAD` on a copied Plant 3D 2025
+project and inspect labels in generated views. This formatting is
+unit-tested; native Plant 3D visual inspection remains necessary.
+
 ## REV 22.37 — Nearby XREF Structure/Support source DWG annotations
 
 **New default-on option:** `Nearby XREF members: label source DWG` in
@@ -94,6 +116,6 @@ includes a Windows logo/image/icon smoke test in GitHub Actions.
 
 ### Build
 
-Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_37-XREF-MEMBERS`.
+Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_38-SIMPLE-LABELS`.
 
 Rollback source is preserved in repository Git history and the [full pre-cleanup archive](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).

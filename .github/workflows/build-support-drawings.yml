@@ -169,7 +169,20 @@ jobs:
               'NativeOrthoIsoReferenceComparison.cs')) {
             if(Test-Path "$root/$diagnostic") {throw "Legacy command file still shipped: $diagnostic"}
           }
-          if(-not $labels.Contains('"LINE NO: "+tag')) {throw 'Compact XREF tag formatting missing'}
+          # REV22.38 visible annotation: no LINE NO/XREF STRUCTURE/SUPPORT
+          # prefixes, no .dwg suffix; preserve BOP and source provenance.
+          if(-not $labels.Contains('return tag+"\n"+bop;') -or
+             $labels.Contains('return "LINE NO: "+tag')) {
+            throw 'REV22.38 bare pipe tag and unchanged BOP formatting missing'
+          }
+          $members=Get-Content "$root/SupportOrthoMemberCalloutPlan27.cs" -Raw
+          if(-not $members.Contains('Path.GetFileNameWithoutExtension(member.XrefDrawingName!)') -or
+             $members.Contains('"XREF "+(member.XrefKind')) {
+            throw 'REV22.38 XREF source basename label missing'
+          }
+          if(-not $gen.Contains('REV22_38_PIPE_LABEL_FORMAT=BARE_LINE_TAG_AND_BOP')) {
+            throw 'REV22.38 pipe label log marker missing'
+          }
           if(Get-ChildItem $root -Filter '*Test.cs') {
             throw 'Historical development command clones must not ship in the active source tree'
           }
@@ -193,11 +206,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.37 XREF DWG annotation DLL bytes: $size"
+          Write-Host "REV22.38 simplified annotation DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_37-XREF-MEMBERS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_38-SIMPLE-LABELS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
