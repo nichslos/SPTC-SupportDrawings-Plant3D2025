@@ -423,12 +423,15 @@ public sealed class SupportOrthoTenViewGenerator
             throw new InvalidOperationException(
                 "REV22.29 duplicate Pipe/Structure Member/Support handle.");
 
-        // REV22.41: capture verified structural/support endpoints while the
-        // source XREF and native model databases are still accessible.
-        // No geometric bounding-box dimensions are guessed.
+        // REV22.43: Start/End remains the source of genuine member length.
+        // Recognized upright members without those fields may now carry an
+        // explicitly marked OVERALL Z-height from actual entity geometry,
+        // never presented as a fabricated member cut length.
         var dimSource=options.AutoDimLinear
             ? SupportOrthoDimensionSource41.Read(
-                sourceDoc.Database,selectedSupportIds,xrefNearCube,units)
+                sourceDoc.Database,selectedSupportIds,xrefNearCube,units,
+                horizontalSteel.Members.Select(x=>x.Handle),
+                plantSupports.Members.Select(x=>x.Handle))
             : new SupportOrthoDimensionSource41.Result(
                 Array.Empty<SupportOrthoDimensionSource41.Segment>(),
                 Array.Empty<string>());
@@ -1556,6 +1559,12 @@ public sealed class SupportOrthoTenViewGenerator
             Log("REV22_41_AUTO_DIMLINEAR_ENABLED="+options.AutoDimLinear);
             Log("REV22_41_VERIFIED_SOURCE_SEGMENTS="+
                 dimSource.Segments.Count);
+            Log("REV22_43_EXPLICIT_MEMBER_LENGTH_SOURCES="+
+                dimSource.Segments.Count(x=>
+                    x.Provenance=="EXPLICIT_MEMBER_ENDPOINTS"));
+            Log("REV22_43_OVERALL_VERTICAL_HEIGHT_SOURCES="+
+                dimSource.Segments.Count(x=>
+                    x.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT"));
             foreach(string diagnostic in dimSource.Diagnostics)
                 Log("REV22_41_SOURCE_DIAGNOSTIC="+diagnostic);
             if(options.AutoDimLinear)
@@ -1569,7 +1578,7 @@ public sealed class SupportOrthoTenViewGenerator
                             new SupportOrthoDimLinearPlan41.Segment(
                                 s.Key,s.Kind,s.Ax,s.Ay,s.Az,
                                 s.Bx,s.By,s.Bz,s.SourceLength,
-                                s.Millimeters)).ToArray(),
+                                s.Millimeters,s.Provenance)).ToArray(),
                         paperWidth,paperHeight);
                     Log("REV22_41_DIMENSION_LAYER="+
                         SupportOrthoDimLinearPlan41.Layer);
@@ -1591,6 +1600,11 @@ public sealed class SupportOrthoTenViewGenerator
                         targetDoc.Database,paperLayout,
                         dimensionPlan.Dimensions,out var dimensionWarnings);
                     Log("REV22_41_DIMENSIONS_CREATED="+created);
+                    Log("REV22_43_VERTICAL_HEIGHT_DIMENSIONS_WRITTEN="+
+                        dimensionPlan.Dimensions.Count(x=>
+                            x.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT")-
+                        dimensionWarnings.Count(x=>
+                            x.Contains("DIM_CREATE_SKIPPED=",StringComparison.Ordinal)));
                     foreach(var warning in dimensionWarnings)
                         Log("REV22_41_DIMENSION_WRITE_WARNING="+warning);
                     foreach(var dimension in dimensionPlan.Dimensions)
@@ -1600,7 +1614,10 @@ public sealed class SupportOrthoTenViewGenerator
                             " ORIENTATION="+
                                 (dimension.Horizontal?"HORIZONTAL":"VERTICAL")+
                             " TEXT="+dimension.Measurement+
-                            " MM VERIFIED_ENDPOINTS=TRUE");
+                            " MM PROVENANCE="+dimension.Provenance+
+                            " VERIFIED_ENDPOINTS="+
+                                (dimension.Provenance==
+                                    "EXPLICIT_MEMBER_ENDPOINTS"));
                     Log("REV22_41_DIMENSION_RESULT="+
                         (created==dimensionPlan.Dimensions.Count?
                             "PASS":"PARTIAL"));
