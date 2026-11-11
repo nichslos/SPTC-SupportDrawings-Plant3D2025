@@ -76,6 +76,32 @@ jobs:
               throw "REV22.35 UI option missing: $option"
             }
           }
+          # REV22.39: custom 1:N must feed the same guarded paper-scale
+          # denominator as the original Automatic/preset selections.
+          $scaleHelper=Get-Content "$root/SupportDrawingPaperScale39.cs" -Raw
+          foreach($token in @('Custom 1:N...','return Valid(customDenominator)',
+              'return 0;','Max=1000000','Min=1')) {
+            if(-not $scaleHelper.Contains($token)) {
+              throw "REV22.39 custom paper scale parser missing: $token"
+            }
+          }
+          foreach($token in @('NumericUpDown customScale',
+              'SupportDrawingPaperScale39.Custom',
+              'SupportDrawingPaperScale39.Resolve(',
+              'customScale.Value','customScale.Minimum',
+              'customScale.Maximum','customScale.Visible')) {
+            if(-not $ui.Contains($token)) {
+              throw "REV22.39 custom scale form binding missing: $token"
+            }
+          }
+          foreach($token in @('options.ScaleDenominator<fit.Denominator',
+              'NativeOrthoTenViewAutoPlacement26.Build(fit,w,h)',
+              'Denominator=options.ScaleDenominator',
+              'Scale=1.0/options.ScaleDenominator')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.39 scale fit/placement protection missing: $token"
+            }
+          }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingManagerForm35','selectedOverride',
               'options.AutoSeed','options.Views.Count',
@@ -197,6 +223,8 @@ jobs:
         run: dotnet run --project tests/Rev235UiSmokeTests/Rev235UiSmokeTests.csproj -c Release
       - name: Test embedded logo and Windows Forms icon
         run: dotnet run --project tests/Rev236BrandingSmokeTests/Rev236BrandingSmokeTests.csproj -c Release
+      - name: Test REV22.39 automatic, preset and custom 1:N scales
+        run: dotnet run --project tests/Rev239ScaleSmokeTests/Rev239ScaleSmokeTests.csproj -c Release
       - name: Compile production DLL
         run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release
       - name: Verify compiled DLL
@@ -206,11 +234,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.38 simplified annotation DLL bytes: $size"
+          Write-Host "REV22.39 custom paper scale DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_38-SIMPLE-LABELS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_39-CUSTOM-SCALE
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
