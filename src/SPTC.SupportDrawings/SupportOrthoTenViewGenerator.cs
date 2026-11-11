@@ -1577,6 +1577,14 @@ public sealed class SupportOrthoTenViewGenerator
                         dimensionPlan.OrthographicViews);
                     Log("REV22_41_DIMENSIONS_PLANNED="+
                         dimensionPlan.Dimensions.Count);
+                    Log("REV22_42_COMPACT_DIMENSION_MODE=ONE_PER_KIND_AXIS_LENGTH");
+                    Log("REV22_42_REPEAT_DIMENSIONS_SUPPRESSED="+
+                        dimensionPlan.Skipped.Count(x=>
+                            x.Contains(":SOURCE_ALREADY_DIMENSIONED_IN_",
+                                StringComparison.Ordinal) ||
+                            x.Contains(":EQUAL_LENGTH_ALREADY_DIMENSIONED_BY_",
+                                StringComparison.Ordinal)));
+                    Log("REV22_42_PREFERRED_VIEWS=TOP,FRONT,LEFT,RIGHT,BACK,BOTTOM");
                     foreach(var rejected in dimensionPlan.Skipped)
                         Log("REV22_41_DIMENSION_SKIPPED="+rejected);
                     int created=SupportOrthoDimLinearWriter41.Write(

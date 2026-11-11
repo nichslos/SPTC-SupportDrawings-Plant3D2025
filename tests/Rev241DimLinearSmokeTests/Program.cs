@@ -55,4 +55,55 @@ Assert(SupportOrthoDimLinearPlan41.Build(new[]{top},
 Assert(SupportOrthoDimLinearPlan41.Build(new[]{top},
     new[]{other},594,841).Dimensions.Count==1,
     "same verified endpoint rules apply to XREF support");
+// REV22.42: the supplied Ortho PDF repeats the SAME 828.28 mm across
+// TOP/BOTTOM/LEFT/RIGHT/FRONT/BACK. Compact one verified length globally.
+var repeatSource=horizontal with {Key="NATIVE:828",Ax=-414.14,Bx=414.14,
+    SourceLength=828.28,Millimeters=828.28};
+var top2=top with {Name="TOP",Y=700};
+var bottom=top with {Name="BOTTOM",Y=700,DirZ=-1};
+var front2=front with {Name="FRONT",Y=550};
+var back=front with {Name="BACK",Y=550,DirY=1};
+var left=front with {Name="LEFT",Y=430,DirX=-1,DirY=0};
+var right=front with {Name="RIGHT",Y=430,DirX=1,DirY=0};
+var compact=SupportOrthoDimLinearPlan41.Build(
+    new[]{right,back,bottom,front2,left,top2},
+    new[]{repeatSource},594,841);
+Assert(compact.Dimensions.Count==1 &&
+    compact.Dimensions[0].View=="TOP" &&
+    compact.Dimensions[0].Measurement=="828.28",
+    "six orthographic views share one 828.28 dimension, prioritizing TOP");
+Assert(compact.Skipped.Any(x=>x.Contains("SOURCE_ALREADY_DIMENSIONED_IN_TOP")),
+    "opposite-view dimensions produce explicit reduction diagnostics");
+
+// Equal-sized independent members of the SAME category and physical
+// orientation should not repeat the same size on multiple leaders.
+var equalLength=repeatSource with {Key="NATIVE:829",Ay=100,By=100};
+var equalPlan=SupportOrthoDimLinearPlan41.Build(
+    new[]{top2,front2},new[]{repeatSource,equalLength},594,841);
+Assert(equalPlan.Dimensions.Count==1 &&
+    equalPlan.Skipped.Any(x=>x.Contains("EQUAL_LENGTH_ALREADY_DIMENSIONED_BY_")),
+    "repeat identical size/type/direction once per sheet");
+
+// Different lengths, orientations or Plant categories must remain distinct.
+var different=repeatSource with {Key="NATIVE:900",
+    Ax=-450,Bx=450,Ay=500,By=500,SourceLength=900,Millimeters=900};
+var otherCategory=repeatSource with {
+    Key="NATIVE:SUPP",Kind="SUPPORT",Ay=-500,By=-500
+};
+var dimensionVariety=SupportOrthoDimLinearPlan41.Build(
+    new[]{top2,front2},
+    new[]{repeatSource,different,otherCategory,vertical},594,841);
+Assert(dimensionVariety.Dimensions.Count==4,
+    "different source lengths/types and H/V orientation stay dimensioned");
+
+// A source that cannot be projected in TOP may be included in FRONT.
+var fallback=horizontal with {
+    Key="NATIVE:FALLBACK",Ay=1100,By=1100
+};
+var fallbackPlan=SupportOrthoDimLinearPlan41.Build(
+    new[]{top2,front2},new[]{fallback},594,841);
+Assert(fallbackPlan.Dimensions.Count==1 &&
+    fallbackPlan.Dimensions[0].View=="FRONT",
+    "an off-view preferred TOP should permit a fallback FRONT dimension");
+Console.WriteLine("REV22.42 compact DIMLINEAR across six views PASS");
 Console.WriteLine("REV22.41 verified orthographic DIMLINEAR planner PASS");

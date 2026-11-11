@@ -1,5 +1,38 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
+## REV 22.42 — Fewer/repeated dimensions on Ortho sheets
+
+The uploaded one-page Ortho PDF shows the same `828.28` dimension repeated
+in TOP, BOTTOM, LEFT, RIGHT, FRONT and BACK. The default-ON **Auto DIMLINEAR**
+option now uses **compact sheet-wide dimensioning**:
+
+- Keep only **one representative dimension for each verified source length,
+  physical horizontal/vertical orientation and Plant member category**
+  (`STRUCTURE` versus `SUPPORT`) on the entire generated Ortho sheet.
+  If multiple equivalent members share the exact displayed value
+  (up to the existing 0.001 mm formatting), the duplicate is omitted.
+- Prefer views in this deterministic order:
+  **TOP, FRONT, LEFT, RIGHT, BACK, BOTTOM** regardless of the selection
+  order in the persistent UI. If an earlier view cannot project and place
+  a dimension safely, a later eligible view is considered.
+- Different lengths, structural/support types and physical horizontal
+  versus vertical features are **not** merged. Each retained dimension
+  remains anchored to a real verified member with its own witness points.
+- The existing native `RotatedDimension`, DIMSTYLE, millimeter value,
+  collision/off-sheet checks, XREF transforms, source provenance, and
+  `SPTC_AUTO_DIMLINEAR` layer are unchanged. BOP/TOS/pipe and XREF
+  leader annotations, all ten selectable views and the four commands
+  remain unchanged.
+- `REV22_42_REPEAT_DIMENSIONS_SUPPRESSED` records how many duplicates
+  were avoided; skipped items are logged as
+  `SOURCE_ALREADY_DIMENSIONED_IN_...` or
+  `EQUAL_LENGTH_ALREADY_DIMENSIONED_BY_...`.
+
+**To apply to an existing drawing:** generate a fresh Ortho from the
+updated DLL in a **copied project**. The plugin does not remove dimensions
+from pre-existing DWGs. Dimensions remain static after manual native Ortho
+Update View, as disclosed in REV 22.41.
+
 ## REV 22.41 — Optional Auto DIMLINEAR on verified Ortho members
 
 The `SPTC_SUPPORTORTHO10` persistent SPTC palette has a default-ON
@@ -221,6 +254,6 @@ includes a Windows logo/image/icon smoke test in GitHub Actions.
 
 ### Build
 
-Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_41-AUTO-DIMLINEAR`.
+Standard Windows GitHub Actions runner, .NET 8 x64, source/geometry regression smoke tests, UI-subset title/callout smoke tests, exact four-command CI allowlist, DLL artifact `SPTC-SupportDrawings-Plant3D2025-REV22_42-COMPACT-DIMLINEAR`.
 
 Rollback source is preserved in repository Git history and the [full pre-cleanup archive](https://github.com/nichslos/SPTC-SupportDrawings-Plant3D2025/tree/archive-rev22-30-full-test-history).

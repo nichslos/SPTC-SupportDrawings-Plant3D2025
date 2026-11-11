@@ -220,6 +220,26 @@ jobs:
               throw "REV22.41 paper dimension writer missing: $token"
             }
           }
+          # REV22.42: avoid the repeated 828.28 mm dimension on TOP,
+          # BOTTOM, LEFT, RIGHT, FRONT and BACK of the user's Ortho PDF.
+          # Only one representative of each verified length/category/HV
+          # orientation is dimensioned across a whole generated sheet.
+          foreach($token in @('usedSources', 'usedValues',
+              'EQUAL_LENGTH_ALREADY_DIMENSIONED_BY_',
+              'SOURCE_ALREADY_DIMENSIONED_IN_',
+              'OrderBy(c=>ViewPriority(c.Name))',
+              'ViewPriority(string name)')) {
+            if(-not $dimPlan.Contains($token)) {
+              throw "REV22.42 compact DIMLINEAR guard missing: $token"
+            }
+          }
+          foreach($token in @('REV22_42_COMPACT_DIMENSION_MODE',
+              'REV22_42_REPEAT_DIMENSIONS_SUPPRESSED',
+              'REV22_42_PREFERRED_VIEWS')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.42 compact DIMLINEAR log missing: $token"
+            }
+          }
           foreach($token in @('options.AutoDimLinear',
               'SupportOrthoDimensionSource41.Read(',
               'SupportOrthoDimLinearPlan41.Build(',
@@ -315,11 +335,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.41 verified Auto DIMLINEAR Ortho DLL bytes: $size"
+          Write-Host "REV22.42 reduced Auto DIMLINEAR Ortho DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_41-AUTO-DIMLINEAR
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_42-COMPACT-DIMLINEAR
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
