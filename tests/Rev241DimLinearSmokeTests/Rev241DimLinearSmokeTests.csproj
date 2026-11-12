@@ -30,6 +30,8 @@
              Link="SupportOrthoNativeEdgeGeometry59.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoCoordinatedLayout60.cs"
              Link="SupportOrthoCoordinatedLayout60.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDrawingQualityAudit61.cs"
+             Link="SupportOrthoDrawingQualityAudit61.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoReferenceLayout51.cs"
              Link="SupportOrthoReferenceLayout51.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoNativeDimensionPolicy48.cs"
