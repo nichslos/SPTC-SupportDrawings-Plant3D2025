@@ -44,6 +44,26 @@ public static class SupportOrthoReferenceLayout51
             yield return first+i*step;
     }
 
+    // REV22.54: the overall is one lane OUTSIDE the preferred local
+    // chain (3.4 + 4.2 mm with the current paper DIMSTYLE), not two
+    // empty lanes beyond it. This matters in the shared inter-column
+    // gutter: the LEFT view's text may occupy the far-left edge of the
+    // RIGHT view's overall dimension band.
+    // Search a few safe intermediate offsets without altering model
+    // lengths. A minimum paper clearance from the inner chain is kept.
+    public static IEnumerable<double> OverallLaneOffsets(
+        double textHeight=2.0)
+    {
+        double chain=ChainOffset(textHeight);
+        double separation=OverallSeparation(textHeight);
+        yield return chain+separation;
+        yield return chain+separation*.80;
+        yield return chain+separation*.65;
+        foreach(double lane in LaneOffsets(textHeight))
+            if(lane>chain+separation+.01)
+                yield return lane;
+    }
+
     // Text may be outside both witnesses for a short dimension. Prefer
     // RIGHT of a short horizontal segment, as in TOP/BOTTOM/FRONT/BACK.
     // For a tightly packed chain, alternate sides if collision checks
