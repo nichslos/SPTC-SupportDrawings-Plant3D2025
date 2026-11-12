@@ -99,7 +99,12 @@ public static class NativeOrthoTenViewPlan
         double minY=double.NegativeInfinity,maxY=double.PositiveInfinity;
         foreach(var v in candidate.Views)
         {
-            double w=Math.Max(5,v.ModelWmm*candidate.Scale*1.05);
+            // REV22.49.1 title-safe paper frame. Never enlarge the
+            // projected model or the source OrthoCube; only the paper
+            // viewport rectangle's minimum width changes.
+            double w=Math.Max(
+                NativeOrthoViewTitlePlan.MinimumFrameWidth(v.Name),
+                v.ModelWmm*candidate.Scale*1.05);
             double h=Math.Max(5,v.ModelHmm*candidate.Scale*1.05);
             double dx=v.CenterX-topX,dy=v.CenterY-topY;
             minX=Math.Max(minX,w/2-dx+.1);
@@ -114,7 +119,8 @@ public static class NativeOrthoTenViewPlan
         double effectiveY=Math.Clamp(anchorY,minY,maxY);
         var frames=candidate.Views.Select(v=>new Placement(v.Name,
             effectiveX+v.CenterX-topX,effectiveY+v.CenterY-topY,
-            Math.Max(5,v.ModelWmm*candidate.Scale*1.05),
+            Math.Max(NativeOrthoViewTitlePlan.MinimumFrameWidth(v.Name),
+                v.ModelWmm*candidate.Scale*1.05),
             Math.Max(5,v.ModelHmm*candidate.Scale*1.05))).ToList();
         for(int i=0;i<frames.Count;i++)
         {
