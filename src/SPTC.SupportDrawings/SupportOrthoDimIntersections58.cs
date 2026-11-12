@@ -85,14 +85,14 @@ public static class SupportOrthoDimIntersections58
             if(CrossesBaselineInterior(proposed.Baseline,line))
                 return "DIMENSION_LINE_CROSSES_PRIOR_WITNESS_INTERIOR";
 
-        // Two independent OUTER overall dimensions around an L-shaped
-        // assembly may share a drafting corner where their extension
-        // lines cross before reaching the two overall baselines. That
-        // is a conventional shared envelope reference, not a local
-        // 50/100 mm member datum. Keep BOTH overall measurements even
-        // in that unavoidable case; interior crossings involving any
-        // local/chain witness are still prohibited.
-        if(!(proposed.Overall&&earlier.Overall))
+        // An outer overall dimension's witness may cross a reference
+        // chain witness at a shared projected construction station of
+        // an L-shaped assembly. Such a shared envelope datum is
+        // conventional (and preserves the 828.28 mm chain), provided
+        // it does not pass through another dimension BASELINE INTERIOR
+        // or printed text (both checked above). A crossing BETWEEN
+        // two ordinary local/member witnesses is still prohibited.
+        if(!(proposed.Overall||earlier.Overall))
             foreach(var a in proposed.Witnesses)
             foreach(var b in earlier.Witnesses)
                 if(PerpendicularInteriorCrossing(a,b))
