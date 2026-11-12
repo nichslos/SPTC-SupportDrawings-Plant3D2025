@@ -14,8 +14,20 @@ internal static class Rev247ReferenceStyleTests
             "NATIVE:C125_A","STRUCTURE",0,-25,0,712,25,125);
         var second=new SupportOrthoAllViewDimPlan44.Member(
             "NATIVE:C125_B","STRUCTURE",712,-25,0,822,25,125);
+        // REV22.50: the 712 and 110 chain is legitimate only when
+        // native endpoints confirm every station; adjacent WCS AABBs
+        // are NOT enough to invent a connection or a 50 mm split.
+        var firstEndpoint=new SupportOrthoDimLinearPlan41.Segment(
+            "NATIVE:C125_A","STRUCTURE",
+            0,-25,0,712,-25,0,712,712,
+            "EXPLICIT_MEMBER_ENDPOINTS");
+        var secondEndpoint=new SupportOrthoDimLinearPlan41.Segment(
+            "NATIVE:C125_B","STRUCTURE",
+            712,-25,0,822,-25,0,110,110,
+            "EXPLICIT_MEMBER_ENDPOINTS");
         var plan=SupportOrthoReferenceDimPlan47.Build(
-            new[]{top},new[]{first,second},594,841,1);
+            new[]{top},new[]{first,second},594,841,1,
+            new[]{firstEndpoint,secondEndpoint});
         var h=plan.Dimensions.Where(d=>d.Horizontal).ToArray();
         Need(h.Length==3,"p15 TOP has two chain pieces and one overall");
         Need(h.Count(d=>d.Measurement=="712")==1&&
@@ -46,8 +58,13 @@ internal static class Rev247ReferenceStyleTests
                 start,-35,0,x,35,125);
         }).ToArray();
         var wide=top with {X=210,W=280,ViewCenterX=1112.5};
+        var verifiedSegments=members.Select(m=>
+            new SupportOrthoDimLinearPlan41.Segment(
+                m.Key,m.Kind,m.MinX,-35,0,m.MaxX,-35,0,
+                m.MaxX-m.MinX,m.MaxX-m.MinX,
+                "EXPLICIT_MEMBER_ENDPOINTS")).ToArray();
         var longPlan=SupportOrthoReferenceDimPlan47.Build(
-            new[]{wide},members,594,841,1);
+            new[]{wide},members,594,841,1,verifiedSegments);
         Need(longPlan.Dimensions.Any(d=>d.Horizontal&&
             d.Source.EndsWith("/OVERALL")&&d.Measurement=="2225"),
             "p16 overall dimension 2225 follows actual projected extents");
@@ -70,8 +87,9 @@ internal static class Rev247ReferenceStyleTests
             "EXPLICIT_MEMBER_ENDPOINTS");
         var oneWithPoint=SupportOrthoReferenceDimPlan47.Build(
             new[]{top},new[]{first},594,841,1,new[]{endpoint});
-        Need(oneWithPoint.ChainDimensions>=2,
-            "verified model endpoint can create a detail station");
+        Need(oneWithPoint.ChainDimensions==0,
+            "single internal endpoint without verified endcaps must not "+
+            "invent a complete local dimension chain");
         Need(!oneWithPoint.Dimensions.Any(d=>d.Source.Contains("BOLT")),
             "bolt pitches are never invented from member bounding boxes");
 
@@ -81,7 +99,8 @@ internal static class Rev247ReferenceStyleTests
             "XREF_MEMBER:REMOTE","STRUCTURE",-2000,-100,0,
             3000,100,100);
         var mixed=SupportOrthoReferenceDimPlan47.Build(
-            new[]{top},new[]{first,second,xref},594,841,1);
+            new[]{top},new[]{first,second,xref},594,841,1,
+            new[]{firstEndpoint,secondEndpoint});
         Need(mixed.Dimensions.Select(d=>d.Measurement)
             .OrderBy(x=>x).SequenceEqual(
                 plan.Dimensions.Select(d=>d.Measurement).OrderBy(x=>x)),
@@ -111,7 +130,8 @@ internal static class Rev247ReferenceStyleTests
             "unrelated native endpoint cannot become a datum station");
         var iso=top with {Name="NW",DirX=1,DirY=-1,DirZ=1};
         var subset=SupportOrthoReferenceDimPlan47.Build(
-            new[]{top,iso},new[]{first,second},594,841,1);
+            new[]{top,iso},new[]{first,second},594,841,1,
+            new[]{firstEndpoint,secondEndpoint});
         Need(subset.OrthographicViews==1&&
             subset.Dimensions.All(d=>d.View=="TOP"),
             "isometric foreshortening does not create false linear dimensions");
