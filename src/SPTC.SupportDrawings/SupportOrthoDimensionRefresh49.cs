@@ -298,7 +298,8 @@ internal static class SupportOrthoDimensionRefresh49
             sourceIds,Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),
             original.UnitsToMm,steel,supports);
         var segments=sourceSegments.Segments
-            .Where(SupportOrthoNativeDimensionPolicy48.AcceptSegment)
+            .Where(x=>SupportOrthoNativeDimensionPolicy48.IsNativeKey(x.Key)&&
+                x.Provenance=="EXPLICIT_MEMBER_ENDPOINTS")
             .Select(s=>new SupportOrthoDimLinearPlan41.Segment(
                 s.Key,s.Kind,s.Ax,s.Ay,s.Az,s.Bx,s.By,s.Bz,
                 s.SourceLength,s.Millimeters,s.Provenance)).ToArray();
@@ -408,7 +409,7 @@ internal static class SupportOrthoDimensionRefresh49
         int created=SupportOrthoDimLinearWriter41.Write(
             target.Database,original.LayoutName,dimensions,
             out var diagnostics,replaceGenerated:true);
-        Store(target,original with {LastSignature=next,
+        Store(target.Database,original with {LastSignature=next,
             PaperWidth=paperW,PaperHeight=paperH});
         Message(target,"REV22.49 native DIMLINEAR refresh="+created+
             " old owned dims replaced; XREF dimensions=0; "+
