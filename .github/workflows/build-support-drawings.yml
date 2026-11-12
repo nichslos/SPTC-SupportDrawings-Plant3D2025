@@ -286,6 +286,32 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.56: the manually edited PDF uses member end faces
+          # to split projected overall dimensions (e.g. measured
+          # terminal section + remaining span), not 50 mm ghost
+          # centerline segments. No sample model measurements are
+          # hardcoded into production dimension creation.
+          $datum56=Get-Content "$root/SupportOrthoReferenceDatum56.cs" -Raw
+          $dim56=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $gen56=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('TerminalMemberRemainderDimensions',
+              'SupportOrthoReferenceDatum56.Choose(',
+              'REFERENCE_TERMINAL_NATIVE_MEMBER_REMAINDER_NOT_CUT_LENGTH',
+              'TERMINAL_REMAINDER_NO_CLEAR_LANE',
+              'if(steps.Count>1||terminalDatum.HasValue)')) {
+            if(-not $dim56.Contains($token)) {
+              throw "REV22.56 manual end-member dimension policy absent: $token"
+            }
+          }
+          foreach($token in @('public static Datum? Choose(',
+              'full.Any(', 'SourceKey.StartsWith("NATIVE:"')) {
+            if(-not $datum56.Contains($token)) {
+              throw "REV22.56 native geometry qualification absent: $token"
+            }
+          }
+          if(-not $gen56.Contains('REV22_56_REFERENCE_DATUM=')) {
+            throw 'REV22.56 per-view native reference diagnostics missing'
+          }
           # REV22.55: local structural-member cross-section DIMLINEAR
           # witnesses must originate at the *native member Start/End
           # axis midpoint*, not a bounding-box face. Change geometry
@@ -702,11 +728,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.55 member midpoint witness + native Ortho fast update DLL bytes: $size"
+          Write-Host "REV22.56 manual end-member datum dimensions + fast Ortho update DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_55-NATIVE-MIDPOINT-MEMBER-DIMS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_56-MANUAL-END-MEMBER-DIMS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
