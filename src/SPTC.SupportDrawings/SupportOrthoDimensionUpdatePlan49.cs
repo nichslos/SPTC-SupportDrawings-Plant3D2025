@@ -27,7 +27,11 @@ public static class SupportOrthoDimensionUpdatePlan49
         bool ReferenceDetailDimensions,
         IReadOnlyList<NativeMember> Members,
         IReadOnlyList<View> Views,
-        string LastSignature);
+        string LastSignature,
+        long SourceWriteUtcTicks=0,
+        long SourceFileLength=-1,
+        string LastViewPoseSignature="",
+        int LastOwnedDimensionCount=-1);
 
     public sealed record Candidate(string Handle,
         double X,double Y,double W,double H);
@@ -100,6 +104,48 @@ public static class SupportOrthoDimensionUpdatePlan49
             .OrderBy(s=>s,StringComparer.Ordinal).ToArray();
         var bytes=SHA256.HashData(Encoding.UTF8.GetBytes(
             string.Join("\n",rows)));
+        return Convert.ToHexString(bytes);
+    }
+
+    /// <summary>
+    /// A cheap, read-only early exit for the usual no-change
+    /// PLANTORTHOUPDATE. Never trust only the file timestamp: the native
+    /// view pose and owned DIMLINEAR count must also match the last saved
+    /// state. Old REV22.49 manifests with no cache fields refresh once.
+    /// </summary>
+    public static bool CanSkipModelReload(
+        Manifest saved,long currentSourceWriteUtcTicks,
+        long currentSourceFileLength,string currentViewPose,
+        int currentOwnedDimensionCount)
+    {
+        Validate(saved);
+        return saved.SourceWriteUtcTicks>0&&
+            saved.SourceFileLength>=0&&
+            saved.LastOwnedDimensionCount>=0&&
+            !string.IsNullOrWhiteSpace(saved.LastViewPoseSignature)&&
+            saved.SourceWriteUtcTicks==currentSourceWriteUtcTicks&&
+            saved.SourceFileLength==currentSourceFileLength&&
+            string.Equals(saved.LastViewPoseSignature,currentViewPose,
+                StringComparison.Ordinal)&&
+            saved.LastOwnedDimensionCount==currentOwnedDimensionCount;
+    }
+
+    public static string ViewPoseSignature(
+        IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
+        double paperW,double paperH)
+    {
+        if(cameras==null||cameras.Count==0||
+           !double.IsFinite(paperW)||paperW<=0||
+           !double.IsFinite(paperH)||paperH<=0)
+            throw new ArgumentException("REV22.49.3 invalid native view poses.");
+        var rows=cameras.Select(c=>string.Join("|",
+            c.Name.ToUpperInvariant(),N(c.X),N(c.Y),N(c.W),N(c.H),
+            N(c.DirX),N(c.DirY),N(c.DirZ),
+            N(c.ViewCenterX),N(c.ViewCenterY),
+            N(c.TwistRadians),N(c.Scale)))
+            .OrderBy(x=>x,StringComparer.Ordinal).ToArray();
+        var bytes=SHA256.HashData(Encoding.UTF8.GetBytes(
+            string.Join("\n",rows)+"|PAPER|"+N(paperW)+"|"+N(paperH)));
         return Convert.ToHexString(bytes);
     }
 
