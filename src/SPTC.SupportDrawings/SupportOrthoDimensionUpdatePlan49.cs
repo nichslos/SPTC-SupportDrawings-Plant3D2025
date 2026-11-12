@@ -95,7 +95,8 @@ public static class SupportOrthoDimensionUpdatePlan49
             x.Horizontal?"H":"V",
             N(x.Ax),N(x.Ay),N(x.Bx),N(x.By),
             N(x.LineX),N(x.LineY),
-            N(x.PaperTextX??0),N(x.PaperTextY??0)))
+            N(x.PaperTextX??0),N(x.PaperTextY??0),
+            N(x.PaperToModelMm??0)))
             .OrderBy(s=>s,StringComparer.Ordinal).ToArray();
         var bytes=SHA256.HashData(Encoding.UTF8.GetBytes(
             string.Join("\n",rows)));
