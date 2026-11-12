@@ -133,7 +133,10 @@ internal static class SupportOrthoDimLinearWriter41
                 {
                     dim.Dimtxt=2.0;
                     dim.Dimasz=1.5;
-                    dim.Dimexo=.8;
+                    // REV22.49.4: extension lines must begin AT the
+                    // verified native member face/endpoint, not remain
+                    // visibly short of it due to a paper-space offset.
+                    dim.Dimexo=0.0;
                     dim.Dimexe=1.2;
                     dim.Dimgap=.7;
                 }
