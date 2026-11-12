@@ -32,7 +32,8 @@ public static class SupportOrthoDimIntersections58
 
     public readonly record struct Shape(
         Segment Baseline,Segment WitnessA,Segment WitnessB,
-        SupportOrthoSmartDimPlan46.Rect Text)
+        SupportOrthoSmartDimPlan46.Rect Text,
+        bool Overall=false)
     {
         public IEnumerable<Segment> Witnesses
         {
@@ -51,14 +52,18 @@ public static class SupportOrthoDimIntersections58
                 new Segment(dimension.Ax,dimension.Ay,
                     dimension.Ax,dimension.LineY),
                 new Segment(dimension.Bx,dimension.By,
-                    dimension.Bx,dimension.LineY),text);
+                    dimension.Bx,dimension.LineY),text,
+                dimension.Source.EndsWith("/OVERALL",
+                    StringComparison.Ordinal));
         return new Shape(
             new Segment(dimension.LineX,dimension.Ay,
                 dimension.LineX,dimension.By),
             new Segment(dimension.Ax,dimension.Ay,
                 dimension.LineX,dimension.Ay),
             new Segment(dimension.Bx,dimension.By,
-                dimension.LineX,dimension.By),text);
+                dimension.LineX,dimension.By),text,
+            dimension.Source.EndsWith("/OVERALL",
+                StringComparison.Ordinal));
     }
 
     /// <summary>Null when clear; otherwise a precise rejection cause.
@@ -80,10 +85,18 @@ public static class SupportOrthoDimIntersections58
             if(CrossesBaselineInterior(proposed.Baseline,line))
                 return "DIMENSION_LINE_CROSSES_PRIOR_WITNESS_INTERIOR";
 
-        foreach(var a in proposed.Witnesses)
-        foreach(var b in earlier.Witnesses)
-            if(PerpendicularInteriorCrossing(a,b))
-                return "WITNESS_WITNESS_INTERSECTION";
+        // Two independent OUTER overall dimensions around an L-shaped
+        // assembly may share a drafting corner where their extension
+        // lines cross before reaching the two overall baselines. That
+        // is a conventional shared envelope reference, not a local
+        // 50/100 mm member datum. Keep BOTH overall measurements even
+        // in that unavoidable case; interior crossings involving any
+        // local/chain witness are still prohibited.
+        if(!(proposed.Overall&&earlier.Overall))
+            foreach(var a in proposed.Witnesses)
+            foreach(var b in earlier.Witnesses)
+                if(PerpendicularInteriorCrossing(a,b))
+                    return "WITNESS_WITNESS_INTERSECTION";
         return null;
     }
 
