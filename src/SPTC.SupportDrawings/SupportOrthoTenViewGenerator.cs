@@ -1652,6 +1652,16 @@ public sealed class SupportOrthoTenViewGenerator
                             detailPlan.OverallDimensions);
                         Log("REV22_52_LOCAL_PROJECTED_MEMBER_DIMENSIONS="+
                             detailPlan.LocalMemberDimensions);
+                        Log("REV22_53_OVERALL_DIMENSIONS_RESERVED_FIRST="+
+                            detailPlan.PriorityOverallDimensions);
+                        Log("REV22_53_RIGHT_VERTICAL_OVERALL_PRESENT="+
+                            detailPlan.Dimensions.Any(d=>
+                                d.View=="RIGHT"&&!d.Horizontal&&
+                                d.Source.EndsWith("/OVERALL",
+                                    StringComparison.Ordinal)));
+                        Log("REV22_53_DIMENSION_PROVENANCE="+
+                            "NATIVE_ONLY;GEOMETRIC_ENVELOPE_VS_ENDPOINT_CHAIN");
+                        Log("REV22_53_PROJECTED_DIMENSIONS_DYNAMIC_NOT_HARDCODED=True");
                         Log("REV22_52_REFERENCE_PDF_DIMENSION_RULES="+
                             "CHAIN_NEAR_OVERALL_OUTER;LOCAL_MEMBER_MEASURED;"+
                             "XREF_DIMENSIONS_DISABLED");
