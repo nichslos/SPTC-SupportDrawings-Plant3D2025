@@ -286,6 +286,32 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.57: match manually arranged TOP/BOTTOM/LEFT/RIGHT
+          # details. The overall MUST stay in the outermost actual
+          # paper-space lane (regardless of member local bounding box).
+          # Suppress only physically redundant sub-profile chains,
+          # retain dynamic 50mm transverse section and native-only dims.
+          $manual57=Get-Content "$root/SupportOrthoManualDetailStyle57.cs" -Raw
+          $planner57=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $gen57=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('InsideOverall(',
+              'ObscuredByTerminalMember(',
+              'PreferLocalMember(', 'ShowTerminalRemainder(')) {
+            if(-not $manual57.Contains($token) -or
+               -not $planner57.Contains($token)) {
+              throw "REV22.57 source manual selection guard missing: $token"
+            }
+          }
+          foreach($token in @('InnerThanReservedOverall(',
+              'RedundantChainsSuppressed',
+              'HierarchyCrossingsRejected')) {
+            if(-not $planner57.Contains($token)) {
+              throw "REV22.57 paper dimension hierarchy absent: $token"
+            }
+          }
+          if(-not $gen57.Contains('REV22_57_REFERENCE_SELECTION=')) {
+            throw 'REV22.57 missing per-view manual comparison diagnostics'
+          }
           # REV22.56: the manually edited PDF uses member end faces
           # to split projected overall dimensions (e.g. measured
           # terminal section + remaining span), not 50 mm ghost
@@ -728,11 +754,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.56 manual end-member datum dimensions + fast Ortho update DLL bytes: $size"
+          Write-Host "REV22.57 manual four-view dimension hierarchy and fast Ortho update DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_56-MANUAL-END-MEMBER-DIMS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_57-MANUAL-FOUR-VIEW-DIMENSIONS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
