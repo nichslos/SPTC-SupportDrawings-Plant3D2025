@@ -33,7 +33,8 @@ public static class SupportOrthoDimIntersections58
     public readonly record struct Shape(
         Segment Baseline,Segment WitnessA,Segment WitnessB,
         SupportOrthoSmartDimPlan46.Rect Text,
-        bool Overall=false)
+        bool Overall=false,
+        bool TerminalRemainder=false)
     {
         public IEnumerable<Segment> Witnesses
         {
@@ -54,6 +55,8 @@ public static class SupportOrthoDimIntersections58
                 new Segment(dimension.Bx,dimension.By,
                     dimension.Bx,dimension.LineY),text,
                 dimension.Source.EndsWith("/OVERALL",
+                    StringComparison.Ordinal),
+                dimension.Source.Contains("/TERMINAL_REMAINDER_",
                     StringComparison.Ordinal));
         return new Shape(
             new Segment(dimension.LineX,dimension.Ay,
@@ -63,6 +66,8 @@ public static class SupportOrthoDimIntersections58
             new Segment(dimension.Bx,dimension.By,
                 dimension.LineX,dimension.By),text,
             dimension.Source.EndsWith("/OVERALL",
+                StringComparison.Ordinal),
+            dimension.Source.Contains("/TERMINAL_REMAINDER_",
                 StringComparison.Ordinal));
     }
 
@@ -92,7 +97,15 @@ public static class SupportOrthoDimIntersections58
         // it does not pass through another dimension BASELINE INTERIOR
         // or printed text (both checked above). A crossing BETWEEN
         // two ordinary local/member witnesses is still prohibited.
-        if(!(proposed.Overall||earlier.Overall))
+        // A projected terminal-member remainder and its physical
+        // transverse end-section form an intentional construction
+        // grid. Their two witness lines may intersect at the native
+        // member corner even though both are detail dimensions.
+        // Preserve this geometry, while STILL rejecting an extension
+        // that crosses an unrelated DIMENSION BASELINE interior or
+        // printed label (those are checked separately above).
+        if(!(proposed.Overall||earlier.Overall||
+             proposed.TerminalRemainder||earlier.TerminalRemainder))
             foreach(var a in proposed.Witnesses)
             foreach(var b in earlier.Witnesses)
                 if(PerpendicularInteriorCrossing(a,b))
