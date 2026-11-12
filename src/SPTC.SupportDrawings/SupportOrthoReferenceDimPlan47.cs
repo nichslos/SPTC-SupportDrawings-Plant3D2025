@@ -412,6 +412,12 @@ public static class SupportOrthoReferenceDimPlan47
                                     projected,verifiedWitnessPoints,
                                     step,sign,offset,tier);
                                 if(attempt!=null&&
+                                   !InnerThanReservedOverall(attempt.Value.P))
+                                {
+                                    hierarchyRejected++;
+                                    continue;
+                                }
+                                if(attempt!=null&&
                                    Fits(attempt.Value.P,blocks,paper,
                                        placed.Concat(local.Select(x=>x.P)),
                                        projected))
@@ -589,6 +595,12 @@ public static class SupportOrthoReferenceDimPlan47
                                 var candidate=Candidate(camera,assembly,
                                     projected,verifiedWitnessPoints,
                                     localReq,sign,offset,tier);
+                                if(candidate!=null&&
+                                   !InnerThanReservedOverall(candidate.Value.P))
+                                {
+                                    hierarchyRejected++;
+                                    continue;
+                                }
                                 if(candidate==null||
                                    !Fits(candidate.Value.P,blocks,paper,
                                        placed,projected))
