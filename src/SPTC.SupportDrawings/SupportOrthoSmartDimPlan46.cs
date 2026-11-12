@@ -235,7 +235,10 @@ public static class SupportOrthoSmartDimPlan46
                             b.L,b.B,horizontal?b.R:b.L,
                             horizontal?b.B:b.T,lineX,lineY,req.Label,
                             "PROJECTED_OVERALL_VIEW_ENVELOPE",
-                            textX,textY);
+                            textX,textY,
+                            SupportOrthoDynamicDimension492
+                                .ModelMillimetersPerPaperUnit(
+                                    unitsToMm,camera.Scale));
                         dims.Add(measure);
                         placements.Add(new Placement(camera.Name,
                             measure.Source,dimLine,textZone,witness1,
