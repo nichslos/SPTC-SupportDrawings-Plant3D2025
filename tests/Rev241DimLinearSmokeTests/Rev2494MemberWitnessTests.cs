@@ -23,8 +23,25 @@ internal static class Rev2494MemberWitnessTests
         var post2=new SupportOrthoAllViewDimPlan44.Member(
             "NATIVE:POST_B","STRUCTURE",
             878.28,0,0,928.28,502.79,20);
+        // Independent native Start/End evidence is required. The source
+        // member envelopes alone are not proof of 50 mm connections.
+        var verified=new[]{
+            new SupportOrthoDimLinearPlan41.Segment(
+                "NATIVE:BEAM","STRUCTURE",
+                0,50,0,828.28,50,0,828.28,828.28,
+                "EXPLICIT_MEMBER_ENDPOINTS"),
+            new SupportOrthoDimLinearPlan41.Segment(
+                "NATIVE:POST_A","STRUCTURE",
+                828.28,502.79,0,878.28,502.79,0,50,50,
+                "EXPLICIT_MEMBER_ENDPOINTS"),
+            new SupportOrthoDimLinearPlan41.Segment(
+                "NATIVE:POST_B","STRUCTURE",
+                878.28,502.79,0,928.28,502.79,0,50,50,
+                "EXPLICIT_MEMBER_ENDPOINTS")
+        };
         var actual=SupportOrthoReferenceDimPlan47.Build(
-            new[]{camera},new[]{beam,post1,post2},594,841,1);
+            new[]{camera},new[]{beam,post1,post2},594,841,1,
+            verified);
         var horizontal=actual.Dimensions.Where(d=>d.Horizontal)
             .ToArray();
         Need(horizontal.Any(d=>d.Measurement=="928.28"),
@@ -34,7 +51,7 @@ internal static class Rev2494MemberWitnessTests
         var fifty=horizontal.Where(d=>d.Measurement=="50")
             .OrderBy(d=>d.Ax).ToArray();
         Need(fifty.Length==2,
-            "two separate 50 mm source members create two genuine 50 mm segments");
+            "two truly verified 50 mm native endpoint intervals are preserved");
         var beamTip=SupportOrthoMemberCalloutPlan17.Project(
             camera,0,50,20);
         var highPost=SupportOrthoMemberCalloutPlan17.Project(
@@ -57,6 +74,15 @@ internal static class Rev2494MemberWitnessTests
         Need(actual.Dimensions.All(d=>
             SupportOrthoDynamicDimension492.MatchesDiagnostic(d)),
             "witness corrections preserve dynamically measured mm lengths");
+
+        // Unverified local chains must be suppressed even when geometry
+        // rectangles touch at exactly 50 mm. Their overall is still
+        // measured, but no 50 mm station is fabricated.
+        var boundsOnly=SupportOrthoReferenceDimPlan47.Build(
+            new[]{camera},new[]{beam,post1,post2},594,841,1);
+        Need(boundsOnly.ChainDimensions==0 &&
+            !boundsOnly.Dimensions.Any(d=>d.Measurement=="50"),
+            "AABB contacts cannot create unverified 50 mm chain dimensions");
 
         // A single 100 mm post is NOT evidence for a fictitious
         // mid-point splitting it into two 50 mm dimensions.
