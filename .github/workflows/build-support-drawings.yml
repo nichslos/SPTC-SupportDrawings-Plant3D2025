@@ -286,6 +286,22 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.51: mimic the user's explicitly re-positioned
+          # six-view support PDF. H dimensions above, V left, inner
+          # chain closer to the geometry than its outer overall line;
+          # labels may not cover support outlines/callout gutters.
+          $pdfLayout51=Get-Content "$root/SupportOrthoReferenceLayout51.cs" -Raw
+          $refPlanner51=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          foreach($token in @('PreferredSide(','ShortTextBefore(',
+              'OverallSeparation(', 'LaneOffsets(')) {
+            if(-not $pdfLayout51.Contains($token) -or
+               -not $refPlanner51.Contains($token)) {
+              throw "REV22.51 reference PDF layout rule missing: $token"
+            }
+          }
+          if(-not $refPlanner51.Contains('sourceMembers.Any(m=>p.Text.Intersects')) {
+            throw 'REV22.51 dimension text must avoid structural silhouettes'
+          }
           # REV22.50: local/50 mm chain distances must have two
           # independently verified source Start/End stations. AABB
           # contacts alone are not sufficient for a drafting dimension.
@@ -610,11 +626,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.50 verified native datum + cached Ortho update DLL bytes: $size"
+          Write-Host "REV22.51 user-adjusted PDF reference dimension layout DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_50-VERIFIED-NATIVE-DIMS-FAST-UPDATE
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_51-PDF-REFERENCE-DIM-LAYOUT
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
