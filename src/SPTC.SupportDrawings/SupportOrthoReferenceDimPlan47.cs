@@ -21,7 +21,8 @@ public static class SupportOrthoReferenceDimPlan47
         IReadOnlyList<string> Skipped,
         int OrthographicViews,int ChainDimensions,int OverallDimensions,
         int CollisionCandidatesRejected,int RequestedDimensions,
-        int LocalMemberDimensions=0);
+        int LocalMemberDimensions=0,
+        int PriorityOverallDimensions=0);
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
@@ -53,7 +54,7 @@ public static class SupportOrthoReferenceDimPlan47
         var dimensions=new List<SupportOrthoDimLinearPlan41.Dimension>();
         var skipped=new List<string>();
         int views=0,chain=0,overall=0,localCount=0,
-            rejected=0,requested=0;
+            priorityOverallCount=0,rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
 
@@ -125,6 +126,84 @@ public static class SupportOrthoReferenceDimPlan47
             if(additionalKeepouts!=null)
                 blocks.AddRange(additionalKeepouts.Where(x=>x.IsFinite));
             var placed=new List<Placed>();
+
+            // REV22.53: ONE projection pass for actual, vetted native
+            // Plant Start/End points. Cache these paper coordinates for
+            // both axis chains and overall witness selection. The
+            // projected AABB alone never authorizes connection stations.
+            var verifiedWitnessPoints=new List<(double X,double Y)>();
+            if(sources!=null)
+                foreach(var source in sources)
+                {
+                    if(!SupportOrthoNativeDimensionPolicy48.AcceptSegment(source)||
+                       !visibleNative.TryGetValue(source.Key,
+                            out var sourceBounds))
+                        continue;
+                    foreach(var point in new[]{
+                        (source.Ax,source.Ay,source.Az),
+                        (source.Bx,source.By,source.Bz)})
+                    {
+                        var p=SupportOrthoMemberCalloutPlan17.Project(
+                            camera,point.Item1,point.Item2,point.Item3);
+                        if(!double.IsFinite(p.X)||!double.IsFinite(p.Y)||
+                           p.X<sourceBounds.L-.25||
+                           p.X>sourceBounds.R+.25||
+                           p.Y<sourceBounds.B-.25||
+                           p.Y>sourceBounds.T+.25)
+                            continue;
+                        verifiedWitnessPoints.Add((p.X,p.Y));
+                    }
+                }
+
+            // Reserve the two OUTER overall dimensions before chain
+            // details and member widths. REV22.52 placed H local widths
+            // before RIGHT/V overall, letting optional local details
+            // consume the only left-side overall lane. RIGHT/V is now
+            // protected first. Both axes still run through the same
+            // geometry and collision checks: no fabricated dimensions.
+            var reservedOverallAxes=new HashSet<bool>();
+            foreach(bool horizontal in new[]{false,true})
+            {
+                double from=horizontal?minX:minY;
+                double to=horizontal?maxX:maxY;
+                if(to-from<.25)continue;
+                var request=MakeRequest(horizontal,from,to,true,0,
+                    camera.Scale,unitsToMm);
+                bool found=false;
+                foreach(double sign in PreferredSigns(camera.Name,horizontal))
+                {
+                    if(found)break;
+                    foreach(double offset in SupportOrthoReferenceLayout51
+                        .LaneOffsets().Where(value=>value>=
+                            SupportOrthoReferenceLayout51.ChainOffset()+
+                            SupportOrthoReferenceLayout51.OverallSeparation()-
+                            .01))
+                    {
+                        if(found)break;
+                        for(int tier=0;tier<12;tier++)
+                        {
+                            var candidate=Candidate(camera,assembly,
+                                projected,verifiedWitnessPoints,
+                                request,sign,offset,tier);
+                            if(candidate==null||
+                               !Fits(candidate.Value.P,blocks,paper,placed,
+                                    projected))
+                            {
+                                rejected++;
+                                continue;
+                            }
+                            dimensions.Add(candidate.Value.D);
+                            placed.Add(candidate.Value.P);
+                            reservedOverallAxes.Add(horizontal);
+                            priorityOverallCount++;
+                            overall++;
+                            found=true;
+                            break;
+                        }
+                    }
+                }
+            }
+
             foreach(bool horizontal in new[]{true,false})
             {
                 double min=horizontal?minX:minY;
@@ -135,50 +214,12 @@ public static class SupportOrthoReferenceDimPlan47
                         ":OVERALL_SPAN_TOO_SMALL");
                     continue;
                 }
-                // Primary fabrication datums: real member edges and any
-                // independently verified Plant Start/End positions.
-                var stationCandidates=new List<Station>();
-                // REV22.49.4: capture the corresponding *actual native*
-                // Plant endpoints in projected paper coordinates. A
-                // dimension witness must originate from the source
-                // member/endpoint, never the assembly's global frame.
-                var verifiedWitnessPoints=new List<(double X,double Y)>();
-                // REV22.50: projected AABB edges are NOT trusted as
-                // physical member-to-member connections. For sloping
-                // channels, even touching AABBs can produce fictitious
-                // 50 mm stations. Chain stations come ONLY from verified
-                // native Plant Start/End endpoints, matched to the
-                // selected visible member (below). The outer overall
-                // envelope may still be dimensioned independently.
-                if(sources!=null)
-                    foreach(var source in sources)
-                    {
-                        // Native-only AND must match a visible accepted
-                        // host member, so unrelated positions cannot
-                        // inject arbitrary chain stations.
-                        if(!SupportOrthoNativeDimensionPolicy48
-                                .AcceptSegment(source)||
-                           !visibleNative.TryGetValue(source.Key,
-                               out var sourceBounds))
-                            continue;
-                        foreach(var point in new[]{
-                            (source.Ax,source.Ay,source.Az),
-                            (source.Bx,source.By,source.Bz)})
-                        {
-                            var p=SupportOrthoMemberCalloutPlan17.Project(
-                                camera,point.Item1,point.Item2,point.Item3);
-                            if(!double.IsFinite(p.X)||!double.IsFinite(p.Y)||
-                               p.X<sourceBounds.L-.25||
-                               p.X>sourceBounds.R+.25||
-                               p.Y<sourceBounds.B-.25||
-                               p.Y>sourceBounds.T+.25)
-                                continue;
-                            double at=horizontal?p.X:p.Y;
-                            verifiedWitnessPoints.Add((p.X,p.Y));
-                            if(at>min+.35&&at<max-.35)
-                                stationCandidates.Add(new Station(at,4));
-                        }
-                    }
+                // Verified endpoints only; the bounding-box side
+                // is never sufficient evidence for an internal chain.
+                var stationCandidates=verifiedWitnessPoints
+                    .Select(p=>horizontal?p.X:p.Y)
+                    .Where(at=>at>min+.35&&at<max-.35)
+                    .Select(at=>new Station(at,4)).ToList();
                 var stations=SelectStations(stationCandidates,min,max);
                 // A chain segment is shown only when BOTH of its datum
                 // stations have direct native endpoint evidence. AABB
@@ -279,7 +320,8 @@ public static class SupportOrthoReferenceDimPlan47
                 }
                 requested+=steps.Count>1?steps.Count:0;
                 requested++;
-                bool overallPlaced=false;
+                bool overallPlaced=reservedOverallAxes.Contains(horizontal);
+                if(!overallPlaced)
                 foreach(double sign in PreferredSigns(camera.Name,horizontal))
                 {
                 if(overallPlaced)break;
@@ -411,7 +453,7 @@ public static class SupportOrthoReferenceDimPlan47
             }
         }
         return new Result(dimensions,skipped,views,chain,overall,rejected,
-            requested,localCount);
+            requested,localCount,priorityOverallCount);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
