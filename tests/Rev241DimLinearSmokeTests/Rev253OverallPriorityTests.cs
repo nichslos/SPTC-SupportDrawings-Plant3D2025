@@ -58,12 +58,12 @@ internal static class Rev253OverallPriorityTests
             "no hardcoded value override; native paper witness + scale match");
 
         var changed=SupportOrthoReferenceDimPlan47.Build(
-            new[]{right},new[]{beam,upright with {MaxZ=2256.772}},
+            new[]{right},new[]{beam,upright with {MaxZ=2226.772}},
             594,841,1);
         Check(changed.Dimensions.Any(d=>!d.Horizontal&&
             d.Source.EndsWith("/OVERALL")&&
-            d.Measurement=="552.787"),
-            "changing native structure height updates measured overall");
+            d.Measurement=="522.787"),
+            "changing a visible native member height by 20 mm updates the measured overall");
         Check(!changed.Dimensions.Any(d=>!d.Horizontal&&
             d.Source.EndsWith("/OVERALL")&&
             d.Measurement=="502.787"),
