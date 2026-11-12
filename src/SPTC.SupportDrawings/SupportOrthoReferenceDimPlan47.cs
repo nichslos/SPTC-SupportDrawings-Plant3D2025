@@ -587,7 +587,7 @@ public static class SupportOrthoReferenceDimPlan47
                     {
                         if(fitted)break;
                         foreach(double offset in
-                            SupportOrthoReferenceLayout51.LaneOffsets())
+                            SupportOrthoReferenceLayout51.LocalMemberLaneOffsets())
                         {
                             if(fitted)break;
                             for(int tier=0;tier<8;tier++)
@@ -800,10 +800,15 @@ public static class SupportOrthoReferenceDimPlan47
         double textClearance=request.Overall&&!request.Horizontal?
             2.7+(textTier/5)*1.5:
             2.7+(textTier/2)*3.5;
-        double tx=request.Horizontal?textAt:line+
-            (sign>0?textClearance:-textClearance);
-        double ty=request.Horizontal?line+
-            (sign>0?textClearance:-textClearance):textAt;
+        // REV22.57: local member width labels belong on the
+        // member-facing side of their dimension line (away from the
+        // already reserved OUTER overall). For chain and overall
+        // measurements, retain the usual outward drafting side.
+        double labelSide=request.LocalBounds.HasValue?-sign:sign;
+        double tx=request.Horizontal?textAt:
+            line+(labelSide>0?textClearance:-textClearance);
+        double ty=request.Horizontal?
+            line+(labelSide>0?textClearance:-textClearance):textAt;
         var dimRect=request.Horizontal
             ?new SupportOrthoSmartDimPlan46.Rect(
                 request.From-.4,line-.4,request.To+.4,line+.4)
