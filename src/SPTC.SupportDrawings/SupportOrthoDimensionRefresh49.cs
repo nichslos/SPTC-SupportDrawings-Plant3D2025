@@ -325,6 +325,7 @@ internal static class SupportOrthoDimensionRefresh49
 
         SupportOrthoAllViewDimPlan44.Member[] native;
         SupportOrthoDimLinearPlan41.Segment[] segments;
+        SupportOrthoNativeEdgeGeometry59.Edge[] edges;
         bool reuseSnapshot=SupportOrthoDimensionUpdatePlan49
             .CanReuseGeometrySnapshot(original,sourceWriteTicks,sourceLength);
         if(reuseSnapshot)
@@ -332,6 +333,8 @@ internal static class SupportOrthoDimensionRefresh49
             native=original.NativeExtentSnapshot!.ToArray();
             segments=original.NativeEndpointSnapshot?.ToArray()??
                 Array.Empty<SupportOrthoDimLinearPlan41.Segment>();
+            edges=original.NativeEdgeSnapshot?.ToArray()??
+                Array.Empty<SupportOrthoNativeEdgeGeometry59.Edge>();
             Message(target,"REV22.50 DIM_SOURCE_GEOMETRY=SNAPSHOT; "+
                 "source model unchanged, rebuilding only paper geometry.");
         }
@@ -416,6 +419,10 @@ internal static class SupportOrthoDimensionRefresh49
                 .Select(s=>new SupportOrthoDimLinearPlan41.Segment(
                     s.Key,s.Kind,s.Ax,s.Ay,s.Az,s.Bx,s.By,s.Bz,
                     s.SourceLength,s.Millimeters,s.Provenance)).ToArray();
+            // REV22.59 geometry is re-read ONLY when the source model
+            // file stamp changed, never on a mere viewport pan/scale.
+            edges=SupportOrthoNativeEdgeSource59.Read(
+                source,sourceIds,native).Edges.ToArray();
 
             // Avoid writing an already-stale geometry cache if the
             // source DWG changed while Plant 3D was rebuilding the view.
@@ -511,7 +518,7 @@ internal static class SupportOrthoDimensionRefresh49
         if(original.ReferenceDetailDimensions)
             dimensions=SupportOrthoReferenceDimPlan47.Build(
                 cameras,native,paperW,paperH,original.UnitsToMm,
-                segments,null,null,keepouts).Dimensions;
+                segments,null,null,keepouts,edges).Dimensions;
         else
             dimensions=SupportOrthoSmartDimPlan46.Build(
                 cameras,native,paperW,paperH,original.UnitsToMm,
@@ -537,7 +544,9 @@ internal static class SupportOrthoDimensionRefresh49
                 LastOwnedDimensionCount=owned,
                 PaperWidth=paperW,PaperHeight=paperH,
                 NativeExtentSnapshot=native.Length<=128?native:null,
-                NativeEndpointSnapshot=native.Length<=128?segments:null});
+                NativeEndpointSnapshot=native.Length<=128?segments:null,
+                NativeEdgeSnapshot=native.Length<=128&&edges.Length<=512?
+                    edges:null});
             Message(target,"REV22.49.3 native dimensions already current ("+
                 owned+"); no duplicates; fast cache updated.");
             return;
@@ -554,7 +563,9 @@ internal static class SupportOrthoDimensionRefresh49
                     cameras,paperW,paperH),
             LastOwnedDimensionCount=created,
             NativeExtentSnapshot=native.Length<=128?native:null,
-            NativeEndpointSnapshot=native.Length<=128?segments:null});
+            NativeEndpointSnapshot=native.Length<=128?segments:null,
+            NativeEdgeSnapshot=native.Length<=128&&edges.Length<=512?
+                edges:null});
         Message(target,"REV22.49 native DIMLINEAR refresh="+created+
             " old owned dims replaced; XREF dimensions=0; "+
             string.Join("; ",diagnostics));
