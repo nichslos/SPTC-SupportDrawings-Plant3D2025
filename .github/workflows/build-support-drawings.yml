@@ -272,6 +272,20 @@ jobs:
               throw "REV22.43 vertical height integration missing: $token"
             }
           }
+          # REV22.49.1: narrow structural supports still require
+          # a correctly sized native TOP/ISO paper caption. Reserve only
+          # paper-space title width, not source OrthoCube geometry/scale.
+          $titlePlan=Get-Content "$root/NativeOrthoViewTitlePlan.cs" -Raw
+          $tenPlan=Get-Content "$root/NativeOrthoTenViewPlan.cs" -Raw
+          foreach($token in @('MinimumFrameWidth(', 'CaptionFor(viewName)',
+              'TextHeightMm*.68', 'REV22.13 viewport too narrow')) {
+            if(-not $titlePlan.Contains($token)) {
+              throw "REV22.49.1 caption width invariant missing: $token"
+            }
+          }
+          if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
+            throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
+          }
           # REV22.49: source and saved viewport identity persisted in
           # paper DWG. CommandEnded/Idle triggers atomic owner-only
           # dimension replacement; no new public commands.
@@ -495,11 +509,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.49 automatic native DIMLINEAR update DLL bytes: $size"
+          Write-Host "REV22.49.1 narrow-support preflight fix DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_49-AUTO-UPDATE-NATIVE-DIMENSIONS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_49_1-NARROW-SUPPORT-TITLE-FIX
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
