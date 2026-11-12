@@ -105,6 +105,11 @@ internal static class Rev256ManualTerminalDatumTests
             d.Source.Contains("/TERMINAL_REMAINDER_")&&
             d.Horizontal&&d.Measurement=="828.28"),
             "LEFT also uses 100+828.28 native terminal profile hierarchy");
+        Console.WriteLine("REV22.58 LEFT DIM DEBUG="+
+            string.Join("|",leftPlan.Dimensions.Select(d=>
+                d.Source+":"+d.Measurement)));
+        Console.WriteLine("REV22.58 LEFT SKIP DEBUG="+
+            string.Join("|",leftPlan.Skipped));
         Need(leftPlan.Dimensions.Any(d=>
             d.Source.Contains("/TERMINAL_REMAINDER_")&&
             !d.Horizontal&&d.Measurement=="402.787"),
