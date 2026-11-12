@@ -64,6 +64,24 @@ public static class SupportOrthoReferenceLayout51
                 yield return lane;
     }
 
+    // A locally measured member profile width sits INSIDE its
+    // overall line. Paper-space section labels are placed on the
+    // member-facing side, so reserve enough room between the
+    // projected member silhouette and the text (rather than pushing
+    // the whole local dimension beyond the overall dimension).
+    // These are paper mm based on text height, never fixed member
+    // model widths.
+    public static IEnumerable<double> LocalMemberLaneOffsets(
+        double textHeight=2.0)
+    {
+        double first=Math.Max(ChainOffset(textHeight)+1.7,
+            textHeight*2.55);
+        yield return first;
+        foreach(double lane in LaneOffsets(textHeight))
+            if(Math.Abs(lane-first)>.18)
+                yield return lane;
+    }
+
     // Text may be outside both witnesses for a short dimension. Prefer
     // RIGHT of a short horizontal segment, as in TOP/BOTTOM/FRONT/BACK.
     // For a tightly packed chain, alternate sides if collision checks
