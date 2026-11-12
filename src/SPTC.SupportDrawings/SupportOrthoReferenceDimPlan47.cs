@@ -39,7 +39,8 @@ public static class SupportOrthoReferenceDimPlan47
         double paperW,double paperH,double unitsToMm,
         IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? sources=null,
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts=null,
-        IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles=null)
+        IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles=null,
+        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect>? additionalKeepouts=null)
     {
         if(cameras==null||members==null||!double.IsFinite(paperW)||
            !double.IsFinite(paperH)||!double.IsFinite(unitsToMm)||
@@ -112,6 +113,8 @@ public static class SupportOrthoReferenceDimPlan47
             var assembly=new SupportOrthoSmartDimPlan46.Rect(
                 minX,minY,maxX,maxY);
             var blocks=FixedZones(camera,cameras,callouts,titles);
+            if(additionalKeepouts!=null)
+                blocks.AddRange(additionalKeepouts.Where(x=>x.IsFinite));
             var placed=new List<Placed>();
             foreach(bool horizontal in new[]{true,false})
             {
