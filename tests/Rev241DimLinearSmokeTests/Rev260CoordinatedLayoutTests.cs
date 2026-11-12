@@ -13,7 +13,11 @@ internal static class Rev260CoordinatedLayoutTests
 
     internal static void Run()
     {
-        var solver=SupportOrthoCoordinatedLayout60.Solve;
+        SupportOrthoCoordinatedLayout60.Result solver(
+            System.Collections.Generic.IReadOnlyList<
+                SupportOrthoCoordinatedLayout60.Group> groups,
+            Func<int,int,bool> compatible) =>
+            SupportOrthoCoordinatedLayout60.Solve(groups,compatible);
         var candidates=new[]{
             new SupportOrthoCoordinatedLayout60.Group(
                 "H:NATIVE:BEAM",40,new[]{O(1,1),O(2,5)}),
