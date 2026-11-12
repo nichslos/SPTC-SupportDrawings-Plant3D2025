@@ -33,6 +33,10 @@ public static class SupportOrthoReferenceDimPlan47
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text);
+    // REV22.54: identify the real source of a blocked lane rather than
+    // conflating nearby view labels, leaders, page boundary and members.
+    private sealed record Obstacle(
+        SupportOrthoSmartDimPlan46.Rect Area,string Type);
 
     private static readonly HashSet<string> Ortho=new(
         new[]{"TOP","BOTTOM","FRONT","BACK","LEFT","RIGHT"},
@@ -124,7 +128,8 @@ public static class SupportOrthoReferenceDimPlan47
                 minX,minY,maxX,maxY);
             var blocks=FixedZones(camera,cameras,callouts,titles);
             if(additionalKeepouts!=null)
-                blocks.AddRange(additionalKeepouts.Where(x=>x.IsFinite));
+                blocks.AddRange(additionalKeepouts.Where(x=>x.IsFinite)
+                    .Select(x=>new Obstacle(x,"RESERVED_PAPER_AREA")));
             var placed=new List<Placed>();
 
             // REV22.53: ONE projection pass for actual, vetted native
@@ -170,29 +175,42 @@ public static class SupportOrthoReferenceDimPlan47
                 var request=MakeRequest(horizontal,from,to,true,0,
                     camera.Scale,unitsToMm);
                 bool found=false;
+                var rejectionCounts=new SortedDictionary<string,int>(
+                    StringComparer.Ordinal);
+                void CountRejected(string cause)
+                {
+                    rejected++;
+                    rejectionCounts[cause]=
+                        rejectionCounts.TryGetValue(cause,out int count)?
+                            count+1:1;
+                }
                 foreach(double sign in PreferredSigns(camera.Name,horizontal))
                 {
                     if(found)break;
+                    // A second 4.2 mm empty lane is NOT required when
+                    // no chain occupies it. On RIGHT the LEFT VIEW
+                    // annotation gutter ends just before this band,
+                    // so insisting on 11.8 mm pushed the vertical
+                    // dimension text into the LEFT annotation labels.
                     foreach(double offset in SupportOrthoReferenceLayout51
-                        .LaneOffsets().Where(value=>value>=
-                            SupportOrthoReferenceLayout51.ChainOffset()+
-                            SupportOrthoReferenceLayout51.OverallSeparation()*2-
-                            .01))
+                        .OverallLaneOffsets())
                     {
                         if(found)break;
-                        for(int tier=0;tier<12;tier++)
+                        for(int tier=0;tier<20;tier++)
                         {
                             var candidate=Candidate(camera,assembly,
                                 projected,verifiedWitnessPoints,
                                 request,sign,offset,tier);
-                            if(candidate==null||
-                               !Fits(candidate.Value.P,blocks,paper,placed,
-                                    projected))
+                            string? cause=candidate==null?
+                                "NATIVE_WITNESS_UNRESOLVED":
+                                RejectionReason(candidate.Value.P,
+                                    blocks,paper,placed,projected);
+                            if(cause!=null)
                             {
-                                rejected++;
+                                CountRejected(cause);
                                 continue;
                             }
-                            dimensions.Add(candidate.Value.D);
+                            dimensions.Add(candidate!.Value.D);
                             placed.Add(candidate.Value.P);
                             reservedOverallAxes.Add(horizontal);
                             priorityOverallCount++;
@@ -201,6 +219,19 @@ public static class SupportOrthoReferenceDimPlan47
                             break;
                         }
                     }
+                }
+                // Record a bounded diagnostic (per cause, not a flood
+                // of hundreds of candidate lines) for real Plant DWGs.
+                // This survives in the output TXT via existing
+                // REV22_47_DIMENSION_SKIP= log forwarding.
+                if(camera.Name.Equals("RIGHT",
+                        StringComparison.OrdinalIgnoreCase)&&!horizontal)
+                {
+                    string summary=string.Join(",",
+                        rejectionCounts.Select(x=>x.Key+":"+x.Value));
+                    skipped.Add("RIGHT/V:REV22_54_OVERALL_DIAGNOSTICS="+
+                        (found?"PLACED":"UNPLACED")+
+                        ";CAUSES="+(summary.Length==0?"NONE":summary));
                 }
             }
 
@@ -577,6 +608,21 @@ public static class SupportOrthoReferenceDimPlan47
         double printedWidth=Math.Max(7,request.Measurement.Length*1.85+3);
         double textAt=center;
         bool shortSpan=request.To-request.From<printedWidth+2;
+        if(request.Overall&&!request.Horizontal&&!shortSpan)
+        {
+            // Shifting text normal to a vertical dimension merely
+            // drives it into neighboring LEFT VIEW labels. Explore
+            // physically valid positions ALONG the same dimension
+            // line instead; the two measured datum/witness endpoints
+            // and the DIMLINEAR measurement remain unchanged.
+            double[] fractions={.50,.32,.68,.23,.77};
+            double margin=printedWidth*.5+1.5;
+            if(request.To-request.From>2*margin)
+                textAt=Math.Clamp(
+                    request.From+(request.To-request.From)*
+                        fractions[textTier%fractions.Length],
+                    request.From+margin,request.To-margin);
+        }
         if(shortSpan)
         {
             // A 50 mm dimension at 1:30 is only 1.67 mm on paper;
@@ -591,7 +637,9 @@ public static class SupportOrthoReferenceDimPlan47
         }
         // Search opposite text sides first, then more distant tiers.
         // The dimension line itself stays collinear with the chain.
-        double textClearance=2.7+(textTier/2)*3.5;
+        double textClearance=request.Overall&&!request.Horizontal?
+            2.7+(textTier/5)*1.5:
+            2.7+(textTier/2)*3.5;
         double tx=request.Horizontal?textAt:line+
             (sign>0?textClearance:-textClearance);
         double ty=request.Horizontal?line+
@@ -635,68 +683,93 @@ public static class SupportOrthoReferenceDimPlan47
     }
 
     private static bool Fits(Placed p,
-        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> fixedAreas,
+        IReadOnlyList<Obstacle> fixedAreas,
+        SupportOrthoSmartDimPlan46.Rect paper,
+        IEnumerable<Placed> existing,
+        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> sourceMembers) =>
+        RejectionReason(p,fixedAreas,paper,existing,sourceMembers)==null;
+
+    private static string? RejectionReason(Placed p,
+        IReadOnlyList<Obstacle> fixedAreas,
         SupportOrthoSmartDimPlan46.Rect paper,
         IEnumerable<Placed> existing,
         IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> sourceMembers)
     {
-        if(!Inside(p.Line,paper)||!Inside(p.Text,paper))return false;
-        // Keep dimension labels outside the actual structure silhouette.
-        // The witness can touch its source member, but labels must not
-        // obscure a flange/beam outline or an adjacent section.
+        if(!Inside(p.Line,paper))return "DIM_LINE_OUTSIDE_SHEET";
+        if(!Inside(p.Text,paper))return "DIM_TEXT_OUTSIDE_SHEET";
+        // Never allow a dimension label to cover a native structure.
         if(sourceMembers.Any(m=>p.Text.Intersects(m,.12)))
-            return false;
-        if(fixedAreas.Any(b=>p.Line.Intersects(b,.45)||
-                             p.Text.Intersects(b,.45)))return false;
+            return "TEXT_OVER_NATIVE_MEMBER";
+        foreach(var obstacle in fixedAreas)
+        {
+            if(p.Line.Intersects(obstacle.Area,.45))
+                return "LINE_OVER_"+obstacle.Type;
+            if(p.Text.Intersects(obstacle.Area,.45))
+                return "TEXT_OVER_"+obstacle.Type;
+        }
         foreach(var prev in existing)
         {
-            if(p.Text.Intersects(prev.Text,.45)||
-               p.Text.Intersects(prev.Line,.4)||
-               p.Line.Intersects(prev.Text,.4))
-                return false;
-            // Chain dimensions are permitted to meet exactly at a station;
-            // orthogonal lines may not cut through one another.
+            if(p.Text.Intersects(prev.Text,.45))
+                return "TEXT_OVER_DIMENSION_TEXT";
+            if(p.Text.Intersects(prev.Line,.4))
+                return "TEXT_OVER_DIMENSION_LINE";
+            if(p.Line.Intersects(prev.Text,.4))
+                return "LINE_OVER_DIMENSION_TEXT";
             if(p.Horizontal!=prev.Horizontal&&
                p.Line.Intersects(prev.Line,.3))
-                return false;
+                return "CROSS_AXIS_DIMENSION_LINES";
         }
-        return true;
+        return null;
     }
 
     private static bool Inside(SupportOrthoSmartDimPlan46.Rect a,
         SupportOrthoSmartDimPlan46.Rect b)=>
         a.IsFinite&&a.L>=b.L&&a.R<=b.R&&a.B>=b.B&&a.T<=b.T;
 
-    private static List<SupportOrthoSmartDimPlan46.Rect> FixedZones(
+    private static List<Obstacle> FixedZones(
         SupportOrthoMemberCalloutPlan17.Camera current,
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles)
     {
-        var zones=new List<SupportOrthoSmartDimPlan46.Rect>();
+        var zones=new List<Obstacle>();
         foreach(var c in cameras)
         {
             if(c.Name.Equals(current.Name,StringComparison.OrdinalIgnoreCase))
                 continue;
-            zones.Add(new SupportOrthoSmartDimPlan46.Rect(
+            zones.Add(new Obstacle(new SupportOrthoSmartDimPlan46.Rect(
                 c.X-c.W*.5-1,c.Y-c.H*.5-1,
-                c.X+c.W*.5+1,c.Y+c.H*.5+1));
+                c.X+c.W*.5+1,c.Y+c.H*.5+1),
+                "NEIGHBOR_VIEW_"+c.Name));
         }
-        foreach(var t in titles??Array.Empty<NativeOrthoViewTitlePlan.Title>())
-            zones.Add(new SupportOrthoSmartDimPlan46.Rect(
-                t.CenterX-t.Width*.5-1,t.TopY-t.Height-1,
-                t.CenterX+t.Width*.5+1,t.TopY+1));
+        foreach(var title in titles??Array.Empty<NativeOrthoViewTitlePlan.Title>())
+            zones.Add(new Obstacle(new SupportOrthoSmartDimPlan46.Rect(
+                title.CenterX-title.Width*.5-1,
+                title.TopY-title.Height-1,
+                title.CenterX+title.Width*.5+1,title.TopY+1),
+                "VIEW_TITLE_"+title.Name));
         foreach(var c in callouts??Array.Empty<SupportOrthoMemberCalloutPlan27.Callout>())
         {
-            // Preserve actual visible annotation text and leader corridors.
-            zones.Add(new SupportOrthoSmartDimPlan46.Rect(
+            string kind=c.View.Equals(current.Name,
+                StringComparison.OrdinalIgnoreCase)?
+                "CURRENT_VIEW":"NEIGHBOR_VIEW_"+c.View;
+            // Printed annotation text is protected more strictly than
+            // a leader line; report which of these caused a reject.
+            zones.Add(new Obstacle(new SupportOrthoSmartDimPlan46.Rect(
                 c.LabelX-1,c.LabelTop-c.LabelHeight-1,
-                c.LabelX+c.LabelWidth+1,c.LabelTop+1));
+                c.LabelX+c.LabelWidth+1,c.LabelTop+1),
+                "ANNOTATION_TEXT_"+kind));
             double land=c.LabelTop-
                 SupportOrthoMemberCalloutPlan27.TextLineHeightMm*.5;
-            zones.Add(LineZone(c.AnchorX,c.AnchorY,c.LaneX,c.AnchorY));
-            zones.Add(LineZone(c.LaneX,c.AnchorY,c.LaneX,land));
-            zones.Add(LineZone(c.LaneX,land,c.LabelX-1,land));
+            zones.Add(new Obstacle(
+                LineZone(c.AnchorX,c.AnchorY,c.LaneX,c.AnchorY),
+                "LEADER_"+kind));
+            zones.Add(new Obstacle(
+                LineZone(c.LaneX,c.AnchorY,c.LaneX,land),
+                "LEADER_"+kind));
+            zones.Add(new Obstacle(
+                LineZone(c.LaneX,land,c.LabelX-1,land),
+                "LEADER_"+kind));
         }
         return zones;
     }
