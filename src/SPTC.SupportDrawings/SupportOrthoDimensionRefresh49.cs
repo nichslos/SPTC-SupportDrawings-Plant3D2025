@@ -173,7 +173,8 @@ internal static class SupportOrthoDimensionRefresh49
         bool referenceDetail,
         IReadOnlyList<SupportOrthoAllViewDimPlan44.Member> nativeMembers,
         IReadOnlyDictionary<string,ObjectId> savedNativeViews,
-        IReadOnlyList<SupportOrthoDimLinearPlan41.Dimension> dimensions)
+        IReadOnlyList<SupportOrthoDimLinearPlan41.Dimension> dimensions,
+        IReadOnlyList<SupportOrthoDimensionSource41.Segment>? nativeSourceEndpoints=null)
     {
         if(dimensions.Count==0||nativeMembers.Count==0)return;
         string resolved=Path.GetFullPath(sourcePath);
@@ -181,6 +182,24 @@ internal static class SupportOrthoDimensionRefresh49
             .Where(SupportOrthoNativeDimensionPolicy48.AcceptMember)
             .Select(m=>new SupportOrthoDimensionUpdatePlan49.NativeMember(
                 m.Key,m.Kind)).ToArray();
+        // Keep DWG open/serialize cost bounded. Selected native object
+        // geometry (not XREFs or full model entities) is small and lets
+        // a view-only update avoid opening the entire source DWG.
+        var verifiedNative=nativeMembers
+            .Where(SupportOrthoNativeDimensionPolicy48.AcceptMember)
+            .ToArray();
+        var savedGeometry=verifiedNative.Length<=128?
+            verifiedNative:null;
+        var savedEndpoints=savedGeometry!=null?
+            (nativeSourceEndpoints??Array.Empty<SupportOrthoDimensionSource41.Segment>())
+                .Where(s=>SupportOrthoNativeDimensionPolicy48.IsNativeKey(s.Key)&&
+                    s.Provenance=="EXPLICIT_MEMBER_ENDPOINTS"&&
+                    verifiedNative.Any(m=>
+                        m.Key.Equals(s.Key,StringComparison.OrdinalIgnoreCase)))
+                .Select(s=>new SupportOrthoDimLinearPlan41.Segment(
+                    s.Key,s.Kind,s.Ax,s.Ay,s.Az,s.Bx,s.By,s.Bz,
+                    s.SourceLength,s.Millimeters,s.Provenance))
+                .ToArray():null;
         var viewRefs=new List<SupportOrthoDimensionUpdatePlan49.View>();
         var viewCameras=new List<SupportOrthoMemberCalloutPlan17.Camera>();
         using(var tr=target.TransactionManager.StartTransaction())
@@ -206,7 +225,7 @@ internal static class SupportOrthoDimensionRefresh49
             sourceFile.LastWriteTimeUtc.Ticks,sourceFile.Length,
             SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
                 viewCameras,paperW,paperH),
-            dimensions.Count);
+            dimensions.Count,savedGeometry,savedEndpoints);
         SupportOrthoDimensionUpdatePlan49.Validate(manifest);
         Store(target,manifest);
     }
