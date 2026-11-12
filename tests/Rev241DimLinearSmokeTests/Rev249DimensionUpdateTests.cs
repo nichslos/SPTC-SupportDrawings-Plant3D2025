@@ -73,6 +73,59 @@ internal static class Rev249DimensionUpdateTests
         Check(!SupportOrthoNativeDimensionPolicy48.IsNativeKey(
             "XREF_MEMBER:SUPP-1/401"),
             "native-only rule retained for every auto-update");
+        // REV22.49.3: same saved model/view layout and intact SPTC-owned
+        // dimensions bypass expensive ReadDwgFile and geometry scanning.
+        var camera=new SupportOrthoMemberCalloutPlan17.Camera(
+            "TOP",118.8,723.26,63.732,48.134,
+            0,0,1,7956.295,3484.858,0,1.0/30.0);
+        string pose=SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
+            new[]{camera},594,841);
+        var cached=manifest with {
+            SourceWriteUtcTicks=638985600000000000,
+            SourceFileLength=12345678,
+            LastViewPoseSignature=pose,
+            LastOwnedDimensionCount=2};
+        Check(SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
+            cached,cached.SourceWriteUtcTicks,cached.SourceFileLength,
+            pose,2),
+            "unchanged source+camera+owned dims skips full model file read");
+        Check(!SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
+            manifest,cached.SourceWriteUtcTicks,cached.SourceFileLength,
+            pose,2),
+            "older 22.49 metadata without fast fields refreshes once");
+        Check(!SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
+            cached,cached.SourceWriteUtcTicks+1,cached.SourceFileLength,
+            pose,2),
+            "source model modification always requires refresh");
+        Check(!SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
+            cached,cached.SourceWriteUtcTicks,cached.SourceFileLength+1,
+            pose,2),
+            "source file size change also requires refresh");
+        Check(!SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
+            cached,cached.SourceWriteUtcTicks,cached.SourceFileLength,
+            pose,1),
+            "missing user-erased SPTC dimension gets repaired");
+        Check(!SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
+            cached,cached.SourceWriteUtcTicks,cached.SourceFileLength,
+            SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
+                new[]{camera with {Scale=1.0/40.0}},594,841),2),
+            "native Ortho scale change invalidates fast-path state");
+        Check(!SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
+            cached,cached.SourceWriteUtcTicks,cached.SourceFileLength,
+            SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
+                new[]{camera with {ViewCenterX=7911.8}},594,841),2),
+            "native view pan or target change invalidates fast-path");
+        Check(!SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
+            cached,cached.SourceWriteUtcTicks,cached.SourceFileLength,
+            SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
+                new[]{camera},594,800),2),
+            "native drawing paper layout size change invalidates fast-path");
+        Check(SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
+            new[]{camera},594,841)==pose,
+            "native viewport pose fingerprint deterministic");
+
+        Console.WriteLine(
+            "REV22.49.3 model/viewport change detection and fast-path regression PASS");
         Console.WriteLine(
             "REV22.49 manifest, native-only update, view identity and duplicate suppression PASS");
     }
