@@ -135,30 +135,13 @@ public static class SupportOrthoReferenceDimPlan47
                 // dimension witness must originate from the source
                 // member/endpoint, never the assembly's global frame.
                 var verifiedWitnessPoints=new List<(double X,double Y)>();
-                // REV22.48 precision: a "chain connection" must be a
-                // pair of touching opposing edges with overlap along the
-                // transverse axis. Merely equal X/Y values on distant
-                // beams are NOT evidence of a physical connection.
-                for(int i=0;i<projected.Count;i++)
-                for(int j=i+1;j<projected.Count;j++)
-                {
-                    var a=projected[i];
-                    var b=projected[j];
-                    double sideOverlap=horizontal
-                        ?Math.Min(a.T,b.T)-Math.Max(a.B,b.B)
-                        :Math.Min(a.R,b.R)-Math.Max(a.L,b.L);
-                    if(sideOverlap<.25)continue;
-                    double aStart=horizontal?a.L:a.B;
-                    double aEnd=horizontal?a.R:a.T;
-                    double bStart=horizontal?b.L:b.B;
-                    double bEnd=horizontal?b.R:b.T;
-                    if(Math.Abs(aEnd-bStart)<.12)
-                        stationCandidates.Add(
-                            new Station((aEnd+bStart)*.5,3));
-                    if(Math.Abs(bEnd-aStart)<.12)
-                        stationCandidates.Add(
-                            new Station((bEnd+aStart)*.5,3));
-                }
+                // REV22.50: projected AABB edges are NOT trusted as
+                // physical member-to-member connections. For sloping
+                // channels, even touching AABBs can produce fictitious
+                // 50 mm stations. Chain stations come ONLY from verified
+                // native Plant Start/End endpoints, matched to the
+                // selected visible member (below). The outer overall
+                // envelope may still be dimensioned independently.
                 if(sources!=null)
                     foreach(var source in sources)
                     {
@@ -189,6 +172,12 @@ public static class SupportOrthoReferenceDimPlan47
                         }
                     }
                 var stations=SelectStations(stationCandidates,min,max);
+                // A chain segment is shown only when BOTH of its datum
+                // stations have direct native endpoint evidence. AABB
+                // end caps are not source endpoint evidence on their own.
+                bool VerifiedAt(double at) =>
+                    verifiedWitnessPoints.Any(p=>
+                        Math.Abs((horizontal?p.X:p.Y)-at)<=.20);
                 var steps=new List<Request>();
                 if(stations.Count>2)
                 {
@@ -198,6 +187,13 @@ public static class SupportOrthoReferenceDimPlan47
                         // Ref details dimension meaningful stations only.
                         // Do not fabricate a 0 mm or unprintable chain link.
                         if(end-start<.50)continue;
+                        if(!VerifiedAt(start)||!VerifiedAt(end))
+                        {
+                            skipped.Add(camera.Name+"/"+
+                                (horizontal?"H":"V")+
+                                ":LOCAL_CHAIN_UNVERIFIED_MEMBER_ENDPOINTS");
+                            continue;
+                        }
                         steps.Add(MakeRequest(horizontal,start,end,false,
                             i,camera.Scale,unitsToMm));
                     }
@@ -362,8 +358,17 @@ public static class SupportOrthoReferenceDimPlan47
         IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> memberBounds,
         IReadOnlyList<(double X,double Y)> explicitEndpoints)
     {
-        var values=new List<double>();
         const double paperTolerance=.20;
+        // Real member Start/End coordinates take precedence over the
+        // axis-aligned envelope, whose face may not be an actual vertex
+        // of a sloping structure member.
+        var exact=explicitEndpoints.Where(pt=>
+                Math.Abs((horizontal?pt.X:pt.Y)-station)
+                    <=paperTolerance)
+            .Select(pt=>horizontal?pt.Y:pt.X).ToArray();
+        if(exact.Length>0)
+            return sign>0?exact.Max():exact.Min();
+        var boundsFaces=new List<double>();
         foreach(var bounds in memberBounds)
         {
             double start=horizontal?bounds.L:bounds.B;
@@ -371,18 +376,14 @@ public static class SupportOrthoReferenceDimPlan47
             if(Math.Abs(station-start)>paperTolerance&&
                Math.Abs(station-end)>paperTolerance)
                 continue;
-            values.Add(horizontal?
+            boundsFaces.Add(horizontal?
                 (sign>0?bounds.T:bounds.B):
                 (sign>0?bounds.R:bounds.L));
         }
-        foreach(var pt in explicitEndpoints)
-        {
-            double at=horizontal?pt.X:pt.Y;
-            if(Math.Abs(station-at)<=paperTolerance)
-                values.Add(horizontal?pt.Y:pt.X);
-        }
-        if(values.Count==0)return null;
-        return sign>0?values.Max():values.Min();
+        if(boundsFaces.Count==0)return null;
+        // This fallback is allowed for the drawing's projected
+        // overall envelope only, never as proof of a local 50mm chain.
+        return sign>0?boundsFaces.Max():boundsFaces.Min();
     }
 
     private static (
