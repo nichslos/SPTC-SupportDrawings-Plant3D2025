@@ -33,6 +33,7 @@ internal static class SupportOrthoDimensionRefresh49
         started=true;
         AcadApp.DocumentManager.DocumentCreated+=OnCreated;
         AcadApp.DocumentManager.DocumentToBeDestroyed+=OnDestroyed;
+        AcadApp.DocumentManager.DocumentActivated+=OnActivated;
         foreach(Document doc in AcadApp.DocumentManager)Attach(doc);
     }
 
@@ -42,6 +43,7 @@ internal static class SupportOrthoDimensionRefresh49
         started=false;
         AcadApp.DocumentManager.DocumentCreated-=OnCreated;
         AcadApp.DocumentManager.DocumentToBeDestroyed-=OnDestroyed;
+        AcadApp.DocumentManager.DocumentActivated-=OnActivated;
         if(idleHooked)AcadApp.Idle-=OnIdle;
         idleHooked=false;
         Pending.Clear();
@@ -62,6 +64,13 @@ internal static class SupportOrthoDimensionRefresh49
         Attach(e.Document);
     private static void OnDestroyed(object sender,DocumentCollectionEventArgs e)=>
         Detach(e.Document);
+    private static void OnActivated(object sender,
+        DocumentCollectionEventArgs e)
+    {
+        // Deferred update may belong to a background document. Resume
+        // once that exact Ortho DWG becomes active, without guessing.
+        if(Pending.Contains(e.Document))EnsureIdle();
+    }
 
     private static void OnCommandEnded(object sender,CommandEventArgs e)
     {
