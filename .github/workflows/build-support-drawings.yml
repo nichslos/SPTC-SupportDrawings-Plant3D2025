@@ -286,6 +286,32 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.60: candidate placement is optimized for the whole
+          # orthographic view after the protected native overall and
+          # verified member datum chains are reserved. Both H and V
+          # optional member sections compete on the same paper layout;
+          # a bounded beam search can move an earlier H label rather
+          # than dropping a later V dimension unnecessarily.
+          $coordinator60=Get-Content "$root/SupportOrthoCoordinatedLayout60.cs" -Raw
+          $planner60=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $generator60=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('public static Result Solve(',
+              'maxStates=64','maxChoicesPerGroup=32',
+              'compatible(alternative.Id')) {
+            if(-not $coordinator60.Contains($token)) {
+              throw "REV22.60 bounded full-view solver invariant missing: $token"
+            }
+          }
+          foreach($token in @('profileGroups.Add(',
+              'SupportOrthoCoordinatedLayout60.Solve(',
+              'CoordinatedProfilesPlaced','REV22_60_OPTIONAL_PROFILE_NO_COMPATIBLE_LAYOUT')) {
+            if(-not $planner60.Contains($token)) {
+              throw "REV22.60 coordinated source planner missing: $token"
+            }
+          }
+          if(-not $generator60.Contains('REV22_60_COORDINATED_PROFILE_DIMENSIONS=')) {
+            throw 'REV22.60 missing Plant 3D whole-view diagnostic output'
+          }
           # REV22.59: the next geometry tier uses real, vetted
           # native straight edges when the Plant custom object exposes
           # them. Never substitute WCS bounding-box corners for a
@@ -813,11 +839,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.59 verified native straight geometry edge DLL bytes: $size"
+          Write-Host "REV22.60 coordinated native dimensions DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_59-NATIVE-GEOMETRY-EDGES
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_60-COORDINATED-DIMENSIONS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
