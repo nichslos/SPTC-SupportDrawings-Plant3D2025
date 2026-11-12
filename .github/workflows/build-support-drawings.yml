@@ -271,6 +271,38 @@ jobs:
               throw "REV22.43 vertical height integration missing: $token"
             }
           }
+          # REV22.49: source and saved viewport identity persisted in
+          # paper DWG. CommandEnded/Idle triggers atomic owner-only
+          # dimension replacement; no new public commands.
+          $update=Get-Content "$root/SupportOrthoDimensionRefresh49.cs" -Raw
+          $policy=Get-Content "$root/SupportOrthoDimensionUpdatePlan49.cs" -Raw
+          foreach($token in @('PLANTORTHOUPDATE',
+              'DocumentCreated','CommandEnded','AcadApp.Idle',
+              'SaveInitial(', 'NamedObjectsDictionaryId',
+              'ReadDwgFile(', 'replaceGenerated:true',
+              'XREF', 'SupportOrthoNativeDimensionPolicy48')) {
+            if(-not $update.Contains($token)) {
+              throw "REV22.49 automatic update architecture missing: $token"
+            }
+          }
+          foreach($token in @('NeedsReplace','ManifestKey',
+              'Resolve(','Signature(','IsNativeKey')) {
+            if(-not ($policy+$update).Contains($token)) {
+              throw "REV22.49 safety invariant missing: $token"
+            }
+          }
+          $writer=Get-Content "$root/SupportOrthoDimLinearWriter41.cs" -Raw
+          foreach($token in @('GetXDataForApplication(',
+              'DxfCode.ExtendedDataRegAppName',
+              'previous.Erase();','replaceGenerated')) {
+            if(-not $writer.Contains($token)) {
+              throw "REV22.49 owner-only atomic rewrite missing: $token"
+            }
+          }
+          if(-not $gen.Contains('REV22_49_AUTO_UPDATE_MANIFEST=PASS') -or
+             -not $gen.Contains('REV22_49_XREF_DIMENSIONS_DISABLED=TRUE')) {
+            throw 'REV22.49 generated drawing registration missing'
+          }
           # REV22.48: host-native-only dimensions. XREFs may have
           # annotations but never a DIMLINEAR source or datum station.
           $nativePolicy=Get-Content "$root/SupportOrthoNativeDimensionPolicy48.cs" -Raw
@@ -372,7 +404,7 @@ jobs:
               'SupportOrthoSmartDimPlan46.Build(',
               'SupportOrthoDimLinearWriter41.Write(',
               'REV22_41_DIMENSIONS_CREATED=',
-              'REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=TRUE')) {
+              'REV22_49_DIMENSIONS_REGENERATE_ON_PLANTORTHOUPDATE=TRUE')) {
             if(-not $gen.Contains($token)) {
               throw "REV22.41 ten-view integration missing: $token"
             }
@@ -462,11 +494,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.48 native-only precision DIMLINEAR DLL bytes: $size"
+          Write-Host "REV22.49 automatic native DIMLINEAR update DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_48-NATIVE-ONLY-PRECISION-DIMS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_49-AUTO-UPDATE-NATIVE-DIMENSIONS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
