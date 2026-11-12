@@ -31,7 +31,11 @@ public static class SupportOrthoReferenceDimPlan47
         int ManualViewDetailsSuppressed=0,
         int UnintendedAcceptedWitnessIntersections=0,
         int ExactNativeEdgeProfileDimensions=0,
-        int ApproximateProfileDimensions=0);
+        int ApproximateProfileDimensions=0,
+        int CoordinatedProfileGroups=0,
+        int CoordinatedProfilesPlaced=0,
+        int CoordinatedProfileGroupsOmitted=0,
+        int CoordinatedCandidateComparisons=0);
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
@@ -77,6 +81,8 @@ public static class SupportOrthoReferenceDimPlan47
             redundantChains=0,hierarchyRejected=0,
             manualViewSuppressed=0,acceptedIntersections=0,
             exactProfiles=0,approxProfiles=0,
+            coordinatedGroups=0,coordinatedPlaced=0,
+            coordinatedOmitted=0,coordinatedComparisons=0,
             rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
@@ -302,6 +308,16 @@ public static class SupportOrthoReferenceDimPlan47
                 }
             }
 
+            // REV22.60: reserve overalls and verified H/V chains
+            // first. Stage every optional native profile dimension
+            // (both axes) and optimize their compatible positions
+            // together at the END of this view. Horizontal profiles
+            // must not greedily block the equally valid vertical ones.
+            var profileGroups=new List<SupportOrthoCoordinatedLayout60.Group>();
+            var profileOptions=new Dictionary<int,(
+                SupportOrthoDimLinearPlan41.Dimension D,
+                Placed P,bool Exact,bool NativeAxis)>();
+            int optionId=0;
             foreach(bool horizontal in new[]{true,false})
             {
                 double min=horizontal?minX:minY;
@@ -623,15 +639,21 @@ public static class SupportOrthoReferenceDimPlan47
                             MidpointWitness=witness,
                             ExactNativeProfileEdge=physical!=null};
                     requested++;
-                    bool fitted=false;
+                    var alternatives=new List<
+                        SupportOrthoCoordinatedLayout60.Alternative>();
                     foreach(double sign in PreferredSigns(camera.Name,horizontal))
                     {
-                        if(fitted)break;
+                        if(alternatives.Count>=24)break;
                         foreach(double offset in
                             SupportOrthoReferenceLayout51.LocalMemberLaneOffsets())
                         {
-                            if(fitted)break;
-                            for(int tier=0;tier<8;tier++)
+                            if(alternatives.Count>=24)break;
+                            // Spread candidate sampling among available
+                            // paper lanes. Four text tiers per lane
+                            // provide more useful global choices than
+                            // eight near-identical text positions
+                            // on one early lane.
+                            for(int tier=0;tier<4;tier++)
                             {
                                 var candidate=Candidate(camera,assembly,
                                     projected,verifiedWitnessPoints,
@@ -649,9 +671,8 @@ public static class SupportOrthoReferenceDimPlan47
                                     rejected++;
                                     continue;
                                 }
-                                // Local dimension line may be adjacent to
-                                // its own member, but never cut across an
-                                // unrelated structure member.
+                                // Preserve REV22.58's strict witness
+                                // and source-member collision policy.
                                 if(projected.Any(b=>b!=member.Bounds&&
                                     candidate.Value.P.Line.Intersects(b,.20))||
                                    placed.Any(prior=>
@@ -662,25 +683,68 @@ public static class SupportOrthoReferenceDimPlan47
                                     rejected++;
                                     continue;
                                 }
-                                dimensions.Add(candidate.Value.D);
-                                placed.Add(candidate.Value.P);
-                                measuredLocalSpans.Add(length);
-                                localCount++;
-                                if(physical!=null)exactProfiles++;
-                                else approxProfiles++;
-                                if(verifiedMidpoint)midpointNative++;
-                                else midpointBounds++;
-                                fitted=true;
-                                break;
+                                int id=optionId++;
+                                profileOptions.Add(id,(candidate.Value.D,
+                                    candidate.Value.P,physical!=null,
+                                    verifiedMidpoint));
+                                double paperCost=Math.Min(90,
+                                    offset*.65+tier*.16);
+                                alternatives.Add(new(
+                                    id,paperCost));
                             }
                         }
                     }
-                    if(!fitted)
+                    if(alternatives.Count==0)
+                    {
                         skipped.Add(camera.Name+"/"+member.Member.Key+
                             ":"+(horizontal?"H":"V")+
                             "_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE");
+                        continue;
+                    }
+                    // Reserve one distinct physical profile width per
+                    // group, but do NOT commit a specific line or text
+                    // coordinate before both view axes are considered.
+                    measuredLocalSpans.Add(length);
+                    profileGroups.Add(new(
+                        (horizontal?"H":"V")+":"+member.Member.Key,
+                        physical!=null?60:verifiedMidpoint?40:20,
+                        alternatives));
                 }
             }
+            if(profileGroups.Count>0)
+            {
+                coordinatedGroups+=profileGroups.Count;
+                bool Compatible(int first,int second)
+                {
+                    var a=profileOptions[first].P;
+                    var b=profileOptions[second].P;
+                    if(a.Horizontal==b.Horizontal&&
+                       a.Line.Intersects(b.Line,.35))
+                        return false;
+                    return RejectionReason(a,Array.Empty<Obstacle>(),
+                        paper,new[]{b},projected)==null;
+                }
+                var coordinated=SupportOrthoCoordinatedLayout60.Solve(
+                    profileGroups,Compatible);
+                coordinatedComparisons+=coordinated.CandidateComparisons;
+                coordinatedOmitted+=coordinated.Omitted.Count;
+                foreach(var choice in coordinated.Chosen)
+                {
+                    var picked=profileOptions[choice.AlternativeId];
+                    dimensions.Add(picked.D);
+                    placed.Add(picked.P);
+                    localCount++;
+                    coordinatedPlaced++;
+                    if(picked.Exact)exactProfiles++;
+                    else approxProfiles++;
+                    if(picked.NativeAxis)midpointNative++;
+                    else midpointBounds++;
+                }
+                foreach(string omitted in coordinated.Omitted)
+                    skipped.Add(camera.Name+"/"+omitted+
+                        ":REV22_60_OPTIONAL_PROFILE_NO_COMPATIBLE_LAYOUT");
+            }
+
             // Every accepted dimension has been checked against the
             // baseline AND both witness lines of previously accepted
             // dimensions. Keep an independently audited final count
@@ -696,7 +760,9 @@ public static class SupportOrthoReferenceDimPlan47
             requested,localCount,priorityOverallCount,
             midpointNative,midpointBounds,terminalRemainders,
             redundantChains,hierarchyRejected,manualViewSuppressed,
-            acceptedIntersections,exactProfiles,approxProfiles);
+            acceptedIntersections,exactProfiles,approxProfiles,
+            coordinatedGroups,coordinatedPlaced,coordinatedOmitted,
+            coordinatedComparisons);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
