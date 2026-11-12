@@ -89,6 +89,12 @@ public static class SupportOrthoSmartDimPlan46
             foreach(var member in members.OrderBy(m=>m.Key,
                          StringComparer.OrdinalIgnoreCase))
             {
+                if(!SupportOrthoNativeDimensionPolicy48.AcceptMember(member))
+                {
+                    skips.Add(camera.Name+"/"+member.Key+
+                        ":XREF_OR_NONNATIVE_DIMENSION_SOURCE_EXCLUDED");
+                    continue;
+                }
                 if(!Valid(member))
                 {
                     skips.Add(camera.Name+"/"+member.Key+
