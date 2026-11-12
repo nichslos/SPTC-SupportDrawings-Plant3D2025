@@ -451,6 +451,18 @@ public sealed class SupportOrthoTenViewGenerator
                 Array.Empty<SupportOrthoAllViewDimPlan44.Member>(),
                 Array.Empty<string>());
 
+        // REV22.59: inspect only the already-vetted native steel and
+        // support members. This is a read-only bounded extraction; no
+        // source DWG edits and absolutely no XREF geometry dimensions.
+        var nativeEdges59=options.AutoDimLinear&&
+            options.ReferenceDetailDimensions
+            ?SupportOrthoNativeEdgeSource59.Read(
+                sourceDoc.Database,selectedSupportIds,
+                everyViewMembers.Members)
+            :new SupportOrthoNativeEdgeSource59.Result(
+                Array.Empty<SupportOrthoNativeEdgeGeometry59.Edge>(),
+                Array.Empty<string>());
+
         ProjectPart part;
         try { part = CurrentOrthoProject(); }
         catch (System.Exception ex)
@@ -1635,7 +1647,16 @@ public sealed class SupportOrthoTenViewGenerator
                         detailPlan=SupportOrthoReferenceDimPlan47.Build(
                             dimCameras,nativeDimensionMembers,
                             paperWidth,paperHeight,units,verifiedSegments,
-                            dimensionCollisionCallouts,titles);
+                            dimensionCollisionCallouts,titles,
+                            nativeEdges:nativeEdges59.Edges);
+                        Log("REV22_59_EXACT_NATIVE_SOURCE_EDGES="+
+                            nativeEdges59.Edges.Count);
+                        Log("REV22_59_EXACT_PROFILE_DIMS="+
+                            detailPlan.ExactNativeEdgeProfileDimensions);
+                        Log("REV22_59_PROJECTED_ENVELOPE_PROFILE_DIMS="+
+                            detailPlan.ApproximateProfileDimensions);
+                        foreach(string edgeNote in nativeEdges59.Diagnostics)
+                            Log("REV22_59_SOURCE="+edgeNote);
                         // Normalize the plan so the established REV22.44 and
                         // REV22.46 diagnostics/writer remain backward-safe.
                         dimensionPlan=new SupportOrthoSmartDimPlan46.Result(
@@ -1838,7 +1859,7 @@ public sealed class SupportOrthoTenViewGenerator
                                 nativeDimensionMembers,
                                 nativeMemberViewportIds,
                                 dimensionPlan.Dimensions,
-                                nativeDimensionSegments);
+                                nativeDimensionSegments,nativeEdges59.Edges);
                             Log("REV22_49_AUTO_UPDATE_MANIFEST=PASS");
                             Log("REV22_50_NATIVE_GEOMETRY_CACHE_SAVED="+
                                 nativeDimensionMembers.Length);
