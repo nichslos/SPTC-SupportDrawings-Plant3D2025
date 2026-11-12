@@ -173,13 +173,28 @@ public static class SupportOrthoReferenceDimPlan47
                         bool clear=true;
                         foreach(var step in steps)
                         {
-                            var candidate=Candidate(camera,assembly,
-                                step,sign,offset);
-                            if(candidate==null||
-                               !Fits(candidate.Value.P,blocks,paper,
-                                    placed.Concat(local.Select(x=>x.P))))
+                            // Keep one straight chain line, but search
+                            // independent staggered rows for dimension
+                            // text of each short/adjacent station interval.
+                            // A 200 mm text can otherwise overlap the
+                            // following 300 mm text even on a clear lane.
+                            (SupportOrthoDimLinearPlan41.Dimension D,
+                                Placed P)? candidate=null;
+                            for(int tier=0;tier<4;tier++)
                             {
+                                var attempt=Candidate(camera,assembly,
+                                    step,sign,offset,tier);
+                                if(attempt!=null&&
+                                   Fits(attempt.Value.P,blocks,paper,
+                                       placed.Concat(local.Select(x=>x.P))))
+                                {
+                                    candidate=attempt;
+                                    break;
+                                }
                                 rejected++;
+                            }
+                            if(candidate==null)
+                            {
                                 clear=false;
                                 break;
                             }
@@ -291,7 +306,7 @@ public static class SupportOrthoReferenceDimPlan47
         Candidate(
         SupportOrthoMemberCalloutPlan17.Camera c,
         SupportOrthoSmartDimPlan46.Rect box,Request request,
-        double sign,double offset)
+        double sign,double offset,int textTier=0)
     {
         double line= request.Horizontal?
             (sign>0?box.T+offset:box.B-offset):
@@ -302,13 +317,10 @@ public static class SupportOrthoReferenceDimPlan47
         bool shortSpan=request.To-request.From<printedWidth+2;
         if(shortSpan)
             textAt=request.To+printedWidth*.5+1.5;
-        // Short adjacent 132/152 mm chain links in the reference
-        // have insufficient paper width for centred text. Stagger
-        // only their text into alternating rows; all chain
-        // dimension lines themselves remain perfectly collinear.
-        double stagger=shortSpan&&!request.Overall&&request.Index%2==1
-            ?4.0:0;
-        double textClearance=2.7+stagger;
+        // Keep chain lines aligned even where adjacent short labels
+        // need secondary/tertiary text-only rows, e.g. PDF page 16.
+        // Never move the witness or measurement endpoints.
+        double textClearance=2.7+textTier*3.5;
         double tx=request.Horizontal?textAt:line+
             (sign>0?textClearance:-textClearance);
         double ty=request.Horizontal?line+
