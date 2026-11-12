@@ -324,7 +324,7 @@ jobs:
               'SupportOrthoReferenceDatum56.Choose(',
               'REFERENCE_TERMINAL_NATIVE_MEMBER_REMAINDER_NOT_CUT_LENGTH',
               'TERMINAL_REMAINDER_NO_CLEAR_LANE',
-              'if(steps.Count>1||terminalDatum.HasValue)')) {
+              'if(steps.Count>0)')) {
             if(-not $dim56.Contains($token)) {
               throw "REV22.56 manual end-member dimension policy absent: $token"
             }
