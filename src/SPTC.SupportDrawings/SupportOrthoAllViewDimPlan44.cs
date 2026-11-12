@@ -214,7 +214,10 @@ public static class SupportOrthoAllViewDimPlan44
                     result.Add(new SupportOrthoDimLinearPlan41.Dimension(
                         c.Name,m.Key+"/"+(horizontal?"H":"V"),m.Kind,
                         horizontal,ax,ay,bx,by,lineX,lineY,measure,
-                        "PROJECTED_OVERALL_VIEW_ENVELOPE"));
+                        "PROJECTED_OVERALL_VIEW_ENVELOPE",null,null,
+                        SupportOrthoDynamicDimension492
+                            .ModelMillimetersPerPaperUnit(
+                                unitsToMm,c.Scale)));
                 }
             }
         }
