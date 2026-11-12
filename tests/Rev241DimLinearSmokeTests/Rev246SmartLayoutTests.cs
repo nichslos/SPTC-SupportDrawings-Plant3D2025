@@ -40,14 +40,14 @@ internal static class Rev246SmartLayoutTests
         Check(withLeader.Dimensions.Count>=1,
             "collision handling preserves feasible dimensions");
 
-        // Short 50 mm XREF footprints remain measurable at 1:30
-        // while moving text outside the extension lines.
+        // REV22.48: native 50 mm footprints remain measurable at 1:30
+        // while ALL XREF geometry must be excluded from dimensions.
         var tinyCamera=top with {
             X=118.8,Y=723.26,W=63.732,H=48.134,
             ViewCenterX=7956.295,ViewCenterY=3484.858,Scale=1.0/30
         };
         var narrow=new SupportOrthoAllViewDimPlan44.Member(
-            "XREF_MEMBER:SUPP-1/401","STRUCTURE",
+            "NATIVE:SUPP-1/401","STRUCTURE",
             7931.295,3459.858,0,7981.295,3509.858,500);
         var shortResult=SupportOrthoSmartDimPlan46.Build(
             new[]{tinyCamera},new[]{narrow},594,841,1.0);
@@ -55,6 +55,18 @@ internal static class Rev246SmartLayoutTests
             shortResult.Dimensions.All(x=>x.Measurement=="50"),
             "both axes of 50 mm TOP footprint survive at 1:30");
 
+        var external=narrow with {Key="XREF_MEMBER:SUPP-1/401"};
+        var xrefOnly=SupportOrthoSmartDimPlan46.Build(
+            new[]{tinyCamera},new[]{external},594,841,1.0);
+        Check(xrefOnly.Dimensions.Count==0 &&
+            xrefOnly.Skipped.Any(x=>x.Contains("XREF_OR_NONNATIVE")),
+            "XREF support receives zero dimensions at 1:30");
+        var mixed=SupportOrthoSmartDimPlan46.Build(
+            new[]{tinyCamera},new[]{narrow,external},594,841,1.0);
+        Check(mixed.Dimensions.Select(x=>x.Source)
+            .All(x=>x.StartsWith("NATIVE:",StringComparison.Ordinal)) &&
+            mixed.Dimensions.Count==shortResult.Dimensions.Count,
+            "XREF geometry never adds per-member dimensions");
         // Multiple objects and axes share an actual collision registry:
         // the reserved text envelopes of all accepted dims are disjoint.
         var shifted=member with {Key="NATIVE:STRUCTURE_2",
