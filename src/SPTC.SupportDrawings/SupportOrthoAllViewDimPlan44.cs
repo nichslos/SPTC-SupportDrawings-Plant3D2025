@@ -59,12 +59,42 @@ public static class SupportOrthoAllViewDimPlan44
             double frameRight=c.X+c.W*.5-1.4;
             double frameBottom=c.Y-c.H*.5+1.4;
             double frameTop=c.Y+c.H*.5-1.4;
+            // REV22.45: geometry/witness points remain inside the native
+            // viewport, but the dimension line can use neighboring blank
+            // paper GUTTERS outside it (critical for crowded TOP views).
+            double laneLeft=Math.Max(2.0,frameLeft-34.0);
+            double laneRight=Math.Min(paperW*.78,frameRight+34.0);
+            double laneBottom=Math.Max(paperH*.12,frameBottom-29.0);
+            double laneTop=Math.Min(paperH*.94,frameTop+29.0);
+            foreach(var other in cameras)
+            {
+                if(ReferenceEquals(c,other))continue;
+                // Prevent one view from consuming an adjacent view's space.
+                if(Math.Abs(other.Y-c.Y)<(c.H+other.H)*.60)
+                {
+                    double split=(c.X+other.X)*.5;
+                    if(other.X<c.X)laneLeft=Math.Max(laneLeft,split+3);
+                    if(other.X>c.X)laneRight=Math.Min(laneRight,split-3);
+                }
+                if(Math.Abs(other.X-c.X)<(c.W+other.W)*.60)
+                {
+                    double split=(c.Y+other.Y)*.5;
+                    if(other.Y<c.Y)laneBottom=Math.Max(laneBottom,split+3);
+                    if(other.Y>c.Y)laneTop=Math.Min(laneTop,split-3);
+                }
+            }
             // Each view gets its own dimension lanes. Cross-view dimensions
             // are not deduplicated: FRONT and BACK both carry dimensions.
             var occupied=new List<(double L,double B,double R,double T)>();
             foreach(Member m in members.OrderBy(x=>x.Key,
                 StringComparer.OrdinalIgnoreCase))
             {
+                if(!SupportOrthoNativeDimensionPolicy48.AcceptMember(m))
+                {
+                    skipped.Add(c.Name+"/"+m.Key+
+                        ":XREF_OR_NONNATIVE_DIMENSION_SOURCE_EXCLUDED");
+                    continue;
+                }
                 if(!Finite(m))
                 {
                     skipped.Add(c.Name+"/"+m.Key+":INVALID_SOURCE_EXTENTS");
@@ -97,7 +127,9 @@ public static class SupportOrthoAllViewDimPlan44
                 {
                     double span=horizontal?x1-x0:y1-y0;
                     string axis=horizontal?"HORIZONTAL":"VERTICAL";
-                    if(span<2.0)
+                    // 50 mm at 1:30 is only 1.67 mm on paper.
+                    // A real narrow member must not be silently omitted.
+                    if(span<.25)
                     {
                         skipped.Add(c.Name+"/"+m.Key+":"+axis+
                             "_SPAN_TOO_SMALL_ON_PAPER");
@@ -124,7 +156,8 @@ public static class SupportOrthoAllViewDimPlan44
                     double firstSign=midOther>=
                         (horizontal?c.Y:c.X)?1:-1;
                     foreach(double offset in new[]{
-                        4.2,7.4,10.6,13.8,17.0,20.2,23.4})
+                        3.2,5.9,8.6,11.3,14.0,16.7,19.4,
+                        22.1,24.8,27.5,30.2,32.9})
                     {
                         foreach(double sign in new[]{firstSign,-firstSign})
                         {
@@ -148,8 +181,8 @@ public static class SupportOrthoAllViewDimPlan44
                                 t=axisCenter+
                                     Math.Max(span,textFootprint)*.5+1;
                             }
-                            if(l<frameLeft||r>frameRight||
-                               b<frameBottom||t>frameTop||
+                            if(l<laneLeft||r>laneRight||
+                                b<laneBottom||t>laneTop||
                                l<0||r>paperW*.78||
                                b<paperH*.12||t>paperH*.94)
                                 continue;
@@ -181,7 +214,10 @@ public static class SupportOrthoAllViewDimPlan44
                     result.Add(new SupportOrthoDimLinearPlan41.Dimension(
                         c.Name,m.Key+"/"+(horizontal?"H":"V"),m.Kind,
                         horizontal,ax,ay,bx,by,lineX,lineY,measure,
-                        "PROJECTED_OVERALL_VIEW_ENVELOPE"));
+                        "PROJECTED_OVERALL_VIEW_ENVELOPE",null,null,
+                        SupportOrthoDynamicDimension492
+                            .ModelMillimetersPerPaperUnit(
+                                unitsToMm,c.Scale)));
                 }
             }
         }
