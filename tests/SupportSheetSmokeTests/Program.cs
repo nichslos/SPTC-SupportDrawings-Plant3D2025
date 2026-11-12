@@ -223,9 +223,9 @@ for(int i=0;i<tenGroup.Views.Count;i++)
             "REV22 ten viewport rectangles cannot overlap");
     }
 }
-// REV22.26: test a representative full-scale support envelope. The
-// older REV22 tiny geometry smoke fixture intentionally has native
-// viewports too narrow for titles, and must NOT be silently accepted.
+// REV22.49.1: captions get their own minimum frame width, even if a
+// support is so narrow that its raw model projection is only 5 mm on paper.
+// Leave the existing representative full-scale support case unchanged.
 var actualSupport26=NativeOrthoLayout.Build(
     new BoundingBox3(0,0,0,703.275,924.229,1382.489),1);
 var tenCandidate26=NativeOrthoTenViewPlan.Build(actualSupport26,594,841);
@@ -261,11 +261,34 @@ for(int i=0;i<10;i++)
         final.CenterY+final.PaperFrameHeight/2<=841*.94+1e-6,
         "REV22.26 automated view and caption sit outside titleblock and within paper "+final.Name);
 }
-bool tiny26Rejected=false;
-try{NativeOrthoTenViewAutoPlacement26.Build(ten,594,841);}
-catch(InvalidOperationException){tiny26Rejected=true;}
-Assert(tiny26Rejected,
-    "REV22.26 must reject a geometry fixture with views too narrow for real titles");
+// REV22.49.1: the previously rejected slender fixture now fits, with
+// caption width reserved independently of the real 3D geometry/scale.
+var narrowLegacy=NativeOrthoTenViewAutoPlacement26.Build(ten,594,841);
+Assert(narrowLegacy.Views.Count==10&&narrowLegacy.Titles.Count==10&&
+    narrowLegacy.Views.All(v=>
+        v.PaperFrameWidth>=
+            NativeOrthoViewTitlePlan.MinimumFrameWidth(v.Name)-1e-6),
+    "REV22.49.1 legacy thin support can place 10 native titles without clipping");
+var verySlender=NativeOrthoLayout.Build(
+    new BoundingBox3(0,0,0,15,15,600),1);
+var narrowCandidate=NativeOrthoTenViewPlan.Build(verySlender,594,841);
+var narrowActual=NativeOrthoTenViewAutoPlacement26.Build(
+    narrowCandidate,594,841);
+var narrowTop=narrowCandidate.Views.Single(v=>v.Name=="TOP");
+Assert(narrowTop.ModelWmm*narrowCandidate.Scale*1.05<
+    NativeOrthoViewTitlePlan.MinimumFrameWidth("TOP"),
+    "REV22.49.1 fixture reproduces original 5-mm TOP-title preflight failure");
+Assert(narrowActual.Views.Count==10&&narrowActual.Titles.Count==10&&
+    narrowActual.Views.All(v=>v.PaperFrameWidth>=
+        NativeOrthoViewTitlePlan.MinimumFrameWidth(v.Name)-1e-6)&&
+    narrowActual.Titles.All(t=>t.Width>=
+        NativeOrthoViewTitlePlan.MinimumFrameWidth(t.Name)-1e-6),
+    "REV22.49.1 narrow TOP/side/ISO captions receive a readable safe frame");
+Assert(narrowActual.Views.Zip(narrowCandidate.Views).All(pair=>
+    Math.Abs(pair.First.CenterX-pair.Second.CenterX)<1e-6),
+    "REV22.49.1 does not move view centres horizontally");
+Assert(narrowActual.Views.All(v=>v.PaperFrameWidth>0&&v.PaperFrameHeight>0),
+    "REV22.49.1 no zero-size frames for slender support");
 bool tooSmallAuto26=false;
 try{NativeOrthoTenViewAutoPlacement26.Build(tenCandidate26,140,780);}
 catch(InvalidOperationException){tooSmallAuto26=true;}
