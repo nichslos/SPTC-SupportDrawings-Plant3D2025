@@ -65,7 +65,7 @@ internal static class Rev247ReferenceStyleTests
         // Explicit endpoint evidence is allowed to define a station; an
         // unavailable bolt/hole centre is NOT synthesized from its bounds.
         var endpoint=new SupportOrthoDimLinearPlan41.Segment(
-            "NATIVE:VERIFIED","STRUCTURE",
+            "NATIVE:C125_A","STRUCTURE",
             360,-25,0,360,25,0,50,50,
             "EXPLICIT_MEMBER_ENDPOINTS");
         var oneWithPoint=SupportOrthoReferenceDimPlan47.Build(
@@ -75,6 +75,40 @@ internal static class Rev247ReferenceStyleTests
         Need(!oneWithPoint.Dimensions.Any(d=>d.Source.Contains("BOLT")),
             "bolt pitches are never invented from member bounding boxes");
 
+        // REV22.48: a remote XREF, even when large, must not change
+        // native-only overall or inject a projected datum station.
+        var xref=new SupportOrthoAllViewDimPlan44.Member(
+            "XREF_MEMBER:REMOTE","STRUCTURE",-2000,-100,0,
+            3000,100,100);
+        var mixed=SupportOrthoReferenceDimPlan47.Build(
+            new[]{top},new[]{first,second,xref},594,841,1);
+        Need(mixed.Dimensions.Select(d=>d.Measurement)
+            .OrderBy(x=>x).SequenceEqual(
+                plan.Dimensions.Select(d=>d.Measurement).OrderBy(x=>x)),
+            "XREF never changes native overall or chain dimensions");
+        Need(mixed.Skipped.Any(x=>x.Contains("XREF_OR_NONNATIVE")),
+            "XREF exclusion recorded in reference plan");
+        var onlyXref=SupportOrthoReferenceDimPlan47.Build(
+            new[]{top},new[]{xref},594,841,1);
+        Need(onlyXref.Dimensions.Count==0,
+            "XREF-only drawing produces zero dimensions");
+
+        // A fabricated XREF Start/End inside the native envelope still
+        // cannot insert an extra station into a native chain.
+        var xrefEndpoint=endpoint with {
+            Key="XREF_MEMBER:VERIFIED",Ax=200,Bx=200
+        };
+        var injected=SupportOrthoReferenceDimPlan47.Build(
+            new[]{top},new[]{first},594,841,1,
+            new[]{xrefEndpoint});
+        Need(injected.ChainDimensions==0,
+            "XREF endpoint cannot introduce chain or bolt position");
+        var detached=endpoint with {Key="NATIVE:NONMEMBER"};
+        var unverified=SupportOrthoReferenceDimPlan47.Build(
+            new[]{top},new[]{first},594,841,1,
+            new[]{detached});
+        Need(unverified.ChainDimensions==0,
+            "unrelated native endpoint cannot become a datum station");
         var iso=top with {Name="NW",DirX=1,DirY=-1,DirZ=1};
         var subset=SupportOrthoReferenceDimPlan47.Build(
             new[]{top,iso},new[]{first,second},594,841,1);
