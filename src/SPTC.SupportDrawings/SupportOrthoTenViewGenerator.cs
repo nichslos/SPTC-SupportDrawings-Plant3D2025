@@ -1592,10 +1592,53 @@ public sealed class SupportOrthoTenViewGenerator
                 {
                     var dimCameras=ReadNativeMemberCameras(
                         targetDoc.Database,nativeMemberViewportIds);
-                    var dimensionPlan=SupportOrthoSmartDimPlan46.Build(
-                        dimCameras,everyViewMembers.Members,
-                        paperWidth,paperHeight,units,
-                        dimensionCollisionCallouts,titles);
+                    SupportOrthoReferenceDimPlan47.Result? detailPlan=null;
+                    SupportOrthoSmartDimPlan46.Result dimensionPlan;
+                    if(options.ReferenceDetailDimensions)
+                    {
+                        // REV22.47: per-view functional chain dimensions
+                        // on verified member datums, plus one independent
+                        // outer overall dimension (never a cut length).
+                        var verifiedSegments=dimSource.Segments
+                            .Select(segment=>new SupportOrthoDimLinearPlan41.Segment(
+                                segment.Key,segment.Kind,
+                                segment.Ax,segment.Ay,segment.Az,
+                                segment.Bx,segment.By,segment.Bz,
+                                segment.SourceLength,segment.Millimeters,
+                                segment.Provenance)).ToArray();
+                        detailPlan=SupportOrthoReferenceDimPlan47.Build(
+                            dimCameras,everyViewMembers.Members,
+                            paperWidth,paperHeight,units,verifiedSegments,
+                            dimensionCollisionCallouts,titles);
+                        // Normalize the plan so the established REV22.44 and
+                        // REV22.46 diagnostics/writer remain backward-safe.
+                        dimensionPlan=new SupportOrthoSmartDimPlan46.Result(
+                            detailPlan.Dimensions,detailPlan.Skipped,
+                            Array.Empty<SupportOrthoSmartDimPlan46.Placement>(),
+                            everyViewMembers.Members.Count,
+                            detailPlan.OrthographicViews,
+                            detailPlan.RequestedDimensions,0,
+                            detailPlan.CollisionCandidatesRejected);
+                        Log("REV22_47_DIMENSION_MODE=REFERENCE_CHAIN_PLUS_OVERALL");
+                        Log("REV22_47_CHAIN_DIMENSIONS="+
+                            detailPlan.ChainDimensions);
+                        Log("REV22_47_OVERALL_DIMENSIONS="+
+                            detailPlan.OverallDimensions);
+                        Log("REV22_47_UNRESOLVED_DATUM_DIMENSIONS="+
+                            detailPlan.Skipped.Count);
+                        Log("REV22_47_BOLT_PITCH_NOT_ASSUMED=True");
+                        Log("REV22_47_OVERALL_NOT_FABRICATION_CUT_LENGTH=True");
+                        foreach(string note in detailPlan.Skipped)
+                            Log("REV22_47_DIMENSION_SKIP="+note);
+                    }
+                    else
+                    {
+                        dimensionPlan=SupportOrthoSmartDimPlan46.Build(
+                            dimCameras,everyViewMembers.Members,
+                            paperWidth,paperHeight,units,
+                            dimensionCollisionCallouts,titles);
+                        Log("REV22_47_DIMENSION_MODE=LEGACY_ALL_MEMBER_HV");
+                    }
                     Log("REV22_46_DIMENSION_MODE=COLLISION_AWARE_PER_MEMBER_HV");
                     Log("REV22_46_AUTO_REPOSITIONED="+
                         dimensionPlan.Repositioned);
