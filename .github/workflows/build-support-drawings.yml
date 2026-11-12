@@ -271,6 +271,27 @@ jobs:
               throw "REV22.43 vertical height integration missing: $token"
             }
           }
+          # REV22.48: host-native-only dimensions. XREFs may have
+          # annotations but never a DIMLINEAR source or datum station.
+          $nativePolicy=Get-Content "$root/SupportOrthoNativeDimensionPolicy48.cs" -Raw
+          $nativeSource=Get-Content "$root/SupportOrthoDimensionSource41.cs" -Raw
+          foreach($token in @('StartsWith("NATIVE:"',
+              'XREF', 'AcceptMember(', 'AcceptSegment(')) {
+            if(-not $nativePolicy.Contains($token)) {
+              throw "REV22.48 native dimension boundary missing: $token"
+            }
+          }
+          if($nativeSource.Contains('TryRead(member.Id,member.ToHost') -or
+             -not $nativeSource.Contains('DIM48_XREF_SOURCE_SEGMENTS_EXCLUDED=')) {
+            throw 'REV22.48 XREF endpoint extraction must be disabled'
+          }
+          foreach($token in @('REV22_48_XREF_DIMENSION_POLICY=DISABLED',
+              'REV22_48_NATIVE_MEMBER_DIMENSION_SOURCES=',
+              'REV22_48_XREF_DIMENSIONS_CREATED=0')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.48 native-only integration missing: $token"
+            }
+          }
           # REV22.47 preserves the user-supplied p15/p16 shop-drawing
           # dimension-chain and overall conventions as a selectable mode.
           $detail=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
@@ -343,7 +364,7 @@ jobs:
               throw "REV22.44 model-Ortho integration missing: $token"
             }
           }
-          if(-not $ui.Contains('Auto H/V dimensions: all Ortho members/views')) {
+          if(-not $ui.Contains('Auto H/V dimensions: native members only')) {
             throw 'REV22.44 auto H/V all-members UI control missing'
           }
           foreach($token in @('options.AutoDimLinear',
@@ -356,7 +377,7 @@ jobs:
               throw "REV22.41 ten-view integration missing: $token"
             }
           }
-          if(-not $ui.Contains('Auto H/V dimensions: all Ortho members/views') -or
+          if(-not $ui.Contains('Auto H/V dimensions: native members only') -or
              -not $ui.Contains('autoDimLinear.Checked = true') -or
              -not $ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked);')) {
             throw 'REV22.41 persistent UI option must be default ON and retained'
@@ -441,11 +462,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.47 reference-detail chain and overall DIMLINEAR DLL bytes: $size"
+          Write-Host "REV22.48 native-only precision DIMLINEAR DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_47-REFERENCE-DETAIL-DIMS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_48-NATIVE-ONLY-PRECISION-DIMS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
