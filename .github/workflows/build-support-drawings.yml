@@ -293,7 +293,7 @@ jobs:
           $layout54=Get-Content "$root/SupportOrthoReferenceLayout51.cs" -Raw
           $generator54=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
           foreach($token in @('RejectionReason(',
-              'OVERALL_DIAGNOSTICS=', 'ANNOTATION_TEXT_NEIGHBOR_VIEW_',
+              'OVERALL_DIAGNOSTICS=', '"ANNOTATION_TEXT_"+kind',
               'foreach(double offset in SupportOrthoReferenceLayout51')) {
             if(-not $dim54.Contains($token)) {
               throw "REV22.54 strict collision and near-left gutter guard missing: $token"
