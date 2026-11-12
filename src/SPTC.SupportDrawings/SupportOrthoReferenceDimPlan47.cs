@@ -208,10 +208,10 @@ public static class SupportOrthoReferenceDimPlan47
                 if(steps.Count>1)
                 {
                     bool chainGroupPlaced=false;
-                    foreach(double sign in PreferredSigns(horizontal))
+                    foreach(double sign in PreferredSigns(camera.Name,horizontal))
                     {
                     if(chainGroupPlaced)break;
-                    foreach(double offset in LaneOffsets())
+                    foreach(double offset in SupportOrthoReferenceLayout51.LaneOffsets())
                     {
                         var local=new List<(
                             SupportOrthoDimLinearPlan41.Dimension D,
@@ -233,7 +233,8 @@ public static class SupportOrthoReferenceDimPlan47
                                     step,sign,offset,tier);
                                 if(attempt!=null&&
                                    Fits(attempt.Value.P,blocks,paper,
-                                       placed.Concat(local.Select(x=>x.P))))
+                                       placed.Concat(local.Select(x=>x.P)),
+                                       projected))
                                 {
                                     candidate=attempt;
                                     break;
@@ -271,18 +272,21 @@ public static class SupportOrthoReferenceDimPlan47
                 requested+=steps.Count>1?steps.Count:0;
                 requested++;
                 bool overallPlaced=false;
-                foreach(double sign in PreferredSigns(horizontal))
+                foreach(double sign in PreferredSigns(camera.Name,horizontal))
                 {
                 if(overallPlaced)break;
-                foreach(double offset in LaneOffsets())
+                foreach(double offset in SupportOrthoReferenceLayout51.LaneOffsets())
                 {
                     double extra=steps.Count>1&&chainPlaced==steps.Count
-                        ?Math.Max(0,chainOffset+5-offset):0;
+                        ?Math.Max(0,chainOffset+
+                            SupportOrthoReferenceLayout51.OverallSeparation()
+                            -offset):0;
                     var candidate=Candidate(camera,assembly,
                         projected,verifiedWitnessPoints,
                         big,sign,offset+extra);
                     if(candidate==null||
-                       !Fits(candidate.Value.P,blocks,paper,placed))
+                       !Fits(candidate.Value.P,blocks,paper,placed,
+                            projected))
                     {
                         rejected++;
                         continue;
@@ -342,12 +346,14 @@ public static class SupportOrthoReferenceDimPlan47
         return new[]{min}.Concat(chosen).Concat(new[]{max}).ToList();
     }
 
-    private static IEnumerable<double> PreferredSigns(bool horizontal) =>
-        horizontal?new[]{1.0,-1.0}:new[]{-1.0,1.0};
-
-    private static IEnumerable<double> LaneOffsets() =>
-        new[]{4.5,7.5,10.5,13.5,16.5,19.5,22.5,
-            25.5,28.5,31.5,34.5,37.5,40.5};
+    private static IEnumerable<double> PreferredSigns(
+        string view,bool horizontal)
+    {
+        // REV22.51: never shift vertical dimensions into the right-side
+        // annotation column, or horizontal dimensions below view titles.
+        yield return SupportOrthoReferenceLayout51.PreferredSide(
+            view,horizontal);
+    }
 
     // Resolve the transverse start location from a REAL native
     // member edge at this station or an explicit native endpoint.
@@ -416,7 +422,8 @@ public static class SupportOrthoReferenceDimPlan47
             // force readable text OUTSIDE its witnesses. Alternate
             // the preferred side for consecutive 50 mm chain links
             // so identical labels don't stack on one another.
-            bool putBefore=(request.Index+textTier)%2==1;
+            bool putBefore=SupportOrthoReferenceLayout51
+                .ShortTextBefore(request.Index,textTier);
             textAt=putBefore?
                 request.From-printedWidth*.5-2.0:
                 request.To+printedWidth*.5+2.0;
@@ -465,9 +472,15 @@ public static class SupportOrthoReferenceDimPlan47
     private static bool Fits(Placed p,
         IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> fixedAreas,
         SupportOrthoSmartDimPlan46.Rect paper,
-        IEnumerable<Placed> existing)
+        IEnumerable<Placed> existing,
+        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> sourceMembers)
     {
         if(!Inside(p.Line,paper)||!Inside(p.Text,paper))return false;
+        // Keep dimension labels outside the actual structure silhouette.
+        // The witness can touch its source member, but labels must not
+        // obscure a flange/beam outline or an adjacent section.
+        if(sourceMembers.Any(m=>p.Text.Intersects(m,.12)))
+            return false;
         if(fixedAreas.Any(b=>p.Line.Intersects(b,.45)||
                              p.Text.Intersects(b,.45)))return false;
         foreach(var prev in existing)
