@@ -1666,6 +1666,13 @@ public sealed class SupportOrthoTenViewGenerator
                                     StringComparison.Ordinal))));
                         Log("REV22_56_TERMINAL_MEMBER_COMPLEMENTS="+
                             detailPlan.TerminalMemberRemainderDimensions);
+                        Log("REV22_58_ACCEPTED_UNINTENDED_WITNESS_INTERSECTIONS="+
+                            detailPlan.UnintendedAcceptedWitnessIntersections);
+                        if(detailPlan.UnintendedAcceptedWitnessIntersections!=0)
+                            throw new InvalidOperationException(
+                                "REV22.58 dimension placement produced "+
+                                "unintended witness/line intersection; "+
+                                "drawing generation must not write unsafe dimensions.");
                         Log("REV22_57_REDUNDANT_END_PROFILE_CHAINS_SKIPPED="+
                             detailPlan.RedundantChainsSuppressed);
                         Log("REV22_57_OVERALL_DETAIL_ORDER_REJECTIONS="+
