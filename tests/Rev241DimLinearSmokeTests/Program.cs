@@ -152,6 +152,7 @@ Assert(twinPlan.Dimensions.Count==1 &&
     "identical vertical overall-height dimensions remain compact");
 Rev244AllViewTests.Run();
 Rev246SmartLayoutTests.Run();
+Rev247ReferenceStyleTests.Run();
 Console.WriteLine("REV22.43 vertical overall-height fallback and cross-axis compact safety PASS");
 
 Console.WriteLine("REV22.42 compact DIMLINEAR across six views PASS");
