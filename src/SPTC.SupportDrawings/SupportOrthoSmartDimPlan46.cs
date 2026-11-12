@@ -202,12 +202,16 @@ public static class SupportOrthoSmartDimPlan46
                                 textX+textLength*.5+.9,textY+1.5):
                             new Rect(textX-1.5,textY-textLength*.5-.9,
                                 textX+1.5,textY+textLength*.5+.9);
+                        // REV22.49.4: dimension witnesses start on the
+                        // native member face closest to their chosen lane.
+                        double face=horizontal?
+                            (sign>0?b.T:b.B):(sign>0?b.R:b.L);
                         var witness1=horizontal?
-                            Thin(b.L,b.B,lineX,lineY,true):
-                            Thin(b.L,b.B,lineX,lineY,false);
+                            Thin(b.L,face,b.L,lineY,true):
+                            Thin(face,b.B,lineX,b.B,false);
                         var witness2=horizontal?
-                            Thin(b.R,b.B,lineX,lineY,true):
-                            Thin(b.L,b.T,lineX,lineY,false);
+                            Thin(b.R,face,b.R,lineY,true):
+                            Thin(face,b.T,lineX,b.T,false);
                         // For horizontal the witness line is vertical and
                         // for vertical the witness line is horizontal.
                         var pieces=new[]{dimLine,textZone,witness1,witness2};
@@ -232,8 +236,11 @@ public static class SupportOrthoSmartDimPlan46
                             camera.Name,
                             req.Source.Member.Key+(horizontal?"/H":"/V"),
                             req.Source.Member.Kind,horizontal,
-                            b.L,b.B,horizontal?b.R:b.L,
-                            horizontal?b.B:b.T,lineX,lineY,req.Label,
+                            horizontal?b.L:face,
+                            horizontal?face:b.B,
+                            horizontal?b.R:face,
+                            horizontal?face:b.T,
+                            lineX,lineY,req.Label,
                             "PROJECTED_OVERALL_VIEW_ENVELOPE",
                             textX,textY,
                             SupportOrthoDynamicDimension492
