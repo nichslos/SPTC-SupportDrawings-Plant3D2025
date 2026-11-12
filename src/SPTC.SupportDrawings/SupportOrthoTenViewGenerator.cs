@@ -429,7 +429,8 @@ public sealed class SupportOrthoTenViewGenerator
         // never presented as a fabricated member cut length.
         var dimSource=options.AutoDimLinear
             ? SupportOrthoDimensionSource41.Read(
-                sourceDoc.Database,selectedSupportIds,xrefNearCube,units,
+                sourceDoc.Database,selectedSupportIds,
+                Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),units,
                 horizontalSteel.Members.Select(x=>x.Handle),
                 plantSupports.Members.Select(x=>x.Handle))
             : new SupportOrthoDimensionSource41.Result(
@@ -444,7 +445,8 @@ public sealed class SupportOrthoTenViewGenerator
                 sourceDoc.Database,selectedSupportIds,
                 horizontalSteel.Members.Select(x=>x.Handle),
                 plantSupports.Members.Select(x=>x.Handle),
-                xrefNearCube,layout.PaddedCube)
+                Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),
+                layout.PaddedCube)
             : new SupportOrthoAllMemberExtent44.Result(
                 Array.Empty<SupportOrthoAllViewDimPlan44.Member>(),
                 Array.Empty<string>());
@@ -1417,6 +1419,11 @@ public sealed class SupportOrthoTenViewGenerator
             // No revision to native cube, camera, view registration, or titles.
             string annotationStatus;
             int annotated=0;
+            // REV22.46: share the ACTUAL visible label/leader locations
+            // with the dimension planner; do not reserve hidden UI labels.
+            IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>
+                dimensionCollisionCallouts=
+                    Array.Empty<SupportOrthoMemberCalloutPlan27.Callout>();
             if(sourceAnnotations.Length>0)
             {
                 var memberCameras=ReadNativeMemberCameras(
@@ -1467,6 +1474,7 @@ public sealed class SupportOrthoTenViewGenerator
                         HasTos=options.Description&&includeSecond&&lines.Length>1};
                 }).Where(note=>note!=null)
                     .Cast<SupportOrthoMemberCalloutPlan27.Callout>().ToArray();
+                dimensionCollisionCallouts=visibleCallouts;
                 Log("REV22_38_PIPE_LABEL_FORMAT=BARE_LINE_TAG_AND_BOP");
                 annotated=CreateNativePaperMemberLeaders27(
                     targetDoc.Database,paperLayout,visibleCallouts,
@@ -1586,12 +1594,96 @@ public sealed class SupportOrthoTenViewGenerator
                 {
                     var dimCameras=ReadNativeMemberCameras(
                         targetDoc.Database,nativeMemberViewportIds);
-                    var dimensionPlan=SupportOrthoAllViewDimPlan44.Build(
-                        dimCameras,everyViewMembers.Members,
-                        paperWidth,paperHeight,units);
+                    // REV22.48: make dimension exclusion independent from
+                    // optional XREF annotation discovery and UI toggles.
+                    // Defensive native-only filters at extraction, planning
+                    // and writer input prevent XREF dimensions entirely.
+                    var nativeDimensionMembers=everyViewMembers.Members
+                        .Where(SupportOrthoNativeDimensionPolicy48.AcceptMember)
+                        .ToArray();
+                    var nativeDimensionSegments=dimSource.Segments
+                        .Where(x=>SupportOrthoNativeDimensionPolicy48.IsNativeKey(x.Key))
+                        .ToArray();
+                    Log("REV22_48_DIMENSION_SOURCE_MODE=NATIVE_ONLY");
+                    Log("REV22_48_XREF_ANNOTATIONS_PRESERVED="+
+                        xrefNearCube.Length);
+                    Log("REV22_48_XREF_DIMENSION_SOURCES_EXCLUDED="+
+                        xrefNearCube.Length);
+                    Log("REV22_48_NATIVE_MEMBER_DIMENSION_SOURCES="+
+                        nativeDimensionMembers.Length);
+                    Log("REV22_48_NATIVE_ENDPOINT_DIMENSION_SOURCES="+
+                        nativeDimensionSegments.Length);
+                    SupportOrthoReferenceDimPlan47.Result? detailPlan=null;
+                    SupportOrthoSmartDimPlan46.Result dimensionPlan;
+                    if(options.ReferenceDetailDimensions)
+                    {
+                        // REV22.47: per-view functional chain dimensions
+                        // on verified member datums, plus one independent
+                        // outer overall dimension (never a cut length).
+                        var verifiedSegments=nativeDimensionSegments
+                            .Select(segment=>new SupportOrthoDimLinearPlan41.Segment(
+                                segment.Key,segment.Kind,
+                                segment.Ax,segment.Ay,segment.Az,
+                                segment.Bx,segment.By,segment.Bz,
+                                segment.SourceLength,segment.Millimeters,
+                                segment.Provenance)).ToArray();
+                        detailPlan=SupportOrthoReferenceDimPlan47.Build(
+                            dimCameras,nativeDimensionMembers,
+                            paperWidth,paperHeight,units,verifiedSegments,
+                            dimensionCollisionCallouts,titles);
+                        // Normalize the plan so the established REV22.44 and
+                        // REV22.46 diagnostics/writer remain backward-safe.
+                        dimensionPlan=new SupportOrthoSmartDimPlan46.Result(
+                            detailPlan.Dimensions,detailPlan.Skipped,
+                            Array.Empty<SupportOrthoSmartDimPlan46.Placement>(),
+                            nativeDimensionMembers.Length,
+                            detailPlan.OrthographicViews,
+                            detailPlan.RequestedDimensions,0,
+                            detailPlan.CollisionCandidatesRejected);
+                        Log("REV22_47_DIMENSION_MODE=REFERENCE_CHAIN_PLUS_OVERALL");
+                        Log("REV22_47_CHAIN_DIMENSIONS="+
+                            detailPlan.ChainDimensions);
+                        Log("REV22_47_OVERALL_DIMENSIONS="+
+                            detailPlan.OverallDimensions);
+                        Log("REV22_47_UNRESOLVED_DATUM_DIMENSIONS="+
+                            detailPlan.Skipped.Count);
+                        Log("REV22_47_BOLT_PITCH_NOT_ASSUMED=True");
+                        Log("REV22_47_OVERALL_NOT_FABRICATION_CUT_LENGTH=True");
+                        foreach(string note in detailPlan.Skipped)
+                            Log("REV22_47_DIMENSION_SKIP="+note);
+                    }
+                    else
+                    {
+                        dimensionPlan=SupportOrthoSmartDimPlan46.Build(
+                            dimCameras,nativeDimensionMembers,
+                            paperWidth,paperHeight,units,
+                            dimensionCollisionCallouts,titles);
+                        Log("REV22_47_DIMENSION_MODE=LEGACY_ALL_MEMBER_HV");
+                    }
+                    Log("REV22_48_XREF_DIMENSION_POLICY=DISABLED");
+                    Log("REV22_48_REFERENCE_STYLE="+
+                        (options.ReferenceDetailDimensions?
+                            "NATIVE_DATUM_CHAIN_OVERALL":
+                            "NATIVE_MEMBER_HV"));
+                    Log("REV22_46_DIMENSION_MODE=COLLISION_AWARE_PER_MEMBER_HV");
+                    Log("REV22_46_AUTO_REPOSITIONED="+
+                        dimensionPlan.Repositioned);
+                    Log("REV22_46_COLLIDING_CANDIDATES_REJECTED="+
+                        dimensionPlan.CollisionCandidatesRejected);
+                    Log("REV22_46_DIMENSIONS_REQUESTED="+
+                        dimensionPlan.RequestedAxisCount);
+                    Log("REV22_46_DIMENSIONS_PLANNED="+
+                        dimensionPlan.Dimensions.Count);
+                    Log("REV22_46_DIMENSIONS_UNPLACED="+
+                        dimensionPlan.Skipped.Count(x=>
+                            x.Contains("_NO_COLLISION_FREE_DIMENSION_LANE")||
+                            x.Contains("_SPAN_TOO_SMALL_ON_PAPER")||
+                            x.Contains("_MEMBER_NOT_FULLY_IN_NATIVE_VIEW")));
+                    foreach(var skip in dimensionPlan.Skipped)
+                        Log("REV22_46_DIMENSION_SKIPPED="+skip);
                     Log("REV22_44_DIMENSION_MODE=PER_MEMBER_PER_ORTHOGRAPHIC_VIEW_H_AND_V");
                     Log("REV22_44_MEMBER_SOURCES="+
-                        everyViewMembers.Members.Count);
+                        nativeDimensionMembers.Length);
                     foreach(string note in everyViewMembers.Diagnostics)
                         Log("REV22_44_SOURCE_DIAGNOSTIC="+note);
                     Log("REV22_44_ORTHOGRAPHIC_VIEW_COUNT="+
@@ -1628,17 +1720,26 @@ public sealed class SupportOrthoTenViewGenerator
                         int vertical=dimensionPlan.Dimensions.Count(d=>
                             d.View==view.Name&&!d.Horizontal);
                         Log("REV22_44_VIEW="+view.Name+
-                            " RECOGNIZED_MEMBERS="+everyViewMembers.Members.Count+
+                            " RECOGNIZED_MEMBERS="+nativeDimensionMembers.Length+
                             " HORIZONTAL_DIMS="+horizontal+
                             " VERTICAL_DIMS="+vertical+
                             " REQUESTED_AXES="+
-                                everyViewMembers.Members.Count*2);
+                                nativeDimensionMembers.Length*2);
                     }
                     int created=SupportOrthoDimLinearWriter41.Write(
                         targetDoc.Database,paperLayout,
                         dimensionPlan.Dimensions,out var dimensionWarnings);
                     Log("REV22_41_DIMENSIONS_CREATED="+created);
                     Log("REV22_44_DIMENSIONS_CREATED="+created);
+                    Log("REV22_46_DIMENSIONS_CREATED="+created);
+                    Log("REV22_48_NATIVE_DIMENSIONS_CREATED="+created);
+                    Log("REV22_48_XREF_DIMENSIONS_CREATED=0");
+                    Log("REV22_46_DIMENSION_COVERAGE="+
+                        (created==dimensionPlan.RequestedAxisCount?
+                            "COMPLETE":"PARTIAL")+
+                        " CREATED="+created+
+                        " REQUESTED="+dimensionPlan.RequestedAxisCount);
+                    Log("REV22_46_COLLISION_MODE=NO_FORCED_OVERLAP");
                     Log("REV22_43_OVERALL_HEIGHT_DIMENSIONS_PLANNED="+
                         dimensionPlan.Dimensions.Count(d=>
                             d.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT"));

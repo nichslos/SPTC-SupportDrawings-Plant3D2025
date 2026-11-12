@@ -200,7 +200,7 @@ jobs:
           $dimWriter=Get-Content "$root/SupportOrthoDimLinearWriter41.cs" -Raw
           foreach($token in @('ExplicitPoint(', 'DIM_ENDPOINTS_NOT_DECLARED',
               'DIM_ENDPOINTS_OUTSIDE_NATIVE_EXTENTS','id.Database',
-              'member.ToHost','StructureMember','SupportOrthoSupportLabel24')) {
+              'Matrix3d.Identity','StructureMember','SupportOrthoSupportLabel24')) {
             if(-not $dimSource.Contains($token)) {
               throw "REV22.41 verified dimension source missing: $token"
             }
@@ -271,6 +271,65 @@ jobs:
               throw "REV22.43 vertical height integration missing: $token"
             }
           }
+          # REV22.48: host-native-only dimensions. XREFs may have
+          # annotations but never a DIMLINEAR source or datum station.
+          $nativePolicy=Get-Content "$root/SupportOrthoNativeDimensionPolicy48.cs" -Raw
+          $nativeSource=Get-Content "$root/SupportOrthoDimensionSource41.cs" -Raw
+          foreach($token in @('StartsWith("NATIVE:"',
+              'XREF', 'AcceptMember(', 'AcceptSegment(')) {
+            if(-not $nativePolicy.Contains($token)) {
+              throw "REV22.48 native dimension boundary missing: $token"
+            }
+          }
+          if($nativeSource.Contains('TryRead(member.Id,member.ToHost') -or
+             -not $nativeSource.Contains('DIM48_XREF_SOURCE_SEGMENTS_EXCLUDED=')) {
+            throw 'REV22.48 XREF endpoint extraction must be disabled'
+          }
+          foreach($token in @('REV22_48_XREF_DIMENSION_POLICY=DISABLED',
+              'REV22_48_NATIVE_MEMBER_DIMENSION_SOURCES=',
+              'REV22_48_XREF_DIMENSIONS_CREATED=0')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.48 native-only integration missing: $token"
+            }
+          }
+          # REV22.47 preserves the user-supplied p15/p16 shop-drawing
+          # dimension-chain and overall conventions as a selectable mode.
+          $detail=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          foreach($token in @('SelectStations','CHAIN_NOT_FITTED_TO_ONE_LANE',
+              'REFERENCE_PROJECTED_OVERALL_NOT_CUT_LENGTH',
+              'REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH')) {
+            if(-not $detail.Contains($token)) {
+              throw "REV22.47 reference-detail planner missing: $token"
+            }
+          }
+          if(-not $ui.Contains('Reference detail: chain + overall (PDF style)') -or
+             -not $ui.Contains('referenceDimensions.Checked = true')) {
+            throw 'REV22.47 reference-detail UI default missing'
+          }
+          foreach($token in @('SupportOrthoReferenceDimPlan47.Build(',
+              'REV22_47_CHAIN_DIMENSIONS=',
+              'REV22_47_OVERALL_DIMENSIONS=')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.47 native generator integration missing: $token"
+            }
+          }
+          # REV22.46 collision-aware planner has fixed annotation obstacles,
+          # native view/title keepouts and no forced overlapping placements.
+          $smart = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSmartDimPlan46.cs' -Raw
+          foreach($token in @('BuildFixedZones','CollisionCandidatesRejected',
+              'NO_COLLISION_FREE_DIMENSION_LANE','repositioned++',
+              'ProjectBounds')) {
+            if ($smart -notmatch [regex]::Escape($token)) {
+              throw "REV22.46 smart-layout invariant missing: $token"
+            }
+          }
+          foreach($token in @('REV22_46_AUTO_REPOSITIONED=',
+              'REV22_46_COLLIDING_CANDIDATES_REJECTED=',
+              'REV22_46_DIMENSION_COVERAGE=')) {
+            if ($gen -notmatch [regex]::Escape($token)) {
+              throw "REV22.46 integration log missing: $token"
+            }
+          }
           # REV22.44: all recognized structure/support members receive
           # independent horizontal/vertical projected OVERALL dimensions on
           # each of six orthographic views (no cross-view size dedup).
@@ -296,7 +355,7 @@ jobs:
             }
           }
           foreach($token in @('SupportOrthoAllMemberExtent44.Read(',
-              'SupportOrthoAllViewDimPlan44.Build(',
+              'SupportOrthoSmartDimPlan46.Build(',
               'REV22_44_DIMENSION_MODE=PER_MEMBER_PER_ORTHOGRAPHIC_VIEW_H_AND_V',
               'REV22_44_HV_AXES_REQUESTED=',
               'REV22_44_VIEW=',
@@ -305,12 +364,12 @@ jobs:
               throw "REV22.44 model-Ortho integration missing: $token"
             }
           }
-          if(-not $ui.Contains('Auto H/V dimensions: all Ortho members/views')) {
+          if(-not $ui.Contains('Auto H/V dimensions: native members only')) {
             throw 'REV22.44 auto H/V all-members UI control missing'
           }
           foreach($token in @('options.AutoDimLinear',
               'SupportOrthoDimensionSource41.Read(',
-              'SupportOrthoAllViewDimPlan44.Build(',
+              'SupportOrthoSmartDimPlan46.Build(',
               'SupportOrthoDimLinearWriter41.Write(',
               'REV22_41_DIMENSIONS_CREATED=',
               'REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=TRUE')) {
@@ -318,9 +377,9 @@ jobs:
               throw "REV22.41 ten-view integration missing: $token"
             }
           }
-          if(-not $ui.Contains('Auto H/V dimensions: all Ortho members/views') -or
+          if(-not $ui.Contains('Auto H/V dimensions: native members only') -or
              -not $ui.Contains('autoDimLinear.Checked = true') -or
-             -not $ui.Contains('autoDimLinear.Checked);')) {
+             -not $ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked);')) {
             throw 'REV22.41 persistent UI option must be default ON and retained'
           }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
@@ -403,11 +462,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.44 all-views all-structure H/V DIMLINEAR DLL bytes: $size"
+          Write-Host "REV22.48 native-only precision DIMLINEAR DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_44-ALL-VIEWS-HV
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_48-NATIVE-ONLY-PRECISION-DIMS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
