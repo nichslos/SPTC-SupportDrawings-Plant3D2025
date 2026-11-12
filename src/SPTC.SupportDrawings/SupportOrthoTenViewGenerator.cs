@@ -1847,9 +1847,55 @@ public sealed class SupportOrthoTenViewGenerator
                             " REQUESTED_AXES="+
                                 nativeDimensionMembers.Length*2);
                     }
+                    // REV22.61: independently audit required overall
+                    // axes, vetted member source keys, actual dynamic
+                    // measurements, duplicates and dimension intersections.
+                    // Missing optional widths do NOT cancel valid paper
+                    // generation. Required faults flag REVIEW in the TXT.
+                    var qaBefore=SupportOrthoDrawingQualityAudit61.Review(
+                        dimCameras,nativeDimensionMembers,
+                        dimensionPlan.Dimensions,dimensionPlan.Skipped,
+                        units,options.ReferenceDetailDimensions,
+                        nativeEdges:nativeEdges59.Edges);
+                    Log("REV22_61_QA_PREWRITE="+qaBefore.Status);
+                    Log("REV22_61_EXPECTED_HV_OVERALLS="+
+                        qaBefore.ExpectedOverallAxes);
+                    Log("REV22_61_PRESENT_HV_OVERALLS="+
+                        qaBefore.PresentOverallAxes);
+                    Log("REV22_61_MISSING_HV_OVERALLS="+
+                        qaBefore.MissingOverallAxes);
+                    Log("REV22_61_QA_OPTIONAL_OMISSIONS="+
+                        qaBefore.OptionalOmissions);
+                    Log("REV22_61_QA_SOURCE_AND_MEASUREMENT_ISSUES="+
+                        (qaBefore.UnverifiedSources+
+                            qaBefore.MeasurementMismatches));
+                    Log("REV22_61_QA_DUPLICATES="+
+                        qaBefore.DuplicateDimensions);
+                    Log("REV22_61_QA_WITNESS_INTERSECTIONS="+
+                        qaBefore.GeometryIntersections);
+                    foreach(var issue in qaBefore.Issues)
+                        Log("REV22_61_QA_ISSUE="+issue.Code+
+                            " VIEW="+issue.View+
+                            " DETAIL="+issue.Description);
                     int created=SupportOrthoDimLinearWriter41.Write(
                         targetDoc.Database,paperLayout,
                         dimensionPlan.Dimensions,out var dimensionWarnings);
+                    // The paper-space writer may reject an entity
+                    // even after the geometric plan passed. QA MUST
+                    // report actual written count, not just plan count.
+                    var qaWritten=SupportOrthoDrawingQualityAudit61.Review(
+                        dimCameras,nativeDimensionMembers,
+                        dimensionPlan.Dimensions,dimensionPlan.Skipped,
+                        units,options.ReferenceDetailDimensions,
+                        writtenCount:created,nativeEdges:nativeEdges59.Edges);
+                    Log("REV22_61_QA_STATUS="+qaWritten.Status);
+                    Log("REV22_61_QA_TOTAL_ISSUES="+
+                        qaWritten.ReviewIssues);
+                    Log("REV22_61_QA_WRITTEN_DIMENSION_MISMATCHES="+
+                        qaWritten.WrittenCountMismatches);
+                    // The manual PDF remains the drafting reference.
+                    // A QA PASS checks supported structural facts,
+                    // not pixel-perfect equivalence with the PDF.
                     Log("REV22_41_DIMENSIONS_CREATED="+created);
                     Log("REV22_44_DIMENSIONS_CREATED="+created);
                     Log("REV22_46_DIMENSIONS_CREATED="+created);
