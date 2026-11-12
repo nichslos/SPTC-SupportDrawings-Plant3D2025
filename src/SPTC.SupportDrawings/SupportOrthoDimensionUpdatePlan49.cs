@@ -33,7 +33,8 @@ public static class SupportOrthoDimensionUpdatePlan49
         string LastViewPoseSignature="",
         int LastOwnedDimensionCount=-1,
         IReadOnlyList<SupportOrthoAllViewDimPlan44.Member>? NativeExtentSnapshot=null,
-        IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? NativeEndpointSnapshot=null);
+        IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? NativeEndpointSnapshot=null,
+        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? NativeEdgeSnapshot=null);
 
     public sealed record Candidate(string Handle,
         double X,double Y,double W,double H);
@@ -97,6 +98,28 @@ public static class SupportOrthoDimensionUpdatePlan49
                seg.SourceLength<=0||seg.Millimeters<=0))
             throw new ArgumentException(
                 "REV22.50 cached native endpoint segment invalid.");
+        // REV22.59: source-stamped straight-edge evidence is small and
+        // host-native only. Reject any XREF/invented geometry or edge
+        // that does not belong to one of the explicitly selected
+        // source model members. Legacy manifests without edges remain
+        // backward compatible and use projected-envelope dimensions.
+        if(manifest.NativeEdgeSnapshot!=null)
+        {
+            if(manifest.NativeEdgeSnapshot.Count>512||
+               manifest.NativeEdgeSnapshot.Any(edge=>
+                   !SupportOrthoNativeEdgeGeometry59.Valid(edge)||
+                   !manifest.Members.Any(member=>
+                       member.Key.Equals(edge.Key,
+                           StringComparison.OrdinalIgnoreCase)&&
+                       member.Kind==edge.Kind)))
+                throw new ArgumentException(
+                    "REV22.59 saved native edge evidence invalid or XREF.");
+            if((manifest.NativeExtentSnapshot==null||
+                manifest.NativeExtentSnapshot.Count==0)&&
+                manifest.NativeEdgeSnapshot.Count>0)
+                throw new ArgumentException(
+                    "REV22.59 exact edges require selected native extents.");
+        }
     }
 
     /// <summary>
