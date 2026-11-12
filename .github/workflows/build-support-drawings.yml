@@ -271,6 +271,27 @@ jobs:
               throw "REV22.43 vertical height integration missing: $token"
             }
           }
+          # REV22.47 preserves the user-supplied p15/p16 shop-drawing
+          # dimension-chain and overall conventions as a selectable mode.
+          $detail=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          foreach($token in @('SelectStations','CHAIN_NOT_FITTED_TO_ONE_LANE',
+              'REFERENCE_PROJECTED_OVERALL_NOT_CUT_LENGTH',
+              'REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH')) {
+            if(-not $detail.Contains($token)) {
+              throw "REV22.47 reference-detail planner missing: $token"
+            }
+          }
+          if(-not $ui.Contains('Reference detail: chain + overall (PDF style)') -or
+             -not $ui.Contains('referenceDimensions.Checked = true')) {
+            throw 'REV22.47 reference-detail UI default missing'
+          }
+          foreach($token in @('SupportOrthoReferenceDimPlan47.Build(',
+              'REV22_47_CHAIN_DIMENSIONS=',
+              'REV22_47_OVERALL_DIMENSIONS=')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.47 native generator integration missing: $token"
+            }
+          }
           # REV22.46 collision-aware planner has fixed annotation obstacles,
           # native view/title keepouts and no forced overlapping placements.
           $smart = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSmartDimPlan46.cs' -Raw
@@ -337,7 +358,7 @@ jobs:
           }
           if(-not $ui.Contains('Auto H/V dimensions: all Ortho members/views') -or
              -not $ui.Contains('autoDimLinear.Checked = true') -or
-             -not $ui.Contains('autoDimLinear.Checked);')) {
+             -not $ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked);')) {
             throw 'REV22.41 persistent UI option must be default ON and retained'
           }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
@@ -420,11 +441,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.46 collision-aware auto DIMLINEAR DLL bytes: $size"
+          Write-Host "REV22.47 reference-detail chain and overall DIMLINEAR DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_46-SMART-AUTO-DIMENSIONS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_47-REFERENCE-DETAIL-DIMS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
