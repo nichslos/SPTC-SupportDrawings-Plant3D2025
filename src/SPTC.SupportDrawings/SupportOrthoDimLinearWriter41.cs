@@ -76,6 +76,19 @@ internal static class SupportOrthoDimLinearWriter41
                     dim.Dimtix=false;
                     dim.Dimtofl=true;
                 }
+                // REV22.47: match the technical reference's compact
+                // fabrication-detail DIMLINEAR text/arrow/extension style,
+                // without changing the project-wide DIMSTYLE definition.
+                // These are paper-space sizes in millimetres.
+                if(item.Provenance.StartsWith("REFERENCE_PROJECTED_",
+                    StringComparison.Ordinal))
+                {
+                    dim.Dimtxt=2.0;
+                    dim.Dimasz=1.5;
+                    dim.Dimexo=.8;
+                    dim.Dimexe=1.2;
+                    dim.Dimgap=.7;
+                }
                 // REV22.46: obey the collision planner's reserved text
                 // position rather than letting an automatic style move
                 // text back across another dimension or leader.
