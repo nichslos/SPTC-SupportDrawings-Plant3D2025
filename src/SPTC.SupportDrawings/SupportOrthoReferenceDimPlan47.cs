@@ -24,7 +24,8 @@ public static class SupportOrthoReferenceDimPlan47
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
-        bool Overall,int Index,string Measurement);
+        bool Overall,int Index,string Measurement,
+        double PaperToModelMm);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text);
@@ -303,7 +304,9 @@ public static class SupportOrthoReferenceDimPlan47
     {
         double mm=(to-from)/scale*units;
         return new Request(horizontal,from,to,overall,index,
-            mm.ToString("0.###",CultureInfo.InvariantCulture));
+            mm.ToString("0.###",CultureInfo.InvariantCulture),
+            SupportOrthoDynamicDimension492.ModelMillimetersPerPaperUnit(
+                units,scale));
     }
 
     private static List<double> SelectStations(
@@ -397,7 +400,7 @@ public static class SupportOrthoReferenceDimPlan47
             c.Name,source,"STRUCTURE",request.Horizontal,
             aX,aY,bX,bY,request.Horizontal?center:line,
             request.Horizontal?line:center,request.Measurement,
-            provenance,tx,ty);
+            provenance,tx,ty,request.PaperToModelMm);
         return (dim,new Placed(request.Horizontal,dimRect,textRect));
     }
 
