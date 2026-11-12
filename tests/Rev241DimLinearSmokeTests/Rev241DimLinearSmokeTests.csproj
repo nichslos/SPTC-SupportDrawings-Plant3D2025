@@ -14,5 +14,27 @@
              Link="SupportOrthoDimLinearPlan41.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoAllViewDimPlan44.cs"
              Link="SupportOrthoAllViewDimPlan44.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan27.cs"
+             Link="SupportOrthoMemberCalloutPlan27.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoSmartDimPlan46.cs"
+             Link="SupportOrthoSmartDimPlan46.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoReferenceDimPlan47.cs"
+             Link="SupportOrthoReferenceDimPlan47.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoReferenceDatum56.cs"
+             Link="SupportOrthoReferenceDatum56.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoManualDetailStyle57.cs"
+             Link="SupportOrthoManualDetailStyle57.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDimIntersections58.cs"
+             Link="SupportOrthoDimIntersections58.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoNativeEdgeGeometry59.cs"
+             Link="SupportOrthoNativeEdgeGeometry59.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoReferenceLayout51.cs"
+             Link="SupportOrthoReferenceLayout51.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoNativeDimensionPolicy48.cs"
+             Link="SupportOrthoNativeDimensionPolicy48.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDimensionUpdatePlan49.cs"
+             Link="SupportOrthoDimensionUpdatePlan49.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDynamicDimension492.cs"
+             Link="SupportOrthoDynamicDimension492.cs"/>
   </ItemGroup>
 </Project>
