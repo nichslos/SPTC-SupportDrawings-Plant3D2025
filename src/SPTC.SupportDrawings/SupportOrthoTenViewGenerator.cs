@@ -1664,6 +1664,12 @@ public sealed class SupportOrthoTenViewGenerator
                                 x=>x.StartsWith(
                                     "RIGHT/V:REV22_54_OVERALL_DIAGNOSTICS=",
                                     StringComparison.Ordinal))));
+                        Log("REV22_55_NATIVE_MEMBER_MIDPOINT_DIMENSIONS="+
+                            detailPlan.NativeMidpointMemberDimensions);
+                        Log("REV22_55_APPROXIMATE_BOUNDS_MIDPOINT_DIMENSIONS="+
+                            detailPlan.BoundsMidpointMemberDimensions);
+                        Log("REV22_55_MEMBER_DIMENSION_ANCHOR="+
+                            "NATIVE_START_END_AXIS_MIDPOINT_WHEN_VERIFIED");
                         Log("REV22_53_DIMENSION_PROVENANCE="+
                             "NATIVE_ONLY;GEOMETRIC_ENVELOPE_VS_ENDPOINT_CHAIN");
                         Log("REV22_53_PROJECTED_DIMENSIONS_DYNAMIC_NOT_HARDCODED=True");
