@@ -89,6 +89,12 @@ public static class SupportOrthoAllViewDimPlan44
             foreach(Member m in members.OrderBy(x=>x.Key,
                 StringComparer.OrdinalIgnoreCase))
             {
+                if(!SupportOrthoNativeDimensionPolicy48.AcceptMember(m))
+                {
+                    skipped.Add(c.Name+"/"+m.Key+
+                        ":XREF_OR_NONNATIVE_DIMENSION_SOURCE_EXCLUDED");
+                    continue;
+                }
                 if(!Finite(m))
                 {
                     skipped.Add(c.Name+"/"+m.Key+":INVALID_SOURCE_EXTENTS");
