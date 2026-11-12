@@ -87,8 +87,9 @@ internal static class Rev256ManualTerminalDatumTests
         Need(rightPlan.Dimensions.Any(d=>d.Source.Contains("/MEMBER_")&&
             d.Horizontal&&d.Measurement=="100"),
             "RIGHT physical terminal member profile is still dimensioned");
-        Need(rightPlan.TerminalMemberRemainderDimensions>=1,
-            "at least one automatic model-driven remainder is placed");
+        Need(!rightPlan.Dimensions.Any(d=>!d.Horizontal&&
+            d.Source.Contains("/TERMINAL_REMAINDER_")),
+            "manual RIGHT omits optional vertical remainder but preserves overall and 100 mm");
         Need(rightPlan.Dimensions.All(
             SupportOrthoDynamicDimension492.MatchesDiagnostic),
             "all dimensions retain dynamically measured source and paper-scale math");
