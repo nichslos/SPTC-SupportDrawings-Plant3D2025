@@ -286,6 +286,31 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.58: reject physical DIMLINEAR extension/witness
+          # crossings that REV22.57's baseline-only rectangles missed.
+          # Intentional shared end datum stations remain legal.
+          $geometry58=Get-Content "$root/SupportOrthoDimIntersections58.cs" -Raw
+          $planner58=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $generator58=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('WITNESS_CROSSES_DIMENSION_LINE_INTERIOR',
+              'WITNESS_WITNESS_INTERSECTION',
+              'TEXT_CROSSES_PRIOR_DIMENSION_WITNESS',
+              'CrossesBaselineInterior(')) {
+            if(-not $geometry58.Contains($token)) {
+              throw "REV22.58 actual witness-geometry guard absent: $token"
+            }
+          }
+          foreach($token in @('SupportOrthoDimIntersections58.Project(',
+              'SupportOrthoDimIntersections58.Conflict(',
+              'UnintendedAcceptedWitnessIntersections')) {
+            if(-not $planner58.Contains($token)) {
+              throw "REV22.58 intersection planner missing: $token"
+            }
+          }
+          if(-not $generator58.Contains(
+              'REV22_58_ACCEPTED_UNINTENDED_WITNESS_INTERSECTIONS=')) {
+            throw 'REV22.58 real Plant 3D safety diagnostic missing'
+          }
           # REV22.57: match manually arranged TOP/BOTTOM/LEFT/RIGHT
           # details. The overall MUST stay in the outermost actual
           # paper-space lane (regardless of member local bounding box).
@@ -754,11 +779,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.57 manual four-view dimension hierarchy and fast Ortho update DLL bytes: $size"
+          Write-Host "REV22.58 witness intersection-safe dimension layout DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_57-MANUAL-FOUR-VIEW-DIMENSIONS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_58-WITNESS-INTERSECTION-FIX
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
