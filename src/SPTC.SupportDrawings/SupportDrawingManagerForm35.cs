@@ -27,7 +27,8 @@ internal sealed record SupportDrawingUiOptions(
     bool Description,
     bool BatchOrtho,
     bool XrefMemberNames,
-    bool AutoDimLinear)
+    bool AutoDimLinear,
+    bool ReferenceDetailDimensions=true)
 {
     public static readonly string[] AllViews =
         {"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK","NW","NE","SW","SE"};
@@ -53,6 +54,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly CheckBox batch = new();
     private readonly CheckBox xrefNames = new();
     private readonly CheckBox autoDimLinear = new();
+    private readonly CheckBox referenceDimensions = new();
     private readonly TextBox preview = new();
     private readonly Button runButton = new();
     private readonly Button preflightButton = new();
@@ -218,9 +220,18 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // REV22.41: dimensions are generated only from verified native
         // StructureMember / Plant Support Start/End source geometry.
         autoDimLinear.SetBounds(18, 425, 355, 27);
-        autoDimLinear.Text = "Auto H/V dimensions: all Ortho members/views";
+        autoDimLinear.Text = "Auto H/V dimensions: native members only";
         autoDimLinear.Checked = true;
         orthoTab.Controls.Add(autoDimLinear);
+        // REV22.47 defaults to the supplied pipe-support drawing examples:
+        // grouped chain datums plus one outer overall per measured direction.
+        // The REV22.46 per-member H/V mode is still available by unchecking.
+        referenceDimensions.SetBounds(18, 456, 377, 30);
+        referenceDimensions.Text = "Reference detail: chain + overall (PDF style)";
+        referenceDimensions.Checked = true;
+        orthoTab.Controls.Add(referenceDimensions);
+        autoDimLinear.CheckedChanged += (_,_) =>
+            referenceDimensions.Enabled=autoDimLinear.Checked;
 
         Label aLabel = L("Annotations", 407, 196, 280);
         orthoTab.Controls.Add(aLabel);
@@ -359,7 +370,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             "   |   Scale: " + SupportDrawingPaperScale39.Display(
                 SupportDrawingPaperScale39.Resolve(scale.Text,(int)customScale.Value)) +
             "   |   XREF member names: " + (xrefNames.Checked?"On":"Off") +
-            "   |   Auto DIMLINEAR: " + (autoDimLinear.Checked?"On":"Off");
+            "   |   Auto DIMLINEAR: " + (autoDimLinear.Checked?"On":"Off") +
+            "   |   Detail style: " +
+            (referenceDimensions.Checked?"Chain + overall":"All member H/V");
     }
 
     private void RunSelected()
@@ -412,7 +425,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             autoSeed.Checked, seed.Text.Trim(), prefix.Text.Trim(), denominator,
             selected, line.Checked,bop.Checked,tos.Checked,
             description.Checked,batch.Checked,xrefNames.Checked,
-            autoDimLinear.Checked);
+            autoDimLinear.Checked,referenceDimensions.Checked);
         // Modeless palette remains open; dispatch in a fresh AutoCAD
         // command context rather than accessing Editor from this UI callback.
         RunRequested?.Invoke(Settings);
