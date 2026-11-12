@@ -31,7 +31,9 @@ public static class SupportOrthoDimensionUpdatePlan49
         long SourceWriteUtcTicks=0,
         long SourceFileLength=-1,
         string LastViewPoseSignature="",
-        int LastOwnedDimensionCount=-1);
+        int LastOwnedDimensionCount=-1,
+        IReadOnlyList<SupportOrthoAllViewDimPlan44.Member>? NativeExtentSnapshot=null,
+        IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? NativeEndpointSnapshot=null);
 
     public sealed record Candidate(string Handle,
         double X,double Y,double W,double H);
@@ -61,6 +63,40 @@ public static class SupportOrthoDimensionUpdatePlan49
            manifest.Views.Select(v=>v.Name).Distinct(
                 StringComparer.OrdinalIgnoreCase).Count()!=manifest.Views.Count)
             throw new ArgumentException("REV22.49 invalid saved Ortho viewport references.");
+        // REV22.50 cached snapshots must represent exactly the verified
+        // native members in this drawing. Missing/partial snapshots are
+        // deliberately ineligible for fast geometry reuse.
+        if(manifest.NativeExtentSnapshot!=null&&
+           manifest.NativeExtentSnapshot.Count>0)
+        {
+            if(manifest.NativeExtentSnapshot.Count!=manifest.Members.Count||
+               manifest.NativeExtentSnapshot.Any(m=>
+                   !SupportOrthoNativeDimensionPolicy48.AcceptMember(m)||
+                   !new[]{m.MinX,m.MinY,m.MinZ,m.MaxX,m.MaxY,m.MaxZ}
+                       .All(double.IsFinite)||
+                   m.MinX>m.MaxX||m.MinY>m.MaxY||m.MinZ>m.MaxZ||
+                   !manifest.Members.Any(original=>
+                       original.Key.Equals(m.Key,
+                           StringComparison.OrdinalIgnoreCase)&&
+                       original.Kind==m.Kind))||
+               manifest.NativeExtentSnapshot.Select(m=>m.Key)
+                   .Distinct(StringComparer.OrdinalIgnoreCase).Count()!=
+                   manifest.Members.Count)
+                throw new ArgumentException(
+                    "REV22.50 cached native member extents are invalid.");
+        }
+        if(manifest.NativeEndpointSnapshot!=null&&
+           manifest.NativeEndpointSnapshot.Any(seg=>
+               !SupportOrthoNativeDimensionPolicy48.AcceptSegment(seg)||
+               !manifest.Members.Any(m=>
+                   m.Key.Equals(seg.Key,
+                       StringComparison.OrdinalIgnoreCase)&&
+                   m.Kind==seg.Kind)||
+               !new[]{seg.Ax,seg.Ay,seg.Az,seg.Bx,seg.By,seg.Bz,
+                   seg.SourceLength,seg.Millimeters}.All(double.IsFinite)||
+               seg.SourceLength<=0||seg.Millimeters<=0))
+            throw new ArgumentException(
+                "REV22.50 cached native endpoint segment invalid.");
     }
 
     /// <summary>
@@ -113,6 +149,26 @@ public static class SupportOrthoDimensionUpdatePlan49
     /// view pose and owned DIMLINEAR count must also match the last saved
     /// state. Old REV22.49 manifests with no cache fields refresh once.
     /// </summary>
+    /// <summary>
+    /// If the native MODEL DWG has not changed but Plant Ortho modifies a
+    /// viewport scale/camera, reuse the exact saved native geometry.
+    /// This avoids repeating ReadDwgFile/GeometricExtents/reflection just
+    /// because a paper-space view was updated. Unknown or legacy cached
+    /// content always falls back to a full verified source-model read.
+    /// </summary>
+    public static bool CanReuseGeometrySnapshot(
+        Manifest manifest,long currentSourceWriteUtcTicks,
+        long currentSourceFileLength)
+    {
+        Validate(manifest);
+        return manifest.SourceWriteUtcTicks>0&&
+            manifest.SourceWriteUtcTicks==currentSourceWriteUtcTicks&&
+            manifest.SourceFileLength>=0&&
+            manifest.SourceFileLength==currentSourceFileLength&&
+            manifest.NativeExtentSnapshot!=null&&
+            manifest.NativeExtentSnapshot.Count==manifest.Members.Count;
+    }
+
     public static bool CanSkipModelReload(
         Manifest saved,long currentSourceWriteUtcTicks,
         long currentSourceFileLength,string currentViewPose,
