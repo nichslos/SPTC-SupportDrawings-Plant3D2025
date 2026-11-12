@@ -24,6 +24,8 @@
              Link="SupportOrthoReferenceDatum56.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoManualDetailStyle57.cs"
              Link="SupportOrthoManualDetailStyle57.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDimIntersections58.cs"
+             Link="SupportOrthoDimIntersections58.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoReferenceLayout51.cs"
              Link="SupportOrthoReferenceLayout51.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoNativeDimensionPolicy48.cs"
