@@ -798,7 +798,8 @@ public static class SupportOrthoReferenceDimPlan47
         double printedWidth=Math.Max(7,request.Measurement.Length*1.85+3);
         double textAt=center;
         bool shortSpan=request.To-request.From<printedWidth+2;
-        if(request.Overall&&!request.Horizontal&&!shortSpan)
+        if((request.Overall||request.TerminalRemainder)&&
+           !request.Horizontal&&!shortSpan)
         {
             // Shifting text normal to a vertical dimension merely
             // drives it into neighboring LEFT VIEW labels. Explore
@@ -827,14 +828,22 @@ public static class SupportOrthoReferenceDimPlan47
         }
         // Search opposite text sides first, then more distant tiers.
         // The dimension line itself stays collinear with the chain.
-        double textClearance=request.Overall&&!request.Horizontal?
-            2.7+(textTier/5)*1.5:
+        double textClearance=
+            (request.Overall||request.TerminalRemainder)&&
+             !request.Horizontal?
+            2.7+(textTier/5)*.8:
             2.7+(textTier/2)*3.5;
         // REV22.57: local member width labels belong on the
         // member-facing side of their dimension line (away from the
         // already reserved OUTER overall). For chain and overall
         // measurements, retain the usual outward drafting side.
-        double labelSide=request.LocalBounds.HasValue?-sign:sign;
+        // A projected member remainder uses the same nested drafting
+        // text side as a local profile: TOWARD the physical member,
+        // away from the protected outer overall line. Leave the
+        // witness and measured datum endpoints unchanged.
+        double labelSide=
+            request.LocalBounds.HasValue||request.TerminalRemainder?
+                -sign:sign;
         double tx=request.Horizontal?textAt:
             line+(labelSide>0?textClearance:-textClearance);
         double ty=request.Horizontal?
