@@ -130,6 +130,11 @@ public static class SupportOrthoReferenceDimPlan47
                 // Primary fabrication datums: real member edges and any
                 // independently verified Plant Start/End positions.
                 var stationCandidates=new List<Station>();
+                // REV22.49.4: capture the corresponding *actual native*
+                // Plant endpoints in projected paper coordinates. A
+                // dimension witness must originate from the source
+                // member/endpoint, never the assembly's global frame.
+                var verifiedWitnessPoints=new List<(double X,double Y)>();
                 // REV22.48 precision: a "chain connection" must be a
                 // pair of touching opposing edges with overlap along the
                 // transverse axis. Merely equal X/Y values on distant
@@ -178,6 +183,7 @@ public static class SupportOrthoReferenceDimPlan47
                                p.Y>sourceBounds.T+.25)
                                 continue;
                             double at=horizontal?p.X:p.Y;
+                            verifiedWitnessPoints.Add((p.X,p.Y));
                             if(at>min+.35&&at<max-.35)
                                 stationCandidates.Add(new Station(at,4));
                         }
@@ -224,9 +230,10 @@ public static class SupportOrthoReferenceDimPlan47
                             // following 300 mm text even on a clear lane.
                             (SupportOrthoDimLinearPlan41.Dimension D,
                                 Placed P)? candidate=null;
-                            for(int tier=0;tier<4;tier++)
+                            for(int tier=0;tier<8;tier++)
                             {
                                 var attempt=Candidate(camera,assembly,
+                                    projected,verifiedWitnessPoints,
                                     step,sign,offset,tier);
                                 if(attempt!=null&&
                                    Fits(attempt.Value.P,blocks,paper,
@@ -275,8 +282,9 @@ public static class SupportOrthoReferenceDimPlan47
                 {
                     double extra=steps.Count>1&&chainPlaced==steps.Count
                         ?Math.Max(0,chainOffset+5-offset):0;
-                    var candidate=Candidate(camera,assembly,big,sign,
-                        offset+extra);
+                    var candidate=Candidate(camera,assembly,
+                        projected,verifiedWitnessPoints,
+                        big,sign,offset+extra);
                     if(candidate==null||
                        !Fits(candidate.Value.P,blocks,paper,placed))
                     {
@@ -345,13 +353,55 @@ public static class SupportOrthoReferenceDimPlan47
         new[]{4.5,7.5,10.5,13.5,16.5,19.5,22.5,
             25.5,28.5,31.5,34.5,37.5,40.5};
 
+    // Resolve the transverse start location from a REAL native
+    // member edge at this station or an explicit native endpoint.
+    // Overall envelope geometry is used only to select the lane,
+    // NEVER to make both extension lines share the same false datum.
+    private static double? WitnessAt(
+        bool horizontal,double station,double sign,
+        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> memberBounds,
+        IReadOnlyList<(double X,double Y)> explicitEndpoints)
+    {
+        var values=new List<double>();
+        const double paperTolerance=.20;
+        foreach(var bounds in memberBounds)
+        {
+            double start=horizontal?bounds.L:bounds.B;
+            double end=horizontal?bounds.R:bounds.T;
+            if(Math.Abs(station-start)>paperTolerance&&
+               Math.Abs(station-end)>paperTolerance)
+                continue;
+            values.Add(horizontal?
+                (sign>0?bounds.T:bounds.B):
+                (sign>0?bounds.R:bounds.L));
+        }
+        foreach(var pt in explicitEndpoints)
+        {
+            double at=horizontal?pt.X:pt.Y;
+            if(Math.Abs(station-at)<=paperTolerance)
+                values.Add(horizontal?pt.Y:pt.X);
+        }
+        if(values.Count==0)return null;
+        return sign>0?values.Max():values.Min();
+    }
+
     private static (
         SupportOrthoDimLinearPlan41.Dimension D,Placed P)?
         Candidate(
         SupportOrthoMemberCalloutPlan17.Camera c,
-        SupportOrthoSmartDimPlan46.Rect box,Request request,
-        double sign,double offset,int textTier=0)
+        SupportOrthoSmartDimPlan46.Rect box,
+        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> memberBounds,
+        IReadOnlyList<(double X,double Y)> explicitEndpoints,
+        Request request,double sign,double offset,int textTier=0)
     {
+        double? startWitness=WitnessAt(
+            request.Horizontal,request.From,sign,
+            memberBounds,explicitEndpoints);
+        double? endWitness=WitnessAt(
+            request.Horizontal,request.To,sign,
+            memberBounds,explicitEndpoints);
+        if(!startWitness.HasValue||!endWitness.HasValue)
+            return null;
         double line= request.Horizontal?
             (sign>0?box.T+offset:box.B-offset):
             (sign>0?box.R+offset:box.L-offset);
@@ -360,11 +410,19 @@ public static class SupportOrthoReferenceDimPlan47
         double textAt=center;
         bool shortSpan=request.To-request.From<printedWidth+2;
         if(shortSpan)
-            textAt=request.To+printedWidth*.5+1.5;
-        // Keep chain lines aligned even where adjacent short labels
-        // need secondary/tertiary text-only rows, e.g. PDF page 16.
-        // Never move the witness or measurement endpoints.
-        double textClearance=2.7+textTier*3.5;
+        {
+            // A 50 mm dimension at 1:30 is only 1.67 mm on paper;
+            // force readable text OUTSIDE its witnesses. Alternate
+            // the preferred side for consecutive 50 mm chain links
+            // so identical labels don't stack on one another.
+            bool putBefore=(request.Index+textTier)%2==0;
+            textAt=putBefore?
+                request.From-printedWidth*.5-2.0:
+                request.To+printedWidth*.5+2.0;
+        }
+        // Search opposite text sides first, then more distant tiers.
+        // The dimension line itself stays collinear with the chain.
+        double textClearance=2.7+(textTier/2)*3.5;
         double tx=request.Horizontal?textAt:line+
             (sign>0?textClearance:-textClearance);
         double ty=request.Horizontal?line+
@@ -388,14 +446,13 @@ public static class SupportOrthoReferenceDimPlan47
         string provenance=request.Overall
             ?"REFERENCE_PROJECTED_OVERALL_NOT_CUT_LENGTH"
             :"REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH";
-        double aX=request.Horizontal?request.From:box.L;
-        double aY=request.Horizontal?
-            (sign>0?box.T:box.B):request.From;
-        double bX=request.Horizontal?request.To:
-            (sign>0?box.R:box.L);
-        double bY=request.Horizontal?
-            (sign>0?box.T:box.B):request.To;
-        aX=request.Horizontal?request.From:(sign>0?box.R:box.L);
+        // Each A/B dimension extension line now starts at its own
+        // matching source member endpoint, rather than at an unrelated
+        // edge of the whole multi-member assembly.
+        double aX=request.Horizontal?request.From:startWitness.Value;
+        double aY=request.Horizontal?startWitness.Value:request.From;
+        double bX=request.Horizontal?request.To:endWitness.Value;
+        double bY=request.Horizontal?endWitness.Value:request.To;
         var dim=new SupportOrthoDimLinearPlan41.Dimension(
             c.Name,source,"STRUCTURE",request.Horizontal,
             aX,aY,bX,bY,request.Horizontal?center:line,
