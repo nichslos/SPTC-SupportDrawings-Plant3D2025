@@ -124,6 +124,63 @@ internal static class Rev249DimensionUpdateTests
             new[]{camera},594,841)==pose,
             "native viewport pose fingerprint deterministic");
 
+        // REV22.50: when the model file is unchanged but the native
+        // viewport moves/re-scales, reuse validated member geometry
+        // instead of re-opening a multi-GB network Plant 3D DWG.
+        var nativeBounds=new SupportOrthoAllViewDimPlan44.Member(
+            "NATIVE:521","STRUCTURE",
+            0,0,0,828.28,50,100);
+        var realEnds=new SupportOrthoDimLinearPlan41.Segment(
+            "NATIVE:521","STRUCTURE",
+            0,25,0,828.28,25,0,828.28,828.28,
+            "EXPLICIT_MEMBER_ENDPOINTS");
+        var snapshot=cached with {
+            NativeExtentSnapshot=new[]{nativeBounds},
+            NativeEndpointSnapshot=new[]{realEnds}};
+        SupportOrthoDimensionUpdatePlan49.Validate(snapshot);
+        Check(SupportOrthoDimensionUpdatePlan49.CanReuseGeometrySnapshot(
+            snapshot,cached.SourceWriteUtcTicks,cached.SourceFileLength),
+            "same source model can reproject native endpoints without DWG reload");
+        Check(!SupportOrthoDimensionUpdatePlan49.CanReuseGeometrySnapshot(
+            snapshot,cached.SourceWriteUtcTicks+1,cached.SourceFileLength),
+            "new model file invalidates all prior native geometry snapshots");
+        Check(!SupportOrthoDimensionUpdatePlan49.CanReuseGeometrySnapshot(
+            snapshot,cached.SourceWriteUtcTicks,cached.SourceFileLength+1),
+            "changed source file length also invalidates geometry snapshot");
+        Check(!SupportOrthoDimensionUpdatePlan49.CanReuseGeometrySnapshot(
+            cached,cached.SourceWriteUtcTicks,cached.SourceFileLength),
+            "old REV22.49 manifests without geometry must reload source");
+        string stored=System.Text.Json.JsonSerializer.Serialize(snapshot);
+        var loaded=System.Text.Json.JsonSerializer.Deserialize<
+            SupportOrthoDimensionUpdatePlan49.Manifest>(stored)!;
+        Check(SupportOrthoDimensionUpdatePlan49.CanReuseGeometrySnapshot(
+            loaded,cached.SourceWriteUtcTicks,cached.SourceFileLength)&&
+            loaded.NativeEndpointSnapshot!.Count==1,
+            "native-only geometry cache survives DWG manifest JSON roundtrip");
+        bool rejectXrefCache=false;
+        try
+        {
+            SupportOrthoDimensionUpdatePlan49.Validate(snapshot with {
+                NativeEndpointSnapshot=new[]{realEnds with {
+                    Key="XREF_MEMBER:SUPP-1/401"}}
+            });
+        }
+        catch(ArgumentException) { rejectXrefCache=true; }
+        Check(rejectXrefCache,"XREF endpoint cannot enter geometry cache");
+        bool rejectIncomplete=false;
+        try
+        {
+            SupportOrthoDimensionUpdatePlan49.Validate(snapshot with {
+                NativeExtentSnapshot=new[]{
+                    nativeBounds with {Key="NATIVE:NOT_SELECTED"}}
+            });
+        }
+        catch(ArgumentException) { rejectIncomplete=true; }
+        Check(rejectIncomplete,
+            "unrelated native member cannot inject cached geometry");
+        Console.WriteLine(
+            "REV22.50 source-stamped native geometry snapshot and XREF safety PASS");
+
         Console.WriteLine(
             "REV22.49.3 model/viewport change detection and fast-path regression PASS");
         Console.WriteLine(
