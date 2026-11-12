@@ -20,5 +20,7 @@
              Link="SupportOrthoSmartDimPlan46.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoReferenceDimPlan47.cs"
              Link="SupportOrthoReferenceDimPlan47.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoNativeDimensionPolicy48.cs"
+             Link="SupportOrthoNativeDimensionPolicy48.cs"/>
   </ItemGroup>
 </Project>
