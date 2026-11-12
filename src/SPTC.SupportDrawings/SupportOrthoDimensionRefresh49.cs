@@ -272,6 +272,26 @@ internal static class SupportOrthoDimensionRefresh49
             return;
         }
 
+        // REV22.49.3: most Ortho updates do not modify a selected
+        // structure/support model member or camera. Check the file stamp,
+        // actual saved native viewport poses and owned DIMLINEAR count
+        // FIRST, without opening the potentially huge/network model DWG.
+        var sourceInfo=new FileInfo(original.SourcePath);
+        long sourceWriteTicks=sourceInfo.LastWriteTimeUtc.Ticks;
+        long sourceLength=sourceInfo.Length;
+        var fastState=ReadFastPaperState(target.Database,original);
+        if(SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
+            original,sourceWriteTicks,sourceLength,
+            fastState.PoseSignature,fastState.OwnedDimensions))
+        {
+            Message(target,
+                "REV22.49.3 DIM_FAST_PATH=SKIPPED_SOURCE_RELOAD; "+
+                "native dimensions already current ("+
+                fastState.OwnedDimensions+").");
+            return;
+        }
+        Trace.WriteLine("REV22.49.3 DIM_REFRESH_MODEL_RELOAD=REQUIRED");
+
         using var source=new Database(false,true);
         // Use SAVED model coordinates. Never read unsaved transient data,
         // edit the source drawing, or open an XREF database for dimensioning.
@@ -450,18 +470,106 @@ internal static class SupportOrthoDimensionRefresh49
         if(!SupportOrthoDimensionUpdatePlan49.NeedsReplace(
             original.LastSignature,next,owned,dimensions.Count))
         {
-            Message(target,"REV22.49 native dimensions already current ("+
-                owned+"); no duplicates.");
+            // An older manifest may not yet contain cheap-check fields.
+            // Persist new verified source/view stamps once, so subsequent
+            // updates can skip the full model reload.
+            Store(target.Database,original with {
+                SourceWriteUtcTicks=sourceWriteTicks,
+                SourceFileLength=sourceLength,
+                LastViewPoseSignature=
+                    SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
+                        cameras,paperW,paperH),
+                LastOwnedDimensionCount=owned,
+                PaperWidth=paperW,PaperHeight=paperH});
+            Message(target,"REV22.49.3 native dimensions already current ("+
+                owned+"); no duplicates; fast cache updated.");
             return;
         }
         int created=SupportOrthoDimLinearWriter41.Write(
             target.Database,original.LayoutName,dimensions,
             out var diagnostics,replaceGenerated:true);
         Store(target.Database,original with {LastSignature=next,
-            PaperWidth=paperW,PaperHeight=paperH});
+            PaperWidth=paperW,PaperHeight=paperH,
+            SourceWriteUtcTicks=sourceWriteTicks,
+            SourceFileLength=sourceLength,
+            LastViewPoseSignature=
+                SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
+                    cameras,paperW,paperH),
+            LastOwnedDimensionCount=created});
         Message(target,"REV22.49 native DIMLINEAR refresh="+created+
             " old owned dims replaced; XREF dimensions=0; "+
             string.Join("; ",diagnostics));
+    }
+
+    private sealed record FastPaperState(
+        string PoseSignature,int OwnedDimensions);
+
+    private static SupportOrthoMemberCalloutPlan17.Camera CameraFromViewport(
+        string name,Viewport vp) =>
+        new(name,vp.CenterPoint.X,vp.CenterPoint.Y,
+            vp.Width,vp.Height,vp.ViewDirection.X,
+            vp.ViewDirection.Y,vp.ViewDirection.Z,
+            vp.ViewCenter.X,vp.ViewCenter.Y,vp.TwistAngle,
+            vp.CustomScale);
+
+    private static FastPaperState ReadFastPaperState(
+        Database db,SupportOrthoDimensionUpdatePlan49.Manifest saved)
+    {
+        using var tr=db.TransactionManager.StartTransaction();
+        var dict=(DBDictionary)tr.GetObject(
+            db.LayoutDictionaryId,OpenMode.ForRead);
+        if(!dict.Contains(saved.LayoutName))
+            throw new InvalidOperationException(
+                "REV22.49.3 native Ortho paper layout missing.");
+        var layout=(Layout)tr.GetObject(
+            dict.GetAt(saved.LayoutName),OpenMode.ForRead);
+        var paper=(BlockTableRecord)tr.GetObject(
+            layout.BlockTableRecordId,OpenMode.ForRead);
+        var plot=layout.PlotPaperSize;
+        double factor=layout.PlotPaperUnits.ToString()=="Inches"?25.4:1;
+        double width=plot.X>0?plot.X*factor:saved.PaperWidth;
+        double height=plot.Y>0?plot.Y*factor:saved.PaperHeight;
+        var candidates=new List<
+            SupportOrthoDimensionUpdatePlan49.Candidate>();
+        var camerasByHandle=new Dictionary<string,Viewport>(
+            StringComparer.OrdinalIgnoreCase);
+        int owned=0;
+        foreach(ObjectId id in paper)
+        {
+            if(tr.GetObject(id,OpenMode.ForRead,false) is not Entity entity)
+                continue;
+            if(entity is Viewport vp&&vp.Width>0&&vp.Height>0)
+            {
+                string handle=vp.Handle.ToString();
+                camerasByHandle[handle]=vp;
+                candidates.Add(new(handle,vp.CenterPoint.X,vp.CenterPoint.Y,
+                    vp.Width,vp.Height));
+            }
+            if(entity is RotatedDimension dim&&
+               dim.Layer==SupportOrthoDimLinearPlan41.Layer)
+            {
+                using var marker=dim.GetXDataForApplication(
+                    SupportOrthoDimensionUpdatePlan49.OwnerApp);
+                if(marker!=null)owned++;
+            }
+        }
+        var used=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var cameras=new List<SupportOrthoMemberCalloutPlan17.Camera>();
+        foreach(var view in saved.Views)
+        {
+            var found=SupportOrthoDimensionUpdatePlan49.Resolve(
+                view,candidates,used);
+            if(found==null||
+               !camerasByHandle.TryGetValue(found.Handle,out var vp))
+                throw new InvalidOperationException(
+                    "REV22.49.3 updated native viewport missing or ambiguous: "+
+                    view.Name);
+            used.Add(found.Handle);
+            cameras.Add(CameraFromViewport(view.Name,vp));
+        }
+        return new FastPaperState(
+            SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
+                cameras,width,height),owned);
     }
 
     private static int SupportOrthoDimensionOwnedCount49(Database db,
