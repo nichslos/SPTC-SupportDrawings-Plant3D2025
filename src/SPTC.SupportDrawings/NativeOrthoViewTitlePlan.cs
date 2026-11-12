@@ -44,6 +44,19 @@ public static class NativeOrthoViewTitlePlan
             "REV22.13 unknown Ortho preset; cannot label Current View: "+viewName)
     };
 
+    // REV22.49.1: native view frame width must accommodate its 4 mm
+    // title BEFORE Ortho project/drawing registration. Slim supports may
+    // project to a paper rectangle only 5 mm wide; a title still needs
+    // a readable dedicated caption width. Derive the minimum from the
+    // exact native caption, not the projected support size.
+    public static double MinimumFrameWidth(string viewName)
+    {
+        string caption=CaptionFor(viewName);
+        // Conservative max-glyph allowance plus 3 mm margin each side.
+        return Math.Max(24.0,
+            Math.Ceiling(6.0+caption.Length*TextHeightMm*.68));
+    }
+
     public static ReservedGroup ReserveBelow(
         IReadOnlyList<Frame> source,double paperWidth,double paperHeight)
     {
@@ -74,7 +87,7 @@ public static class NativeOrthoViewTitlePlan
         const double tol=1e-6;
         foreach(var t in result)
         {
-            if(t.Width< (t.Name.Length==2?32:20))
+            if(t.Width+tol<MinimumFrameWidth(t.Name))
                 throw new InvalidOperationException(
                     "REV22.13 viewport too narrow for native title "+t.Name);
             if(t.CenterX-t.Width/2 < -tol ||
