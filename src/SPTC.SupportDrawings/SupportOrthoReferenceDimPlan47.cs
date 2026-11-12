@@ -299,12 +299,20 @@ public static class SupportOrthoReferenceDimPlan47
         double center=(request.From+request.To)*.5;
         double printedWidth=Math.Max(7,request.Measurement.Length*1.85+3);
         double textAt=center;
-        if(request.To-request.From<printedWidth+2)
+        bool shortSpan=request.To-request.From<printedWidth+2;
+        if(shortSpan)
             textAt=request.To+printedWidth*.5+1.5;
+        // Short adjacent 132/152 mm chain links in the reference
+        // have insufficient paper width for centred text. Stagger
+        // only their text into alternating rows; all chain
+        // dimension lines themselves remain perfectly collinear.
+        double stagger=shortSpan&&!request.Overall&&request.Index%2==1
+            ?4.0:0;
+        double textClearance=2.7+stagger;
         double tx=request.Horizontal?textAt:line+
-            (sign>0?2.7:-2.7);
+            (sign>0?textClearance:-textClearance);
         double ty=request.Horizontal?line+
-            (sign>0?2.7:-2.7):textAt;
+            (sign>0?textClearance:-textClearance):textAt;
         var dimRect=request.Horizontal
             ?new SupportOrthoSmartDimPlan46.Rect(
                 request.From-.4,line-.4,request.To+.4,line+.4)
