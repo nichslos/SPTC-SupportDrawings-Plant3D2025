@@ -311,85 +311,109 @@ internal static class SupportOrthoDimensionRefresh49
         }
         System.Diagnostics.Trace.WriteLine("REV22.49.3 DIM_REFRESH_MODEL_RELOAD=REQUIRED");
 
-        using var source=new Database(false,true);
-        // Use SAVED model coordinates. Never read unsaved transient data,
-        // edit the source drawing, or open an XREF database for dimensioning.
-        source.ReadDwgFile(original.SourcePath,
-            FileOpenMode.OpenForReadAndAllShare,true,null);
-        source.CloseInput(true);
-        double actualUnits=source.Insunits.ToString() switch
+        SupportOrthoAllViewDimPlan44.Member[] native;
+        SupportOrthoDimLinearPlan41.Segment[] segments;
+        bool reuseSnapshot=SupportOrthoDimensionUpdatePlan49
+            .CanReuseGeometrySnapshot(original,sourceWriteTicks,sourceLength);
+        if(reuseSnapshot)
         {
-            "Millimeters"=>1,"Centimeters"=>10,"Meters"=>1000,
-            "Inches"=>25.4,"Feet"=>304.8,_=>0
-        };
-        if(Math.Abs(actualUnits-original.UnitsToMm)>1e-7)
-            throw new InvalidOperationException(
-                "Source units changed; existing dimensions retained.");
-
-        var sourceIds=new List<ObjectId>();
-        var steel=new List<string>();
-        var supports=new List<string>();
-        BoundingBox3? bounds=null;
-        using(var tr=source.TransactionManager.StartTransaction())
-        {
-            foreach(var saved in original.Members)
-            {
-                string key=saved.Key["NATIVE:".Length..];
-                if(!long.TryParse(key,NumberStyles.HexNumber,
-                    CultureInfo.InvariantCulture,out long number))
-                    throw new InvalidOperationException(
-                        "Saved native member handle is not hexadecimal: "+key);
-                ObjectId id;
-                try {id=source.GetObjectId(false,new Handle(number),0);}
-                catch(Autodesk.AutoCAD.Runtime.Exception) {continue;}
-                if(id.IsNull||!id.IsValid||id.IsErased||
-                   tr.GetObject(id,OpenMode.ForRead,false) is not Entity ent)
-                    continue;
-                try
-                {
-                    Extents3d box=ent.GeometricExtents;
-                    if(!double.IsFinite(box.MinPoint.X)||
-                       !double.IsFinite(box.MaxPoint.X))continue;
-                    var bb=new BoundingBox3(box.MinPoint.X,
-                        box.MinPoint.Y,box.MinPoint.Z,box.MaxPoint.X,
-                        box.MaxPoint.Y,box.MaxPoint.Z);
-                    bounds=bounds.HasValue?bounds.Value.Include(bb):bb;
-                    sourceIds.Add(id);
-                    if(saved.Kind=="STRUCTURE")steel.Add(key);
-                    else supports.Add(key);
-                }
-                catch(Autodesk.AutoCAD.Runtime.Exception){ /* source removed */ }
-            }
+            native=original.NativeExtentSnapshot!.ToArray();
+            segments=original.NativeEndpointSnapshot?.ToArray()??
+                Array.Empty<SupportOrthoDimLinearPlan41.Segment>();
+            Message(target,"REV22.50 DIM_SOURCE_GEOMETRY=SNAPSHOT; "+
+                "source model unchanged, rebuilding only paper geometry.");
         }
-        if(!bounds.HasValue||sourceIds.Count==0)
-            throw new InvalidOperationException(
-                "No verified native member extents; kept existing dimensions.");
-        double margin=Math.Max(10.0/original.UnitsToMm,
-            Math.Max(bounds.Value.SizeX,
-                Math.Max(bounds.Value.SizeY,bounds.Value.SizeZ))*.15);
-        var cube=new BoundingBox3(bounds.Value.MinX-margin,
-            bounds.Value.MinY-margin,bounds.Value.MinZ-margin,
-            bounds.Value.MaxX+margin,bounds.Value.MaxY+margin,
-            bounds.Value.MaxZ+margin);
-        var extents=SupportOrthoAllMemberExtent44.Read(
-            source,sourceIds,steel,supports,
-            Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),cube);
-        var native=extents.Members
-            .Where(SupportOrthoNativeDimensionPolicy48.AcceptMember)
-            .ToArray();
-        if(native.Length==0)
-            throw new InvalidOperationException(
-                "Cannot resolve Plant support geometry; old dimensions kept.");
+        else
+        {
+            using var source=new Database(false,true);
+            // Use SAVED model coordinates. Never read unsaved transient data,
+            // edit the source drawing, or open an XREF database for dimensioning.
+            source.ReadDwgFile(original.SourcePath,
+                FileOpenMode.OpenForReadAndAllShare,true,null);
+            source.CloseInput(true);
+            double actualUnits=source.Insunits.ToString() switch
+            {
+                "Millimeters"=>1,"Centimeters"=>10,"Meters"=>1000,
+                "Inches"=>25.4,"Feet"=>304.8,_=>0
+            };
+            if(Math.Abs(actualUnits-original.UnitsToMm)>1e-7)
+                throw new InvalidOperationException(
+                    "Source units changed; existing dimensions retained.");
 
-        var sourceSegments=SupportOrthoDimensionSource41.Read(source,
-            sourceIds,Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),
-            original.UnitsToMm,steel,supports);
-        var segments=sourceSegments.Segments
-            .Where(x=>SupportOrthoNativeDimensionPolicy48.IsNativeKey(x.Key)&&
-                x.Provenance=="EXPLICIT_MEMBER_ENDPOINTS")
-            .Select(s=>new SupportOrthoDimLinearPlan41.Segment(
-                s.Key,s.Kind,s.Ax,s.Ay,s.Az,s.Bx,s.By,s.Bz,
-                s.SourceLength,s.Millimeters,s.Provenance)).ToArray();
+            var sourceIds=new List<ObjectId>();
+            var steel=new List<string>();
+            var supports=new List<string>();
+            BoundingBox3? bounds=null;
+            using(var tr=source.TransactionManager.StartTransaction())
+            {
+                foreach(var saved in original.Members)
+                {
+                    string key=saved.Key["NATIVE:".Length..];
+                    if(!long.TryParse(key,NumberStyles.HexNumber,
+                        CultureInfo.InvariantCulture,out long number))
+                        throw new InvalidOperationException(
+                            "Saved native member handle is not hexadecimal: "+key);
+                    ObjectId id;
+                    try {id=source.GetObjectId(false,new Handle(number),0);}
+                    catch(Autodesk.AutoCAD.Runtime.Exception) {continue;}
+                    if(id.IsNull||!id.IsValid||id.IsErased||
+                       tr.GetObject(id,OpenMode.ForRead,false) is not Entity ent)
+                        continue;
+                    try
+                    {
+                        Extents3d box=ent.GeometricExtents;
+                        if(!double.IsFinite(box.MinPoint.X)||
+                           !double.IsFinite(box.MaxPoint.X))continue;
+                        var bb=new BoundingBox3(box.MinPoint.X,
+                            box.MinPoint.Y,box.MinPoint.Z,box.MaxPoint.X,
+                            box.MaxPoint.Y,box.MaxPoint.Z);
+                        bounds=bounds.HasValue?bounds.Value.Include(bb):bb;
+                        sourceIds.Add(id);
+                        if(saved.Kind=="STRUCTURE")steel.Add(key);
+                        else supports.Add(key);
+                    }
+                    catch(Autodesk.AutoCAD.Runtime.Exception){ /* source removed */ }
+                }
+            }
+            if(!bounds.HasValue||sourceIds.Count==0)
+                throw new InvalidOperationException(
+                    "No verified native member extents; kept existing dimensions.");
+            double margin=Math.Max(10.0/original.UnitsToMm,
+                Math.Max(bounds.Value.SizeX,
+                    Math.Max(bounds.Value.SizeY,bounds.Value.SizeZ))*.15);
+            var cube=new BoundingBox3(bounds.Value.MinX-margin,
+                bounds.Value.MinY-margin,bounds.Value.MinZ-margin,
+                bounds.Value.MaxX+margin,bounds.Value.MaxY+margin,
+                bounds.Value.MaxZ+margin);
+            var extents=SupportOrthoAllMemberExtent44.Read(
+                source,sourceIds,steel,supports,
+                Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),cube);
+            native=extents.Members
+                .Where(SupportOrthoNativeDimensionPolicy48.AcceptMember)
+                .ToArray();
+            if(native.Length==0)
+                throw new InvalidOperationException(
+                    "Cannot resolve Plant support geometry; old dimensions kept.");
+
+            var sourceSegments=SupportOrthoDimensionSource41.Read(source,
+                sourceIds,Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),
+                original.UnitsToMm,steel,supports);
+            segments=sourceSegments.Segments
+                .Where(x=>SupportOrthoNativeDimensionPolicy48.IsNativeKey(x.Key)&&
+                    x.Provenance=="EXPLICIT_MEMBER_ENDPOINTS")
+                .Select(s=>new SupportOrthoDimLinearPlan41.Segment(
+                    s.Key,s.Kind,s.Ax,s.Ay,s.Az,s.Bx,s.By,s.Bz,
+                    s.SourceLength,s.Millimeters,s.Provenance)).ToArray();
+
+            // Avoid writing an already-stale geometry cache if the
+            // source DWG changed while Plant 3D was rebuilding the view.
+            var verifiedFile=new FileInfo(original.SourcePath);
+            if(verifiedFile.LastWriteTimeUtc.Ticks!=sourceWriteTicks||
+               verifiedFile.Length!=sourceLength)
+                throw new InvalidOperationException(
+                    "REV22.50 source model changed during dimension refresh; "+
+                    "existing dimensions preserved.");
+        }
 
         var cameras=new List<SupportOrthoMemberCalloutPlan17.Camera>();
         var keepouts=new List<SupportOrthoSmartDimPlan46.Rect>();
@@ -499,7 +523,9 @@ internal static class SupportOrthoDimensionRefresh49
                     SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
                         cameras,paperW,paperH),
                 LastOwnedDimensionCount=owned,
-                PaperWidth=paperW,PaperHeight=paperH});
+                PaperWidth=paperW,PaperHeight=paperH,
+                NativeExtentSnapshot=native.Length<=128?native:null,
+                NativeEndpointSnapshot=native.Length<=128?segments:null});
             Message(target,"REV22.49.3 native dimensions already current ("+
                 owned+"); no duplicates; fast cache updated.");
             return;
@@ -514,7 +540,9 @@ internal static class SupportOrthoDimensionRefresh49
             LastViewPoseSignature=
                 SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
                     cameras,paperW,paperH),
-            LastOwnedDimensionCount=created});
+            LastOwnedDimensionCount=created,
+            NativeExtentSnapshot=native.Length<=128?native:null,
+            NativeEndpointSnapshot=native.Length<=128?segments:null});
         Message(target,"REV22.49 native DIMLINEAR refresh="+created+
             " old owned dims replaced; XREF dimensions=0; "+
             string.Join("; ",diagnostics));
