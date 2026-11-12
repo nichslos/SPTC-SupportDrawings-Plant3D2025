@@ -72,8 +72,19 @@ public static class SupportOrthoReferenceDimPlan47
                 frame.L+1.4,frame.B+1.4,
                 frame.R-1.4,frame.T-1.4);
             var projected=new List<SupportOrthoSmartDimPlan46.Rect>();
+            // REV22.48: only HOST-DWG native Plant members contribute to
+            // overall lengths or connected-edge dimension chain stations.
+            var visibleNative=new Dictionary<string,
+                SupportOrthoSmartDimPlan46.Rect>(
+                StringComparer.OrdinalIgnoreCase);
             foreach(var member in members)
             {
+                if(!SupportOrthoNativeDimensionPolicy48.AcceptMember(member))
+                {
+                    skipped.Add(camera.Name+"/"+member.Key+
+                        ":XREF_OR_NONNATIVE_DIMENSION_SOURCE_EXCLUDED");
+                    continue;
+                }
                 if(!ValidMember(member))
                 {
                     skipped.Add(camera.Name+"/"+member.Key+
@@ -89,6 +100,7 @@ public static class SupportOrthoReferenceDimPlan47
                     continue;
                 }
                 projected.Add(bounds);
+                visibleNative[member.Key]=bounds;
             }
             if(projected.Count==0)
             {
@@ -114,18 +126,40 @@ public static class SupportOrthoReferenceDimPlan47
                 // Primary fabrication datums: real member edges and any
                 // independently verified Plant Start/End positions.
                 var stationCandidates=new List<Station>();
-                foreach(var b in projected)
+                // REV22.48 precision: a "chain connection" must be a
+                // pair of touching opposing edges with overlap along the
+                // transverse axis. Merely equal X/Y values on distant
+                // beams are NOT evidence of a physical connection.
+                for(int i=0;i<projected.Count;i++)
+                for(int j=i+1;j<projected.Count;j++)
                 {
-                    stationCandidates.Add(new Station(horizontal?b.L:b.B,1));
-                    stationCandidates.Add(new Station(horizontal?b.R:b.T,1));
-                    // AABB midpoints are not verified hole/bolt/pipe
-                    // centre marks. Reference-style chain stations must
-                    // come from shared real edges or explicit endpoints.
+                    var a=projected[i];
+                    var b=projected[j];
+                    double sideOverlap=horizontal
+                        ?Math.Min(a.T,b.T)-Math.Max(a.B,b.B)
+                        :Math.Min(a.R,b.R)-Math.Max(a.L,b.L);
+                    if(sideOverlap<.25)continue;
+                    double aStart=horizontal?a.L:a.B;
+                    double aEnd=horizontal?a.R:a.T;
+                    double bStart=horizontal?b.L:b.B;
+                    double bEnd=horizontal?b.R:b.T;
+                    if(Math.Abs(aEnd-bStart)<.12)
+                        stationCandidates.Add(
+                            new Station((aEnd+bStart)*.5,3));
+                    if(Math.Abs(bEnd-aStart)<.12)
+                        stationCandidates.Add(
+                            new Station((bEnd+aStart)*.5,3));
                 }
                 if(sources!=null)
                     foreach(var source in sources)
                     {
-                        if(source.Provenance!="EXPLICIT_MEMBER_ENDPOINTS")
+                        // Native-only AND must match a visible accepted
+                        // host member, so unrelated positions cannot
+                        // inject arbitrary chain stations.
+                        if(!SupportOrthoNativeDimensionPolicy48
+                                .AcceptSegment(source)||
+                           !visibleNative.TryGetValue(source.Key,
+                               out var sourceBounds))
                             continue;
                         foreach(var point in new[]{
                             (source.Ax,source.Ay,source.Az),
@@ -133,6 +167,12 @@ public static class SupportOrthoReferenceDimPlan47
                         {
                             var p=SupportOrthoMemberCalloutPlan17.Project(
                                 camera,point.Item1,point.Item2,point.Item3);
+                            if(!double.IsFinite(p.X)||!double.IsFinite(p.Y)||
+                               p.X<sourceBounds.L-.25||
+                               p.X>sourceBounds.R+.25||
+                               p.Y<sourceBounds.B-.25||
+                               p.Y>sourceBounds.T+.25)
+                                continue;
                             double at=horizontal?p.X:p.Y;
                             if(at>min+.35&&at<max-.35)
                                 stationCandidates.Add(new Station(at,4));
@@ -283,11 +323,9 @@ public static class SupportOrthoReferenceDimPlan47
             }
             else clustered.Add(item);
         }
-        // A lone boundary of a wide member is not enough evidence for an
-        // attachment station. Require two coincident verified member
-        // boundaries or an explicit Plant Start/End point. Never invent
-        // bolt/hole centres by averaging bounding-box edges.
-        var chosen=clustered.Where(x=>x.Weight>=2)
+        // Only connected opposing native edges or verified endpoints
+        // become stations. Never infer bolt/hole centres from an AABB.
+        var chosen=clustered.Where(x=>x.Weight>=3)
             .OrderByDescending(x=>x.Weight)
             .ThenBy(x=>x.At).Take(7)
             .OrderBy(x=>x.At).Select(x=>x.At);
