@@ -286,6 +286,29 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.61: independently QA all selected native dimensions
+          # against actual viewport-projected member extents, physical
+          # witness and model DIMLFAC. Required H/V overall omissions
+          # and source errors are REVIEW; optional congested local
+          # details are counted separately without blocking the sheet.
+          $qa61=Get-Content "$root/SupportOrthoDrawingQualityAudit61.cs" -Raw
+          $gen61=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          $refresh61=Get-Content "$root/SupportOrthoDimensionRefresh49.cs" -Raw
+          foreach($token in @('MISSING_ESSENTIAL_OVERALL',
+              'DYNAMIC_MEASUREMENT_MISMATCH',
+              'UNINTENDED_DIMENSION_INTERSECTION',
+              'WRITTEN_DIMENSION_COUNT_MISMATCH',
+              'MEMBER_SOURCE_NOT_SELECTED',
+              'REV22_60_OPTIONAL_PROFILE_NO_COMPATIBLE_LAYOUT',
+              'issues.Count==0?"PASS":"REVIEW"')) {
+            if(-not $qa61.Contains($token)) {
+              throw "REV22.61 independent native drawing audit invariant missing: $token"
+            }
+          }
+          if(-not $gen61.Contains('REV22_61_QA_STATUS=') -or
+             -not $refresh61.Contains('REV22.61 DIM_QA_STATUS=')) {
+            throw 'REV22.61 initial paper generation and Ortho Update must both audit'
+          }
           # REV22.60: candidate placement is optimized for the whole
           # orthographic view after the protected native overall and
           # verified member datum chains are reserved. Both H and V
@@ -839,11 +862,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.60 coordinated native dimensions DLL bytes: $size"
+          Write-Host "REV22.61 automatic drawing QA and native Ortho cache DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_60-COORDINATED-DIMENSIONS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_61-AUTOMATIC-DRAWING-QA
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
