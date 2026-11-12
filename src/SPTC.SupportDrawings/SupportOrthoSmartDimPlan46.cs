@@ -45,7 +45,8 @@ public static class SupportOrthoSmartDimPlan46
         IReadOnlyList<SupportOrthoAllViewDimPlan44.Member> members,
         double paperW,double paperH,double unitsToMm,
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts=null,
-        IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles=null)
+        IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles=null,
+        IReadOnlyList<Rect>? additionalKeepouts=null)
     {
         if(cameras==null||members==null||
            !double.IsFinite(paperW)||!double.IsFinite(paperH)||
@@ -84,6 +85,8 @@ public static class SupportOrthoSmartDimPlan46
             var fixedZones=BuildFixedZones(camera,cameras,
                 callouts??Array.Empty<SupportOrthoMemberCalloutPlan27.Callout>(),
                 titles??Array.Empty<NativeOrthoViewTitlePlan.Title>());
+            if(additionalKeepouts!=null)
+                fixedZones.AddRange(additionalKeepouts.Where(x=>x.IsFinite));
 
             var envelopes=new List<Envelope>();
             foreach(var member in members.OrderBy(m=>m.Key,
