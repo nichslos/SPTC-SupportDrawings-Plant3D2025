@@ -1361,6 +1361,11 @@ public sealed class SupportOrthoTenViewGenerator
             Log("STEP10_REV22_GROUP_PLACED_AUTOMATICALLY=True");
             if(completed.Count==10)
                 Log("STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True");
+            EnsureNativeViewportsNoPlot52(
+                targetDoc.Database,nativeMemberViewportIds);
+            Log("REV22_52_VIEWPORT_BORDER_LAYER="+
+                ViewportBorderLayer52+" PLOTTABLE=False COUNT="+
+                nativeMemberViewportIds.Count);
             var newFrames=PaperViewports(targetDoc.Database,paperLayout)
                 .Where(v=>!priorHandles.Contains(v.Handle)).ToList();
             Log("STEP10_NEW_PAPER_VIEWPORT_COUNT="+newFrames.Count);
@@ -2002,6 +2007,51 @@ public sealed class SupportOrthoTenViewGenerator
         return dir;
     }
 
+    // REV22.52: drawing content remains visible; only the paper-space
+    // viewport outline is on a non-plotting layer. Do not change the
+    // native model, support solids, piping or any existing title block.
+    private const string ViewportBorderLayer52=
+        "SPTC_ORTHO_VIEWPORT_NOPLOT";
+
+    private static ObjectId EnsureViewportBorderLayer52(
+        Database db,Transaction tr)
+    {
+        var table=(LayerTable)tr.GetObject(db.LayerTableId,
+            OpenMode.ForRead);
+        if(table.Has(ViewportBorderLayer52))
+        {
+            var existing=(LayerTableRecord)tr.GetObject(
+                table[ViewportBorderLayer52],OpenMode.ForWrite);
+            existing.IsPlottable=false;
+            return existing.ObjectId;
+        }
+        table.UpgradeOpen();
+        using var layer=new LayerTableRecord
+        {
+            Name=ViewportBorderLayer52,
+            IsPlottable=false
+        };
+        var id=table.Add(layer);
+        tr.AddNewlyCreatedDBObject(layer,true);
+        return id;
+    }
+
+    private static void EnsureNativeViewportsNoPlot52(
+        Database db,IReadOnlyDictionary<string,ObjectId> nativeViewIds)
+    {
+        using var tr=db.TransactionManager.StartTransaction();
+        ObjectId borderLayer=EnsureViewportBorderLayer52(db,tr);
+        foreach(var view in nativeViewIds)
+        {
+            if(tr.GetObject(view.Value,OpenMode.ForWrite,false)
+                is not Viewport vp)
+                throw new InvalidOperationException(
+                    "REV22.52 native viewport unavailable: "+view.Key);
+            vp.LayerId=borderLayer;
+        }
+        tr.Commit();
+    }
+
     private static ObjectId CreateExperimentalViewport(
         Database db,string layoutName,Point3d paperCenter,
         double frameWidth,double frameHeight,Vector3d viewDirection,
@@ -2015,8 +2065,11 @@ public sealed class SupportOrthoTenViewGenerator
             throw new InvalidOperationException("Native paper-space layout disappeared.");
         var lay=(Layout)tr.GetObject(layouts.GetAt(layoutName),OpenMode.ForRead);
         var paper=(BlockTableRecord)tr.GetObject(lay.BlockTableRecordId,OpenMode.ForWrite);
+        // Nonplot layer is attached to the actual viewport border.
+        ObjectId borderLayer=EnsureViewportBorderLayer52(db,tr);
         using var viewport=new Viewport
         {
+            LayerId=borderLayer,
             CenterPoint=paperCenter,
             Width=frameWidth,Height=frameHeight,
             ViewDirection=viewDirection,
