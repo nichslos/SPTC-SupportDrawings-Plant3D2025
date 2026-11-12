@@ -53,16 +53,24 @@ internal static class Rev244AllViewTests
         // present, plan width/depth can be dimensioned in TOP/BOTTOM while
         // true vertical world extent is dimensioned on elevation views.
         var column=new SupportOrthoAllViewDimPlan44.Member(
-            "XREF_MEMBER:POST_1","STRUCTURE",
+            "NATIVE:POST_1","STRUCTURE",
             -120,-100,-400,120,100,400);
         var verticalSet=SupportOrthoAllViewDimPlan44.Build(
             new[]{top,bottom,front,back,left,right},new[]{column},
             594,841,1.0);
         Require(verticalSet.Dimensions.Count==12,
-            "XREF vertical structure has H/V envelope dimensions in all six axial views");
+            "native vertical structure has H/V envelope dimensions in six axial views");
         Require(verticalSet.Dimensions.Any(d=>d.View=="FRONT" &&
             !d.Horizontal && d.Measurement=="800"),
             "front elevation vertically measures overall 800 mm Z");
+        // REV22.48: legacy public planner must reject XREF even when
+        // called directly; no dimension can reference XREF:POST_1.
+        var external=column with {Key="XREF_MEMBER:POST_1"};
+        var xrefOnly=SupportOrthoAllViewDimPlan44.Build(
+            new[]{top,front},new[]{external},594,841,1.0);
+        Require(xrefOnly.Dimensions.Count==0 &&
+            xrefOnly.Skipped.Any(x=>x.Contains("XREF_OR_NONNATIVE")),
+            "no legacy dimensions for XREF structure/support");
         var iso=Camera("NW",1,-1,1);
         var isometric=SupportOrthoAllViewDimPlan44.Build(
             new[]{iso,top},new[]{m},594,841,1.0);
@@ -102,7 +110,7 @@ internal static class Rev244AllViewTests
         // fills it has NO legal in-frame horizontal dimension-line lane,
         // so its dimension must be placed in an adjacent paper gutter.
         var tallInTop=new SupportOrthoAllViewDimPlan44.Member(
-            "XREF_MEMBER:SUPP-1/401","STRUCTURE",
+            "NATIVE:SUPP-1/401","STRUCTURE",
             7856.295,2834.858,0,8056.295,4134.858,500);
         var topGutter=SupportOrthoAllViewDimPlan44.Build(
             new[]{actualTop},new[]{tallInTop},594,841,1.0);
