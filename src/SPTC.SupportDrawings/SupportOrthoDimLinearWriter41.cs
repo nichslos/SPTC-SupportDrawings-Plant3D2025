@@ -16,9 +16,14 @@ internal static class SupportOrthoDimLinearWriter41
 {
     internal static int Write(Database db,string layoutName,
         IReadOnlyList<SupportOrthoDimLinearPlan41.Dimension> dimensions,
-        out List<string> diagnostics)
+        out List<string> diagnostics,bool replaceGenerated=false)
     {
         diagnostics=new List<string>();
+        // A failed/incomplete refresh must retain the last known drawing.
+        // Callers supply a validated, nonempty native-only plan.
+        if(replaceGenerated&&dimensions.Count==0)
+            throw new InvalidOperationException(
+                "REV22.49 zero dimensions; existing sheet retained.");
         if(dimensions.Count==0)return 0;
         using Transaction tr=db.TransactionManager.StartTransaction();
         var layouts=(DBDictionary)tr.GetObject(
@@ -46,6 +51,30 @@ internal static class SupportOrthoDimLinearWriter41
             tr.AddNewlyCreatedDBObject(layer,true);
         }
 
+        var app=(RegAppTable)tr.GetObject(
+            db.RegAppTableId,OpenMode.ForRead);
+        if(!app.Has(SupportOrthoDimensionUpdatePlan49.OwnerApp))
+        {
+            app.UpgradeOpen();
+            using var registered=new RegAppTableRecord{
+                Name=SupportOrthoDimensionUpdatePlan49.OwnerApp};
+            app.Add(registered);
+            tr.AddNewlyCreatedDBObject(registered,true);
+        }
+        var oldOwned=new List<ObjectId>();
+        if(replaceGenerated)
+        {
+            foreach(ObjectId candidateId in paper)
+            {
+                if(tr.GetObject(candidateId,OpenMode.ForRead,false)
+                    is not RotatedDimension candidate)continue;
+                using ResultBuffer? marker=candidate.GetXDataForApplication(
+                    SupportOrthoDimensionUpdatePlan49.OwnerApp);
+                if(marker!=null&&candidate.Layer==
+                    SupportOrthoDimLinearPlan41.Layer)
+                    oldOwned.Add(candidateId);
+            }
+        }
         int created=0;
         foreach(var item in dimensions)
         {
@@ -100,15 +129,40 @@ internal static class SupportOrthoDimLinearWriter41
                     dim.TextPosition=new Point3d(
                         item.PaperTextX.Value,item.PaperTextY.Value,0);
                 }
+                // XDATA identifies only plugin-owned dimensions. User-created
+                // DIMLINEAR entities, even on the same layer, are untouched.
+                dim.XData=new ResultBuffer(
+                    new TypedValue((int)DxfCode.ExtendedDataRegAppName,
+                        SupportOrthoDimensionUpdatePlan49.OwnerApp),
+                    new TypedValue((int)DxfCode.ExtendedDataAsciiString,
+                        item.View));
                 paper.AppendEntity(dim);
                 tr.AddNewlyCreatedDBObject(dim,true);
                 created++;
             }
             catch(System.Exception ex)
             {
+                if(replaceGenerated)
+                    throw new InvalidOperationException(
+                        "REV22.49 dimension replacement aborted; old "+
+                        "dimensions retained: "+item.View+"/"+item.Source,ex);
                 diagnostics.Add("DIM_CREATE_SKIPPED="+item.View+"/"+item.Source+
                     ":"+ex.GetType().Name+":"+ex.Message);
             }
+        }
+        if(replaceGenerated)
+        {
+            if(created!=dimensions.Count)
+                throw new InvalidOperationException(
+                    "REV22.49 incomplete rebuild; existing DIMLINEAR retained.");
+            // Erase AFTER every replacement is successfully staged. AutoCAD
+            // Transaction rolls back both operations if any step fails.
+            foreach(ObjectId prior in oldOwned)
+                if(tr.GetObject(prior,OpenMode.ForWrite,false)
+                    is Entity previous&&!previous.IsErased)
+                    previous.Erase();
+            diagnostics.Add("REV22_49_OLD_OWNED_DIMENSIONS_REMOVED="+
+                oldOwned.Count);
         }
         tr.Commit();
         return created;
