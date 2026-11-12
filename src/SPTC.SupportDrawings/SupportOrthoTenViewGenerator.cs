@@ -1666,6 +1666,22 @@ public sealed class SupportOrthoTenViewGenerator
                                     StringComparison.Ordinal))));
                         Log("REV22_56_TERMINAL_MEMBER_COMPLEMENTS="+
                             detailPlan.TerminalMemberRemainderDimensions);
+                        Log("REV22_57_REDUNDANT_END_PROFILE_CHAINS_SKIPPED="+
+                            detailPlan.RedundantChainsSuppressed);
+                        Log("REV22_57_OVERALL_DETAIL_ORDER_REJECTIONS="+
+                            detailPlan.HierarchyCrossingsRejected);
+                        Log("REV22_57_MANUAL_VIEW_DETAILS_SUPPRESSED="+
+                            detailPlan.ManualViewDetailsSuppressed);
+                        foreach(string label in new[]{"TOP","BOTTOM","LEFT","RIGHT"})
+                        {
+                            var selected=detailPlan.Dimensions
+                                .Where(d=>d.View==label).ToArray();
+                            string items=string.Join("|",selected.Select(d=>
+                                (d.Horizontal?"H":"V")+":"+
+                                d.Measurement+":"+d.Source));
+                            Log("REV22_57_REFERENCE_SELECTION="+label+
+                                " "+items);
+                        }
                         foreach(string name in new[]{
                             "TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK"})
                         {
