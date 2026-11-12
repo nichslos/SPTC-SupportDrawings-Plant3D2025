@@ -220,7 +220,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // REV22.41: dimensions are generated only from verified native
         // StructureMember / Plant Support Start/End source geometry.
         autoDimLinear.SetBounds(18, 425, 355, 27);
-        autoDimLinear.Text = "Auto H/V dimensions: all Ortho members/views";
+        autoDimLinear.Text = "Auto H/V dimensions: native members only";
         autoDimLinear.Checked = true;
         orthoTab.Controls.Add(autoDimLinear);
         // REV22.47 defaults to the supplied pipe-support drawing examples:
