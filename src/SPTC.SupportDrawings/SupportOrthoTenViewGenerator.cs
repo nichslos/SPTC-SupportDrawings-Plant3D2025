@@ -1734,6 +1734,33 @@ public sealed class SupportOrthoTenViewGenerator
                     Log("REV22_46_DIMENSIONS_CREATED="+created);
                     Log("REV22_48_NATIVE_DIMENSIONS_CREATED="+created);
                     Log("REV22_48_XREF_DIMENSIONS_CREATED=0");
+                    // REV22.49: persist explicit native model handles
+                    // and saved native viewport identity only after a
+                    // successful paper DIMLINEAR generation. The manifest
+                    // is required for any later automatic Update View
+                    // refresh. Previous REV22.48 drawings are untouched.
+                    if(created>0)
+                    {
+                        try
+                        {
+                            SupportOrthoDimensionRefresh49.SaveInitial(
+                                targetDoc.Database,source,paperLayout,
+                                units,paperWidth,paperHeight,
+                                options.ReferenceDetailDimensions,
+                                nativeDimensionMembers,
+                                nativeMemberViewportIds,
+                                dimensionPlan.Dimensions);
+                            Log("REV22_49_AUTO_UPDATE_MANIFEST=PASS");
+                            Log("REV22_49_AUTO_UPDATE_TRIGGER=PLANTORTHOUPDATE_COMPLETED");
+                            Log("REV22_49_REPLACE_OWNED_DIMENSIONS_ONLY=TRUE");
+                            Log("REV22_49_XREF_DIMENSIONS_DISABLED=TRUE");
+                        }
+                        catch(System.Exception ex)
+                        {
+                            Log("REV22_49_AUTO_UPDATE_MANIFEST=FAILED:"+
+                                ex.GetType().Name+":"+ex.Message);
+                        }
+                    }
                     Log("REV22_46_DIMENSION_COVERAGE="+
                         (created==dimensionPlan.RequestedAxisCount?
                             "COMPLETE":"PARTIAL")+
@@ -1768,7 +1795,8 @@ public sealed class SupportOrthoTenViewGenerator
                         ":"+ex.Message);
                 }
             }
-            Log("REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=TRUE");
+            Log("REV22_49_DIMENSIONS_REGENERATE_ON_PLANTORTHOUPDATE=TRUE");
+            Log("REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=FALSE_FOR_REV22_49_REGISTERED_DWGS");
             Log("UPDATE_VIEW_MANUAL_TEST_REQUIRED=TRUE");
             Log("FINAL_STATUS=TEN_NATIVE_VIEWS_AND_TITLES_MEMBER_LEADERS_"+
                 annotationStatus);
