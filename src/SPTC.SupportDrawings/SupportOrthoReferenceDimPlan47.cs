@@ -24,7 +24,8 @@ public static class SupportOrthoReferenceDimPlan47
         int LocalMemberDimensions=0,
         int PriorityOverallDimensions=0,
         int NativeMidpointMemberDimensions=0,
-        int BoundsMidpointMemberDimensions=0);
+        int BoundsMidpointMemberDimensions=0,
+        int TerminalMemberRemainderDimensions=0);
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
@@ -32,7 +33,8 @@ public static class SupportOrthoReferenceDimPlan47
         double PaperToModelMm,
         SupportOrthoSmartDimPlan46.Rect? LocalBounds=null,
         string SourceKey="",
-        double? MidpointWitness=null);
+        double? MidpointWitness=null,
+        bool TerminalRemainder=false);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text);
@@ -62,7 +64,8 @@ public static class SupportOrthoReferenceDimPlan47
         var skipped=new List<string>();
         int views=0,chain=0,overall=0,localCount=0,
             priorityOverallCount=0,midpointNative=0,
-            midpointBounds=0,rejected=0,requested=0;
+            midpointBounds=0,terminalRemainders=0,
+            rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
 
@@ -284,20 +287,44 @@ public static class SupportOrthoReferenceDimPlan47
                     .Where(at=>at>min+.35&&at<max-.35)
                     .Select(at=>new Station(at,4)).ToList();
                 var stations=SelectStations(stationCandidates,min,max);
-                // A chain segment is shown only when BOTH of its datum
-                // stations have direct native endpoint evidence. AABB
-                // end caps are not source endpoint evidence on their own.
+                // REV22.56: match the user-adjusted six-view reference.
+                // An L-shaped native support may have a member that
+                // spans the complete projected axis plus one short
+                // terminal member profile. Use the actual end face of
+                // that short member as the intermediate datum, so the
+                // main chain is OVERALL minus the measured terminal
+                // profile width. Do NOT retain a redundant 50 mm
+                // centerline gap if the physical end section is 100 mm.
+                // Two abutting *independent* members do not qualify;
+                // they retain the strict explicit Start/End policy.
+                var terminalDatum=SupportOrthoReferenceDatum56.Choose(
+                    projectedMembers.Select(m=>
+                        new SupportOrthoReferenceDatum56.Span(
+                            m.Member.Key,
+                            horizontal?m.Bounds.L:m.Bounds.B,
+                            horizontal?m.Bounds.R:m.Bounds.T)),
+                    min,max);
+                // A conventional non-terminal chain segment is shown
+                // only when BOTH station points have native endpoints.
                 bool VerifiedAt(double at) =>
                     verifiedWitnessPoints.Any(p=>
                         Math.Abs((horizontal?p.X:p.Y)-at)<=.20);
                 var steps=new List<Request>();
-                if(stations.Count>2)
+                if(terminalDatum.HasValue)
+                {
+                    var datum=terminalDatum.Value;
+                    steps.Add(MakeRequest(horizontal,
+                        datum.RemainingFrom,datum.RemainingTo,
+                        false,0,camera.Scale,unitsToMm) with {
+                            SourceKey=datum.SourceKey,
+                            TerminalRemainder=true
+                        });
+                }
+                else if(stations.Count>2)
                 {
                     for(int i=0;i<stations.Count-1;i++)
                     {
                         double start=stations[i],end=stations[i+1];
-                        // Ref details dimension meaningful stations only.
-                        // Do not fabricate a 0 mm or unprintable chain link.
                         if(end-start<.50)continue;
                         if(!VerifiedAt(start)||!VerifiedAt(end))
                         {
@@ -317,7 +344,7 @@ public static class SupportOrthoReferenceDimPlan47
                 // 712+110 below 822 and 2225 multi-station examples.
                 double chainOffset=0;
                 int chainPlaced=0;
-                if(steps.Count>1)
+                if(steps.Count>1||terminalDatum.HasValue)
                 {
                     bool chainGroupPlaced=false;
                     foreach(double sign in PreferredSigns(camera.Name,horizontal))
@@ -365,7 +392,11 @@ public static class SupportOrthoReferenceDimPlan47
                         {
                             dimensions.Add(item.D);
                             placed.Add(item.P);
-                            chain++;
+                            if(item.D.Source.Contains(
+                                "/TERMINAL_REMAINDER_",
+                                StringComparison.Ordinal))
+                                terminalRemainders++;
+                            else chain++;
                             chainPlaced++;
                         }
                         chainOffset=offset;
@@ -374,14 +405,18 @@ public static class SupportOrthoReferenceDimPlan47
                     }
                     }
                 }
-                if(steps.Count>1&&chainPlaced!=steps.Count)
+                if((steps.Count>1||terminalDatum.HasValue)&&
+                   chainPlaced!=steps.Count)
                 {
                     skipped.Add(camera.Name+"/"+(horizontal?"H":"V")+
-                        ":CHAIN_NOT_FITTED_TO_ONE_LANE");
+                        (terminalDatum.HasValue?
+                            ":TERMINAL_REMAINDER_NO_CLEAR_LANE":
+                            ":CHAIN_NOT_FITTED_TO_ONE_LANE"));
                     // Suppress the unsafe partial chain, but preserve
                     // a correctly measured overall dimension.
                 }
-                requested+=steps.Count>1?steps.Count:0;
+                requested+=(steps.Count>1||terminalDatum.HasValue)?
+                    steps.Count:0;
                 requested++;
                 bool overallPlaced=reservedOverallAxes.Contains(horizontal);
                 if(!overallPlaced)
@@ -548,7 +583,7 @@ public static class SupportOrthoReferenceDimPlan47
         }
         return new Result(dimensions,skipped,views,chain,overall,rejected,
             requested,localCount,priorityOverallCount,
-            midpointNative,midpointBounds);
+            midpointNative,midpointBounds,terminalRemainders);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
@@ -659,10 +694,12 @@ public static class SupportOrthoReferenceDimPlan47
                 (layoutBox.B+layoutBox.T)*.5:
                 (layoutBox.L+layoutBox.R)*.5):
             WitnessAt(request.Horizontal,request.From,sign,
-                memberBounds,explicitEndpoints,!request.Overall);
+                memberBounds,explicitEndpoints,
+                !request.Overall&&!request.TerminalRemainder);
         double? endWitness=request.LocalBounds.HasValue?
             startWitness:WitnessAt(request.Horizontal,request.To,sign,
-                memberBounds,explicitEndpoints,!request.Overall);
+                memberBounds,explicitEndpoints,
+                !request.Overall&&!request.TerminalRemainder);
         if(!startWitness.HasValue||!endWitness.HasValue)
             return null;
         double line=request.Horizontal?
@@ -723,11 +760,15 @@ public static class SupportOrthoReferenceDimPlan47
         string axis=request.Horizontal?"H":"V";
         string source="DETAIL:"+c.Name+"/"+axis+"/"+
             (request.Overall?"OVERALL":
+                request.TerminalRemainder?
+                    "TERMINAL_REMAINDER_"+request.SourceKey:
                 request.LocalBounds.HasValue?
                     "MEMBER_"+request.SourceKey:
                     "CHAIN_"+request.Index);
         string provenance=request.Overall?
             "REFERENCE_PROJECTED_OVERALL_NOT_CUT_LENGTH":
+            request.TerminalRemainder?
+                "REFERENCE_TERMINAL_NATIVE_MEMBER_REMAINDER_NOT_CUT_LENGTH":
             request.LocalBounds.HasValue?
                 "REFERENCE_PROJECTED_MEMBER_ENVELOPE_NOT_CUT_LENGTH":
                 "REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH";
