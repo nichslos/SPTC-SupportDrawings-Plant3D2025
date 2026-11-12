@@ -24,5 +24,7 @@
              Link="SupportOrthoNativeDimensionPolicy48.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDimensionUpdatePlan49.cs"
              Link="SupportOrthoDimensionUpdatePlan49.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDynamicDimension492.cs"
+             Link="SupportOrthoDynamicDimension492.cs"/>
   </ItemGroup>
 </Project>
