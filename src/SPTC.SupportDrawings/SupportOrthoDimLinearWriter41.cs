@@ -84,13 +84,32 @@ internal static class SupportOrthoDimLinearWriter41
                 var second=new Point3d(item.Bx,item.By,0);
                 var dimensionLine=new Point3d(item.LineX,item.LineY,0);
                 double rotation=item.Horizontal?0:Math.PI/2;
-                // AutoCAD DIMLINEAR entity: text override is the independently
-                // verified *model* length, not shortened paper distance.
+                // REV22.49.2: for dimensions derived from the native
+                // viewport projection, NEVER hard-code the numeric text.
+                // The measurement comes from the DIMLINEAR witness points
+                // and that viewport's individually assigned DIMLFAC.
+                // Retain old explicit-endpoint handling only for historical
+                // plans which do not carry a paper-to-model factor.
+                bool dynamicMeasurement=item.PaperToModelMm.HasValue;
+                if(dynamicMeasurement&&
+                   !SupportOrthoDynamicDimension492.MatchesDiagnostic(item))
+                    throw new InvalidOperationException(
+                        "REV22.49.2 stale/incorrect dimension measurement "+
+                        "does not match paper witnesses and native scale: "+
+                        item.View+"/"+item.Source);
                 using var dim=new RotatedDimension(rotation,first,second,
-                    dimensionLine,item.Measurement,db.Dimstyle)
+                    dimensionLine,dynamicMeasurement?string.Empty:
+                        item.Measurement,db.Dimstyle)
                 {
                     LayerId=layerId
                 };
+                if(dynamicMeasurement)
+                {
+                    dim.Dimlfac=item.PaperToModelMm!.Value;
+                    // A blank AutoCAD dimension override means "measure",
+                    // NOT the displayed numeric label from the planner.
+                    dim.DimensionText=string.Empty;
+                }
                 // REV22.45: a short 50/75/100 mm projected span at
                 // 1:30 can be narrower than its text or arrowheads.
                 // Let AutoCAD move those elements OUTSIDE the witness
