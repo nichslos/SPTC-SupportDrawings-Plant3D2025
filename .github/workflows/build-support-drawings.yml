@@ -286,6 +286,23 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.55: local structural-member cross-section DIMLINEAR
+          # witnesses must originate at the *native member Start/End
+          # axis midpoint*, not a bounding-box face. Change geometry
+          # must move witness; never override dynamic dimension text.
+          $mid55=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          foreach($token in @('nativeAxisMidpoints',
+              'MidpointWitness', 'NativeMidpointMemberDimensions',
+              'BoundsMidpointMemberDimensions',
+              '"EXPLICIT_MEMBER_ENDPOINTS"')) {
+            if(-not $mid55.Contains($token)) {
+              throw "REV22.55 native axis-midpoint invariant missing: $token"
+            }
+          }
+          $gen55=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          if(-not $gen55.Contains('REV22_55_NATIVE_MEMBER_MIDPOINT_DIMENSIONS=')) {
+            throw 'REV22.55 native midpoint source diagnostics missing'
+          }
           # REV22.54: the RIGHT overall lane must not be pushed into
           # LEFT view's printed pipe/steel labels by reserving two
           # imaginary outer lanes; log precise collision classes instead.
@@ -685,11 +702,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.54 right overall lane + classified collisions DLL bytes: $size"
+          Write-Host "REV22.55 member midpoint witness + native Ortho fast update DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_54-RIGHT-OVERALL-GUTTER
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_55-NATIVE-MIDPOINT-MEMBER-DIMS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
