@@ -286,6 +286,27 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.52: manual PDF requires missing measured native
+          # profile widths and a RIGHT vertical overall, while invalid
+          # connection/bolt station chains remain prohibited.
+          $detail52=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $gen52=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('LocalMemberDimensions',
+              'REFERENCE_PROJECTED_MEMBER_ENVELOPE_NOT_CUT_LENGTH',
+              'LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE',
+              'for(int textTier=0;textTier<10;textTier++)')) {
+            if(-not $detail52.Contains($token)) {
+              throw "REV22.52 reference PDF dimension improvement missing: $token"
+            }
+          }
+          foreach($token in @('SPTC_ORTHO_VIEWPORT_NOPLOT',
+              'EnsureNativeViewportsNoPlot52(',
+              'IsPlottable=false',
+              'REV22_52_PDF_VIEW=')) {
+            if(-not $gen52.Contains($token)) {
+              throw "REV22.52 native Ortho plot/dimension integration missing: $token"
+            }
+          }
           # REV22.51: mimic the user's explicitly re-positioned
           # six-view support PDF. H dimensions above, V left, inner
           # chain closer to the geometry than its outer overall line;
@@ -626,11 +647,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.51 user-adjusted PDF reference dimension layout DLL bytes: $size"
+          Write-Host "REV22.52 reference PDF local member and plot viewport fix DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_51-PDF-REFERENCE-DIM-LAYOUT
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_52-MANUAL-PDF-DIM-COMPLETE
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
