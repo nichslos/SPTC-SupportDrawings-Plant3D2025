@@ -1749,8 +1749,12 @@ public sealed class SupportOrthoTenViewGenerator
                                 options.ReferenceDetailDimensions,
                                 nativeDimensionMembers,
                                 nativeMemberViewportIds,
-                                dimensionPlan.Dimensions);
+                                dimensionPlan.Dimensions,
+                                nativeDimensionSegments);
                             Log("REV22_49_AUTO_UPDATE_MANIFEST=PASS");
+                            Log("REV22_50_NATIVE_GEOMETRY_CACHE_SAVED="+
+                                nativeDimensionMembers.Length);
+                            Log("REV22_50_UNVERIFIED_LOCAL_50MM_STATIONS_DISABLED=True");
                             Log("REV22_49_AUTO_UPDATE_TRIGGER=PLANTORTHOUPDATE_COMPLETED");
                             Log("REV22_49_REPLACE_OWNED_DIMENSIONS_ONLY=TRUE");
                             Log("REV22_49_XREF_DIMENSIONS_DISABLED=TRUE");
