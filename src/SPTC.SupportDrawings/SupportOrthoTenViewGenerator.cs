@@ -1649,6 +1649,18 @@ public sealed class SupportOrthoTenViewGenerator
                             paperWidth,paperHeight,units,verifiedSegments,
                             dimensionCollisionCallouts,titles,
                             nativeEdges:nativeEdges59.Edges);
+                        Log("REV22_60_COORDINATED_PROFILE_GROUPS="+
+                            detailPlan.CoordinatedProfileGroups);
+                        Log("REV22_60_COORDINATED_PROFILE_DIMENSIONS="+
+                            detailPlan.CoordinatedProfilesPlaced);
+                        Log("REV22_60_OPTIONAL_GROUPS_OMITTED="+
+                            detailPlan.CoordinatedProfileGroupsOmitted);
+                        Log("REV22_60_LAYOUT_CANDIDATE_COMPARISONS="+
+                            detailPlan.CoordinatedCandidateComparisons);
+                        Log("REV22_60_ESSENTIAL_OVERALL_AND_VERIFIED_CHAINS="+
+                            (detailPlan.OverallDimensions+
+                                detailPlan.ChainDimensions+
+                                detailPlan.TerminalMemberRemainderDimensions));
                         Log("REV22_59_EXACT_NATIVE_SOURCE_EDGES="+
                             nativeEdges59.Edges.Count);
                         Log("REV22_59_EXACT_PROFILE_DIMS="+
