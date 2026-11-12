@@ -286,6 +286,27 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.49.3: skip full model DWG load if the original
+          # source file stamp, native viewport poses and owned dimensions
+          # match the persisted drawing snapshot.
+          $refresh=Get-Content "$root/SupportOrthoDimensionRefresh49.cs" -Raw
+          $updatePlan=Get-Content "$root/SupportOrthoDimensionUpdatePlan49.cs" -Raw
+          foreach($token in @('ReadFastPaperState(','CanSkipModelReload(',
+              'DIM_FAST_PATH=SKIPPED_SOURCE_RELOAD',
+              'SourceWriteUtcTicks=sourceWriteTicks',
+              'ViewPoseSignature(','Stopwatch.StartNew()')) {
+            if(-not $refresh.Contains($token)) {
+              throw "REV22.49.3 fast update path missing: $token"
+            }
+          }
+          foreach($token in @('SourceWriteUtcTicks=0',
+              'SourceFileLength=-1','LastViewPoseSignature',
+              'LastOwnedDimensionCount=-1','CanSkipModelReload(',
+              'ViewPoseSignature(')) {
+            if(-not $updatePlan.Contains($token)) {
+              throw "REV22.49.3 persisted change-detection policy missing: $token"
+            }
+          }
           # REV22.49.2: use actual native saved-viewport scale to
           # let AutoCAD generate dimension text; no numeric overrides.
           $dyn=Get-Content "$root/SupportOrthoDynamicDimension492.cs" -Raw
@@ -539,11 +560,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.49.2 dynamic measured paper dimensions DLL bytes: $size"
+          Write-Host "REV22.49.3 fast native Ortho update DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_49_2-DYNAMIC-MEASURED-DIMS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_49_3-FAST-ORTHO-UPDATE
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
