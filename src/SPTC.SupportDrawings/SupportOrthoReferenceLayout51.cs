@@ -64,6 +64,25 @@ public static class SupportOrthoReferenceLayout51
                 yield return lane;
     }
 
+    // REV22.58: a long vertical intermediate dimension must fit
+    // BETWEEN its outer overall line and the nearby native-member
+    // witness at the section edge. The original 3.4mm lane only
+    // offered insufficient text clearance at 1:15, while the next
+    // 7.6mm lane coincided with the OUTER overall. Reserve several
+    // measured intermediate paper lanes (not model-size constants).
+    public static IEnumerable<double> IntermediateMemberLaneOffsets(
+        double textHeight=2.0)
+    {
+        double inner=ChainOffset(textHeight);
+        yield return inner+textHeight*.60;
+        yield return inner+textHeight*.80;
+        yield return inner+textHeight;
+        yield return inner;
+        foreach(double lane in LaneOffsets(textHeight))
+            if(lane>inner+textHeight+.1)
+                yield return lane;
+    }
+
     // A locally measured member profile width sits INSIDE its
     // overall line. Paper-space section labels are placed on the
     // member-facing side, so reserve enough room between the
