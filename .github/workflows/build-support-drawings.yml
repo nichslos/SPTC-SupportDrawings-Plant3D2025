@@ -286,6 +286,36 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.49.2: use actual native saved-viewport scale to
+          # let AutoCAD generate dimension text; no numeric overrides.
+          $dyn=Get-Content "$root/SupportOrthoDynamicDimension492.cs" -Raw
+          $dimPlan=Get-Content "$root/SupportOrthoDimLinearPlan41.cs" -Raw
+          $dimWriter=Get-Content "$root/SupportOrthoDimLinearWriter41.cs" -Raw
+          foreach($token in @('ModelMillimetersPerPaperUnit',
+              'MeasuredMillimeters','MatchesDiagnostic')) {
+            if(-not $dyn.Contains($token)) {
+              throw "REV22.49.2 dynamic dimension math missing: $token"
+            }
+          }
+          foreach($token in @('dim.Dimlfac=item.PaperToModelMm!.Value',
+              'dim.DimensionText=string.Empty',
+              'dimensionLine,dynamicMeasurement?string.Empty:',
+              'SupportOrthoDynamicDimension492.MatchesDiagnostic')) {
+            if(-not $dimWriter.Contains($token)) {
+              throw "REV22.49.2 hard-coded dimension guard missing: $token"
+            }
+          }
+          if(-not $dimPlan.Contains('double? PaperToModelMm=null')) {
+            throw 'REV22.49.2 dimension record must carry native factor'
+          }
+          foreach($filename in @('SupportOrthoReferenceDimPlan47.cs',
+              'SupportOrthoSmartDimPlan46.cs',
+              'SupportOrthoAllViewDimPlan44.cs')) {
+            $planner=Get-Content "$root/$filename" -Raw
+            if(-not $planner.Contains('ModelMillimetersPerPaperUnit')) {
+              throw "REV22.49.2 numeric text still hard-coded in $filename"
+            }
+          }
           # REV22.49: source and saved viewport identity persisted in
           # paper DWG. CommandEnded/Idle triggers atomic owner-only
           # dimension replacement; no new public commands.
@@ -509,11 +539,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.49.1 narrow-support preflight fix DLL bytes: $size"
+          Write-Host "REV22.49.2 dynamic measured paper dimensions DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_49_1-NARROW-SUPPORT-TITLE-FIX
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_49_2-DYNAMIC-MEASURED-DIMS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
