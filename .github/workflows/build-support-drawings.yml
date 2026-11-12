@@ -286,6 +286,40 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.59: the next geometry tier uses real, vetted
+          # native straight edges when the Plant custom object exposes
+          # them. Never substitute WCS bounding-box corners for a
+          # native physical profile or dimension XREF members.
+          $edge59=Get-Content "$root/SupportOrthoNativeEdgeGeometry59.cs" -Raw
+          $reader59=Get-Content "$root/SupportOrthoNativeEdgeSource59.cs" -Raw
+          $planner59=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $generator59=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          $refresh59=Get-Content "$root/SupportOrthoDimensionRefresh49.cs" -Raw
+          foreach($token in @('NATIVE_EXPLICIT_STRAIGHT_EDGE',
+              'public static Witness? Resolve(',
+              'SupportOrthoNativeDimensionPolicy48.IsNativeKey')) {
+            if(-not $edge59.Contains($token)) {
+              throw "REV22.59 physical edge verification guard missing: $token"
+            }
+          }
+          foreach($token in @('entity.Explode(pieces)',
+              'MaxTemporaryObjectsPerMember',
+              'transient.Dispose()')) {
+            if(-not $reader59.Contains($token)) {
+              throw "REV22.59 transient read-only native edge extractor missing: $token"
+            }
+          }
+          foreach($token in @('ExactNativeEdgeProfileDimensions',
+              'SupportOrthoNativeEdgeGeometry59.Resolve(',
+              'EXACT_NATIVE_PROJECTED_PROFILE_EDGE_NOT_CUT_LENGTH')) {
+            if(-not $planner59.Contains($token)) {
+              throw "REV22.59 exact native profile planner not wired: $token"
+            }
+          }
+          if(-not $generator59.Contains('REV22_59_EXACT_PROFILE_DIMS=') -or
+             -not $refresh59.Contains('NativeEdgeSnapshot=')) {
+            throw 'REV22.59 initial generation / fast refresh geometry evidence missing'
+          }
           # REV22.58: reject physical DIMLINEAR extension/witness
           # crossings that REV22.57's baseline-only rectangles missed.
           # Intentional shared end datum stations remain legal.
@@ -779,11 +813,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.58 witness intersection-safe dimension layout DLL bytes: $size"
+          Write-Host "REV22.59 verified native straight geometry edge DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_58-WITNESS-INTERSECTION-FIX
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_59-NATIVE-GEOMETRY-EDGES
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
