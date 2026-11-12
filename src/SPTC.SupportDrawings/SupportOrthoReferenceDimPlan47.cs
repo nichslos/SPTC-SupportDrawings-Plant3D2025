@@ -402,7 +402,11 @@ public static class SupportOrthoReferenceDimPlan47
                     foreach(double sign in PreferredSigns(camera.Name,horizontal))
                     {
                     if(chainGroupPlaced)break;
-                    foreach(double offset in SupportOrthoReferenceLayout51.LaneOffsets())
+                    var lanes=steps.Any(x=>x.TerminalRemainder&&
+                        !x.Horizontal)?
+                        SupportOrthoReferenceLayout51.IntermediateMemberLaneOffsets():
+                        SupportOrthoReferenceLayout51.LaneOffsets();
+                    foreach(double offset in lanes)
                     {
                         var local=new List<(
                             SupportOrthoDimLinearPlan41.Dimension D,
@@ -828,9 +832,14 @@ public static class SupportOrthoReferenceDimPlan47
         }
         // Search opposite text sides first, then more distant tiers.
         // The dimension line itself stays collinear with the chain.
-        double textClearance=
-            (request.Overall||request.TerminalRemainder)&&
-             !request.Horizontal?
+        // For the 402.787 mm LEFT intermediate, position text inside
+        // the reserved 4.6 mm corridor. The text's 1.3 mm half-width
+        // plus text gap must not reach the 828.28/928.28 outer
+        // witness at the native profile edge.
+        double textClearance=request.TerminalRemainder&&
+            !request.Horizontal?
+            2.0+(textTier/5)*.2:
+            request.Overall&&!request.Horizontal?
             2.7+(textTier/5)*.8:
             2.7+(textTier/2)*3.5;
         // REV22.57: local member width labels belong on the
