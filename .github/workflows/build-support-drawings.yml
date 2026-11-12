@@ -200,7 +200,7 @@ jobs:
           $dimWriter=Get-Content "$root/SupportOrthoDimLinearWriter41.cs" -Raw
           foreach($token in @('ExplicitPoint(', 'DIM_ENDPOINTS_NOT_DECLARED',
               'DIM_ENDPOINTS_OUTSIDE_NATIVE_EXTENTS','id.Database',
-              'member.ToHost','StructureMember','SupportOrthoSupportLabel24')) {
+              'Matrix3d.Identity','StructureMember','SupportOrthoSupportLabel24')) {
             if(-not $dimSource.Contains($token)) {
               throw "REV22.41 verified dimension source missing: $token"
             }
