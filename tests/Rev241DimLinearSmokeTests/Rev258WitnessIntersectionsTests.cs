@@ -42,8 +42,8 @@ internal static class Rev258WitnessIntersectionsTests
         // The old code failed here: a local member width 100mm
         // could place its extension at x=25 straight THROUGH an
         // unrelated overall dimension baseline at y=12.
-        var bad=Shape(L(25,17,32,17),
-            L(25,0,25,17),L(32,0,32,17),
+        var bad=Shape(L(20,17,24,17),
+            L(20,0,20,17),L(24,0,24,17),
             R(38,19,46,21));
         Need(SupportOrthoDimIntersections58
             .Conflict(bad,overall)==
