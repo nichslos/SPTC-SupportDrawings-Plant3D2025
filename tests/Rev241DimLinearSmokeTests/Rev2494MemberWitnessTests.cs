@@ -81,8 +81,17 @@ internal static class Rev2494MemberWitnessTests
         var boundsOnly=SupportOrthoReferenceDimPlan47.Build(
             new[]{camera},new[]{beam,post1,post2},594,841,1);
         Need(boundsOnly.ChainDimensions==0 &&
-            !boundsOnly.Dimensions.Any(d=>d.Measurement=="50"),
-            "AABB contacts cannot create unverified 50 mm chain dimensions");
+            !boundsOnly.Dimensions.Any(d=>d.Measurement=="50"&&
+                d.Source.Contains("/CHAIN_",StringComparison.Ordinal)),
+            "AABB contacts cannot fabricate a 50 mm connection chain");
+        // REV22.52 allows a *different* drafting fact: the measurable
+        // projected 50 mm outline of a selected native member. This
+        // explicitly is NOT a 50 mm connection/cut length.
+        Need(boundsOnly.Dimensions.Where(d=>d.Measurement=="50")
+            .All(d=>d.Provenance==
+                "REFERENCE_PROJECTED_MEMBER_ENVELOPE_NOT_CUT_LENGTH"||
+                d.Source.EndsWith("/OVERALL",StringComparison.Ordinal)),
+            "AABB-only 50 mm may describe member width/overall, never pitch");
 
         // A single 100 mm post is NOT evidence for a fictitious
         // mid-point splitting it into two 50 mm dimensions.
