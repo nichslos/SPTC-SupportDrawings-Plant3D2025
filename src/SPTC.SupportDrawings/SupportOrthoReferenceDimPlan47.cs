@@ -388,6 +388,14 @@ public static class SupportOrthoReferenceDimPlan47
                 // 712+110 below 822 and 2225 multi-station examples.
                 double chainOffset=0;
                 int chainPlaced=0;
+                var detailFailureCauses=new SortedDictionary<string,int>(
+                    StringComparer.Ordinal);
+                void TrackDetailFailure(string why)
+                {
+                    detailFailureCauses[why]=
+                        detailFailureCauses.TryGetValue(why,out int n)?
+                        n+1:1;
+                }
                 if(steps.Count>0)
                 {
                     bool chainGroupPlaced=false;
@@ -418,16 +426,21 @@ public static class SupportOrthoReferenceDimPlan47
                                    !InnerThanReservedOverall(attempt.Value.P))
                                 {
                                     hierarchyRejected++;
+                                    TrackDetailFailure("OUTER_DIM_HIERARCHY");
                                     continue;
                                 }
-                                if(attempt!=null&&
-                                   Fits(attempt.Value.P,blocks,paper,
-                                       placed.Concat(local.Select(x=>x.P)),
-                                       projected))
+                                string? failure=attempt==null?
+                                    "UNRESOLVED_NATIVE_WITNESS":
+                                    RejectionReason(attempt.Value.P,
+                                        blocks,paper,
+                                        placed.Concat(local.Select(x=>x.P)),
+                                        projected);
+                                if(failure==null)
                                 {
                                     candidate=attempt;
                                     break;
                                 }
+                                TrackDetailFailure(failure);
                                 rejected++;
                             }
                             if(candidate==null)
@@ -460,7 +473,10 @@ public static class SupportOrthoReferenceDimPlan47
                     skipped.Add(camera.Name+"/"+(horizontal?"H":"V")+
                         (terminalDatum.HasValue?
                             ":TERMINAL_REMAINDER_NO_CLEAR_LANE":
-                            ":CHAIN_NOT_FITTED_TO_ONE_LANE"));
+                            ":CHAIN_NOT_FITTED_TO_ONE_LANE")+
+                        ";CAUSES="+string.Join(",",
+                            detailFailureCauses.OrderByDescending(x=>x.Value)
+                                .Take(5).Select(x=>x.Key+":"+x.Value)));
                     // Suppress the unsafe partial chain, but preserve
                     // a correctly measured overall dimension.
                 }
