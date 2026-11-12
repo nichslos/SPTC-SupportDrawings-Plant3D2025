@@ -415,7 +415,7 @@ public static class SupportOrthoReferenceDimPlan47
             // force readable text OUTSIDE its witnesses. Alternate
             // the preferred side for consecutive 50 mm chain links
             // so identical labels don't stack on one another.
-            bool putBefore=(request.Index+textTier)%2==0;
+            bool putBefore=(request.Index+textTier)%2==1;
             textAt=putBefore?
                 request.From-printedWidth*.5-2.0:
                 request.To+printedWidth*.5+2.0;
