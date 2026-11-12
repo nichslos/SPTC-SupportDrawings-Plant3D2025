@@ -286,6 +286,29 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.49.4: dimension witnesses must use each real native
+          # member face or an explicit matching Plant endpoint, not the
+          # overall view envelope. Short 50-mm labels use alternating
+          # exterior positions to avoid piling identical values.
+          $refDim=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $smartDim=Get-Content "$root/SupportOrthoSmartDimPlan46.cs" -Raw
+          $writer=Get-Content "$root/SupportOrthoDimLinearWriter41.cs" -Raw
+          foreach($token in @('WitnessAt(', 'verifiedWitnessPoints',
+              'startWitness.Value','endWitness.Value',
+              'bool putBefore=', 'textTier/2')) {
+            if(-not $refDim.Contains($token)) {
+              throw "REV22.49.4 source endpoint dimension invariant missing: $token"
+            }
+          }
+          foreach($token in @('double face=horizontal?',
+              'Thin(b.L,face', 'horizontal?face:b.B')) {
+            if(-not $smartDim.Contains($token)) {
+              throw "REV22.49.4 fallback native face invariant missing: $token"
+            }
+          }
+          if(-not $writer.Contains('dim.Dimexo=0.0')) {
+            throw 'REV22.49.4 reference DIMLINEAR must start exactly at member witness'
+          }
           # REV22.49.3: skip full model DWG load if the original
           # source file stamp, native viewport poses and owned dimensions
           # match the persisted drawing snapshot.
@@ -560,11 +583,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.49.3 fast native Ortho update DLL bytes: $size"
+          Write-Host "REV22.49.4 native member endpoint witness DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_49_3-FAST-ORTHO-UPDATE
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_49_4-NATIVE-MEMBER-WITNESSES
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
