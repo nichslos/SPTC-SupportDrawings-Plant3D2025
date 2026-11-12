@@ -118,10 +118,9 @@ public static class SupportOrthoReferenceDimPlan47
                 {
                     stationCandidates.Add(new Station(horizontal?b.L:b.B,1));
                     stationCandidates.Add(new Station(horizontal?b.R:b.T,1));
-                    double size=horizontal?b.R-b.L:b.T-b.B;
-                    if(size<=4.0)
-                        stationCandidates.Add(new Station(
-                            horizontal?(b.L+b.R)*.5:(b.B+b.T)*.5,3));
+                    // AABB midpoints are not verified hole/bolt/pipe
+                    // centre marks. Reference-style chain stations must
+                    // come from shared real edges or explicit endpoints.
                 }
                 if(sources!=null)
                     foreach(var source in sources)
@@ -270,8 +269,9 @@ public static class SupportOrthoReferenceDimPlan47
             else clustered.Add(item);
         }
         // A lone boundary of a wide member is not enough evidence for an
-        // attachment station. Require two coincident member boundaries,
-        // an explicit endpoint, or a narrow support centre.
+        // attachment station. Require two coincident verified member
+        // boundaries or an explicit Plant Start/End point. Never invent
+        // bolt/hole centres by averaging bounding-box edges.
         var chosen=clustered.Where(x=>x.Weight>=2)
             .OrderByDescending(x=>x.Weight)
             .ThenBy(x=>x.At).Take(7)
