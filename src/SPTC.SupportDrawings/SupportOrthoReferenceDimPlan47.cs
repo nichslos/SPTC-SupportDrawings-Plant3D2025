@@ -25,7 +25,10 @@ public static class SupportOrthoReferenceDimPlan47
         int PriorityOverallDimensions=0,
         int NativeMidpointMemberDimensions=0,
         int BoundsMidpointMemberDimensions=0,
-        int TerminalMemberRemainderDimensions=0);
+        int TerminalMemberRemainderDimensions=0,
+        int RedundantChainsSuppressed=0,
+        int HierarchyCrossingsRejected=0,
+        int ManualViewDetailsSuppressed=0);
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
@@ -65,7 +68,8 @@ public static class SupportOrthoReferenceDimPlan47
         int views=0,chain=0,overall=0,localCount=0,
             priorityOverallCount=0,midpointNative=0,
             midpointBounds=0,terminalRemainders=0,
-            rejected=0,requested=0;
+            redundantChains=0,hierarchyRejected=0,
+            manualViewSuppressed=0,rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
 
@@ -202,6 +206,21 @@ public static class SupportOrthoReferenceDimPlan47
             // protected first. Both axes still run through the same
             // geometry and collision checks: no fabricated dimensions.
             var reservedOverallAxes=new HashSet<bool>();
+            var outerOverallLines=new Dictionary<bool,double>();
+            // Use the same absolute paper coordinates for every
+            // dimension: differences in native member bounding boxes
+            // must never reverse inner detail and outer overall lanes.
+            bool InnerThanReservedOverall(Placed candidate)
+            {
+                if(!outerOverallLines.TryGetValue(
+                    candidate.Horizontal,out double outerLine))
+                    return true;
+                double at=candidate.Horizontal?
+                    (candidate.Line.B+candidate.Line.T)*.5:
+                    (candidate.Line.L+candidate.Line.R)*.5;
+                return SupportOrthoManualDetailStyle57.InsideOverall(
+                    candidate.Horizontal,at,outerLine);
+            }
             foreach(bool horizontal in new[]{false,true})
             {
                 double from=horizontal?minX:minY;
@@ -248,6 +267,11 @@ public static class SupportOrthoReferenceDimPlan47
                             dimensions.Add(candidate!.Value.D);
                             placed.Add(candidate.Value.P);
                             reservedOverallAxes.Add(horizontal);
+                            outerOverallLines[horizontal]=horizontal?
+                                (candidate.Value.P.Line.B+
+                                 candidate.Value.P.Line.T)*.5:
+                                (candidate.Value.P.Line.L+
+                                 candidate.Value.P.Line.R)*.5;
                             priorityOverallCount++;
                             overall++;
                             found=true;
@@ -297,13 +321,13 @@ public static class SupportOrthoReferenceDimPlan47
                 // centerline gap if the physical end section is 100 mm.
                 // Two abutting *independent* members do not qualify;
                 // they retain the strict explicit Start/End policy.
+                var projectedNativeSpans=projectedMembers.Select(m=>
+                    new SupportOrthoReferenceDatum56.Span(
+                        m.Member.Key,
+                        horizontal?m.Bounds.L:m.Bounds.B,
+                        horizontal?m.Bounds.R:m.Bounds.T)).ToArray();
                 var terminalDatum=SupportOrthoReferenceDatum56.Choose(
-                    projectedMembers.Select(m=>
-                        new SupportOrthoReferenceDatum56.Span(
-                            m.Member.Key,
-                            horizontal?m.Bounds.L:m.Bounds.B,
-                            horizontal?m.Bounds.R:m.Bounds.T)),
-                    min,max);
+                    projectedNativeSpans,min,max);
                 // A conventional non-terminal chain segment is shown
                 // only when BOTH station points have native endpoints.
                 bool VerifiedAt(double at) =>
@@ -312,13 +336,23 @@ public static class SupportOrthoReferenceDimPlan47
                 var steps=new List<Request>();
                 if(terminalDatum.HasValue)
                 {
-                    var datum=terminalDatum.Value;
-                    steps.Add(MakeRequest(horizontal,
-                        datum.RemainingFrom,datum.RemainingTo,
-                        false,0,camera.Scale,unitsToMm) with {
-                            SourceKey=datum.SourceKey,
-                            TerminalRemainder=true
-                        });
+                    if(SupportOrthoManualDetailStyle57.ShowTerminalRemainder(
+                            camera.Name,horizontal))
+                    {
+                        var datum=terminalDatum.Value;
+                        steps.Add(MakeRequest(horizontal,
+                            datum.RemainingFrom,datum.RemainingTo,
+                            false,0,camera.Scale,unitsToMm) with {
+                                SourceKey=datum.SourceKey,
+                                TerminalRemainder=true
+                            });
+                    }
+                    else
+                    {
+                        // Manual RIGHT view: display overall and the
+                        // measured end section; omit optional V detail.
+                        manualViewSuppressed++;
+                    }
                 }
                 else if(stations.Count>2)
                 {
@@ -326,6 +360,13 @@ public static class SupportOrthoReferenceDimPlan47
                     {
                         double start=stations[i],end=stations[i+1];
                         if(end-start<.50)continue;
+                        if(SupportOrthoManualDetailStyle57
+                            .ObscuredByTerminalMember(start,end,min,max,
+                                projectedNativeSpans))
+                        {
+                            redundantChains++;
+                            continue;
+                        }
                         if(!VerifiedAt(start)||!VerifiedAt(end))
                         {
                             skipped.Add(camera.Name+"/"+
@@ -344,7 +385,7 @@ public static class SupportOrthoReferenceDimPlan47
                 // 712+110 below 822 and 2225 multi-station examples.
                 double chainOffset=0;
                 int chainPlaced=0;
-                if(steps.Count>1||terminalDatum.HasValue)
+                if(steps.Count>0)
                 {
                     bool chainGroupPlaced=false;
                     foreach(double sign in PreferredSigns(camera.Name,horizontal))
@@ -405,8 +446,7 @@ public static class SupportOrthoReferenceDimPlan47
                     }
                     }
                 }
-                if((steps.Count>1||terminalDatum.HasValue)&&
-                   chainPlaced!=steps.Count)
+                if(steps.Count>0&&chainPlaced!=steps.Count)
                 {
                     skipped.Add(camera.Name+"/"+(horizontal?"H":"V")+
                         (terminalDatum.HasValue?
@@ -415,8 +455,7 @@ public static class SupportOrthoReferenceDimPlan47
                     // Suppress the unsafe partial chain, but preserve
                     // a correctly measured overall dimension.
                 }
-                requested+=(steps.Count>1||terminalDatum.HasValue)?
-                    steps.Count:0;
+                requested+=steps.Count;
                 requested++;
                 bool overallPlaced=reservedOverallAxes.Contains(horizontal);
                 if(!overallPlaced)
@@ -496,6 +535,13 @@ public static class SupportOrthoReferenceDimPlan47
                         Math.Abs((horizontal?d.Ax:d.Ay)-member.From)<.12&&
                         Math.Abs((horizontal?d.Bx:d.By)-member.To)<.12);
                     if(chainAlreadyShows)continue;
+                    if(!SupportOrthoManualDetailStyle57.PreferLocalMember(
+                        member.Member.Key,member.From,member.To,
+                        terminalDatum))
+                    {
+                        manualViewSuppressed++;
+                        continue;
+                    }
                     // Dimension the true member CROSS-SECTION at the
                     // projected midpoint of its own longitudinal axis.
                     // This is different from using a global assembly
@@ -583,7 +629,8 @@ public static class SupportOrthoReferenceDimPlan47
         }
         return new Result(dimensions,skipped,views,chain,overall,rejected,
             requested,localCount,priorityOverallCount,
-            midpointNative,midpointBounds,terminalRemainders);
+            midpointNative,midpointBounds,terminalRemainders,
+            redundantChains,hierarchyRejected,manualViewSuppressed);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
