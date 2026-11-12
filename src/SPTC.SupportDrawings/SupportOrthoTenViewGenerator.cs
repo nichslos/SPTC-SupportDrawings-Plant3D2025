@@ -1664,6 +1664,20 @@ public sealed class SupportOrthoTenViewGenerator
                                 x=>x.StartsWith(
                                     "RIGHT/V:REV22_54_OVERALL_DIAGNOSTICS=",
                                     StringComparison.Ordinal))));
+                        Log("REV22_56_TERMINAL_MEMBER_COMPLEMENTS="+
+                            detailPlan.TerminalMemberRemainderDimensions);
+                        foreach(string name in new[]{
+                            "TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK"})
+                        {
+                            var items=detailPlan.Dimensions.Where(d=>
+                                d.View==name&&d.Source.Contains(
+                                    "/TERMINAL_REMAINDER_",
+                                    StringComparison.Ordinal));
+                            Log("REV22_56_REFERENCE_DATUM="+name+
+                                " MEASURED_COMPLEMENTS="+
+                                string.Join(",",items.Select(i=>
+                                    i.Measurement+"mm:"+i.Source)));
+                        }
                         Log("REV22_55_NATIVE_MEMBER_MIDPOINT_DIMENSIONS="+
                             detailPlan.NativeMidpointMemberDimensions);
                         Log("REV22_55_APPROXIMATE_BOUNDS_MIDPOINT_DIMENSIONS="+
