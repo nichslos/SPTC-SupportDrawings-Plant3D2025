@@ -176,7 +176,7 @@ public static class SupportOrthoReferenceDimPlan47
                     foreach(double offset in SupportOrthoReferenceLayout51
                         .LaneOffsets().Where(value=>value>=
                             SupportOrthoReferenceLayout51.ChainOffset()+
-                            SupportOrthoReferenceLayout51.OverallSeparation()-
+                            SupportOrthoReferenceLayout51.OverallSeparation()*2-
                             .01))
                     {
                         if(found)break;
@@ -511,7 +511,8 @@ public static class SupportOrthoReferenceDimPlan47
     private static double? WitnessAt(
         bool horizontal,double station,double sign,
         IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> memberBounds,
-        IReadOnlyList<(double X,double Y)> explicitEndpoints)
+        IReadOnlyList<(double X,double Y)> explicitEndpoints,
+        bool preferExplicit=true)
     {
         const double paperTolerance=.20;
         // Real member Start/End coordinates take precedence over the
@@ -521,7 +522,7 @@ public static class SupportOrthoReferenceDimPlan47
                 Math.Abs((horizontal?pt.X:pt.Y)-station)
                     <=paperTolerance)
             .Select(pt=>horizontal?pt.Y:pt.X).ToArray();
-        if(exact.Length>0)
+        if(preferExplicit&&exact.Length>0)
             return sign>0?exact.Max():exact.Min();
         var boundsFaces=new List<double>();
         foreach(var bounds in memberBounds)
@@ -535,10 +536,14 @@ public static class SupportOrthoReferenceDimPlan47
                 (sign>0?bounds.T:bounds.B):
                 (sign>0?bounds.R:bounds.L));
         }
-        if(boundsFaces.Count==0)return null;
-        // This fallback is allowed for the drawing's projected
-        // overall envelope only, never as proof of a local 50mm chain.
-        return sign>0?boundsFaces.Max():boundsFaces.Min();
+        if(boundsFaces.Count>0)
+            return sign>0?boundsFaces.Max():boundsFaces.Min();
+        // The actual native endpoint is used for chain stations and
+        // as a fail-closed fallback for a rare envelope face that
+        // cannot be resolved. It never fabricates a member cross
+        // section, connection coordinate or bolt pitch.
+        return exact.Length>0?
+            (sign>0?exact.Max():exact.Min()):null;
     }
 
     private static (
@@ -559,10 +564,10 @@ public static class SupportOrthoReferenceDimPlan47
                 (sign>0?layoutBox.T:layoutBox.B):
                 (sign>0?layoutBox.R:layoutBox.L)):
             WitnessAt(request.Horizontal,request.From,sign,
-                memberBounds,explicitEndpoints);
+                memberBounds,explicitEndpoints,!request.Overall);
         double? endWitness=request.LocalBounds.HasValue?
             startWitness:WitnessAt(request.Horizontal,request.To,sign,
-                memberBounds,explicitEndpoints);
+                memberBounds,explicitEndpoints,!request.Overall);
         if(!startWitness.HasValue||!endWitness.HasValue)
             return null;
         double line=request.Horizontal?
