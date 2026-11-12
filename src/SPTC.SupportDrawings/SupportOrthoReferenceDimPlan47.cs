@@ -162,7 +162,10 @@ public static class SupportOrthoReferenceDimPlan47
                 int chainPlaced=0;
                 if(steps.Count>1)
                 {
+                    bool chainGroupPlaced=false;
                     foreach(double sign in PreferredSigns(horizontal))
+                    {
+                    if(chainGroupPlaced)break;
                     foreach(double offset in LaneOffsets())
                     {
                         var local=new List<(
@@ -192,7 +195,9 @@ public static class SupportOrthoReferenceDimPlan47
                             chainPlaced++;
                         }
                         chainOffset=offset;
+                        chainGroupPlaced=true;
                         break;
+                    }
                     }
                 }
                 if(steps.Count>1&&chainPlaced!=steps.Count)
@@ -206,6 +211,8 @@ public static class SupportOrthoReferenceDimPlan47
                 requested++;
                 bool overallPlaced=false;
                 foreach(double sign in PreferredSigns(horizontal))
+                {
+                if(overallPlaced)break;
                 foreach(double offset in LaneOffsets())
                 {
                     double extra=steps.Count>1&&chainPlaced==steps.Count
@@ -223,6 +230,7 @@ public static class SupportOrthoReferenceDimPlan47
                     overall++;
                     overallPlaced=true;
                     break;
+                }
                 }
                 if(!overallPlaced)
                     skipped.Add(camera.Name+"/"+(horizontal?"H":"V")+
@@ -317,9 +325,13 @@ public static class SupportOrthoReferenceDimPlan47
             ?"REFERENCE_PROJECTED_OVERALL_NOT_CUT_LENGTH"
             :"REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH";
         double aX=request.Horizontal?request.From:box.L;
-        double aY=request.Horizontal?box.T:request.From;
-        double bX=request.Horizontal?request.To:box.L;
-        double bY=request.Horizontal?box.T:request.To;
+        double aY=request.Horizontal?
+            (sign>0?box.T:box.B):request.From;
+        double bX=request.Horizontal?request.To:
+            (sign>0?box.R:box.L);
+        double bY=request.Horizontal?
+            (sign>0?box.T:box.B):request.To;
+        aX=request.Horizontal?request.From:(sign>0?box.R:box.L);
         var dim=new SupportOrthoDimLinearPlan41.Dimension(
             c.Name,source,"STRUCTURE",request.Horizontal,
             aX,aY,bX,bY,request.Horizontal?center:line,
