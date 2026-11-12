@@ -29,7 +29,9 @@ public static class SupportOrthoReferenceDimPlan47
         int RedundantChainsSuppressed=0,
         int HierarchyCrossingsRejected=0,
         int ManualViewDetailsSuppressed=0,
-        int UnintendedAcceptedWitnessIntersections=0);
+        int UnintendedAcceptedWitnessIntersections=0,
+        int ExactNativeEdgeProfileDimensions=0,
+        int ApproximateProfileDimensions=0);
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
@@ -38,7 +40,8 @@ public static class SupportOrthoReferenceDimPlan47
         SupportOrthoSmartDimPlan46.Rect? LocalBounds=null,
         string SourceKey="",
         double? MidpointWitness=null,
-        bool TerminalRemainder=false);
+        bool TerminalRemainder=false,
+        bool ExactNativeProfileEdge=false);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text,
@@ -59,7 +62,8 @@ public static class SupportOrthoReferenceDimPlan47
         IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? sources=null,
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts=null,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles=null,
-        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect>? additionalKeepouts=null)
+        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect>? additionalKeepouts=null,
+        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeEdges=null)
     {
         if(cameras==null||members==null||!double.IsFinite(paperW)||
            !double.IsFinite(paperH)||!double.IsFinite(unitsToMm)||
@@ -72,6 +76,7 @@ public static class SupportOrthoReferenceDimPlan47
             midpointBounds=0,terminalRemainders=0,
             redundantChains=0,hierarchyRejected=0,
             manualViewSuppressed=0,acceptedIntersections=0,
+            exactProfiles=0,approxProfiles=0,
             rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
@@ -599,11 +604,24 @@ public static class SupportOrthoReferenceDimPlan47
                         horizontal?
                             (member.Bounds.B+member.Bounds.T)*.5:
                             (member.Bounds.L+member.Bounds.R)*.5;
+                    // REV22.59: require an actual READ-ONLY straight
+                    // native entity edge spanning BOTH profile-extreme
+                    // projected points to claim an exact physical edge.
+                    // If the model is an opaque Plant 3D solid/BREP,
+                    // retain the older projected-envelope measurement
+                    // and label it APPROXIMATE instead of synthesizing
+                    // nonexistent geometry from an AABB corner.
+                    var physical=SupportOrthoNativeEdgeGeometry59.Resolve(
+                        camera,member.Member.Key,horizontal,
+                        member.Bounds,nativeEdges);
+                    if(physical!=null)
+                        witness=physical.Transverse;
                     var localReq=MakeRequest(horizontal,member.From,
                         member.To,false,0,camera.Scale,unitsToMm)
                         with {LocalBounds=member.Bounds,
                             SourceKey=member.Member.Key,
-                            MidpointWitness=witness};
+                            MidpointWitness=witness,
+                            ExactNativeProfileEdge=physical!=null};
                     requested++;
                     bool fitted=false;
                     foreach(double sign in PreferredSigns(camera.Name,horizontal))
@@ -648,6 +666,8 @@ public static class SupportOrthoReferenceDimPlan47
                                 placed.Add(candidate.Value.P);
                                 measuredLocalSpans.Add(length);
                                 localCount++;
+                                if(physical!=null)exactProfiles++;
+                                else approxProfiles++;
                                 if(verifiedMidpoint)midpointNative++;
                                 else midpointBounds++;
                                 fitted=true;
@@ -676,7 +696,7 @@ public static class SupportOrthoReferenceDimPlan47
             requested,localCount,priorityOverallCount,
             midpointNative,midpointBounds,terminalRemainders,
             redundantChains,hierarchyRejected,manualViewSuppressed,
-            acceptedIntersections);
+            acceptedIntersections,exactProfiles,approxProfiles);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
@@ -882,7 +902,9 @@ public static class SupportOrthoReferenceDimPlan47
             request.TerminalRemainder?
                 "REFERENCE_TERMINAL_NATIVE_MEMBER_REMAINDER_NOT_CUT_LENGTH":
             request.LocalBounds.HasValue?
-                "REFERENCE_PROJECTED_MEMBER_ENVELOPE_NOT_CUT_LENGTH":
+                (request.ExactNativeProfileEdge?
+                    "EXACT_NATIVE_PROJECTED_PROFILE_EDGE_NOT_CUT_LENGTH":
+                    "REFERENCE_PROJECTED_MEMBER_ENVELOPE_NOT_CUT_LENGTH"):
                 "REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH";
         // Each A/B dimension extension line now starts at its own
         // matching source member endpoint, rather than at an unrelated
