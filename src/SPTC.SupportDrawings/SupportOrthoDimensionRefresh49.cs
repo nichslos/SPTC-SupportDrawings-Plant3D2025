@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -26,6 +27,8 @@ internal static class SupportOrthoDimensionRefresh49
     private static readonly HashSet<Document> Watching=new();
     private static readonly Queue<Document> Pending=new();
     private static bool started,idleHooked,running;
+    private static readonly Dictionary<Document,Stopwatch>
+        NativeUpdateTimers=new();
 
     internal static void Start()
     {
@@ -47,18 +50,30 @@ internal static class SupportOrthoDimensionRefresh49
         if(idleHooked)AcadApp.Idle-=OnIdle;
         idleHooked=false;
         Pending.Clear();
+        NativeUpdateTimers.Clear();
         foreach(var doc in Watching.ToArray())Detach(doc);
     }
 
     private static void Attach(Document doc)
     {
         if(!Watching.Add(doc))return;
+        doc.CommandWillStart+=OnCommandWillStart;
         doc.CommandEnded+=OnCommandEnded;
+        doc.CommandCancelled+=OnCommandStopped;
+        doc.CommandFailed+=OnCommandStopped;
     }
     private static void Detach(Document doc)
     {
         if(!Watching.Remove(doc))return;
-        try {doc.CommandEnded-=OnCommandEnded;}catch(System.Exception){}
+        NativeUpdateTimers.Remove(doc);
+        try
+        {
+            doc.CommandWillStart-=OnCommandWillStart;
+            doc.CommandEnded-=OnCommandEnded;
+            doc.CommandCancelled-=OnCommandStopped;
+            doc.CommandFailed-=OnCommandStopped;
+        }
+        catch(System.Exception){}
     }
     private static void OnCreated(object sender,DocumentCollectionEventArgs e)=>
         Attach(e.Document);
@@ -72,12 +87,34 @@ internal static class SupportOrthoDimensionRefresh49
         if(Pending.Contains(e.Document))EnsureIdle();
     }
 
+    private static bool IsOrthoUpdate(string? command)=>
+        string.Equals(command?.TrimStart('_','.'),"PLANTORTHOUPDATE",
+            StringComparison.OrdinalIgnoreCase);
+
+    private static void OnCommandWillStart(object sender,CommandEventArgs e)
+    {
+        if(sender is Document doc&&Watching.Contains(doc)&&
+           IsOrthoUpdate(e.GlobalCommandName))
+            NativeUpdateTimers[doc]=Stopwatch.StartNew();
+    }
+
+    private static void OnCommandStopped(object sender,CommandEventArgs e)
+    {
+        if(sender is Document doc&&IsOrthoUpdate(e.GlobalCommandName))
+            NativeUpdateTimers.Remove(doc);
+    }
+
     private static void OnCommandEnded(object sender,CommandEventArgs e)
     {
-        var name=e.GlobalCommandName?.TrimStart('_','.')??"";
-        if(!name.Equals("PLANTORTHOUPDATE",StringComparison.OrdinalIgnoreCase)||
+        if(!IsOrthoUpdate(e.GlobalCommandName)||
            sender is not Document doc||
            !Watching.Contains(doc))return;
+        if(NativeUpdateTimers.Remove(doc,out var nativeTimer))
+        {
+            nativeTimer.Stop();
+            Trace.WriteLine("REV22.49.3 NATIVE_PLANTORTHOUPDATE_MS="+
+                nativeTimer.ElapsedMilliseconds);
+        }
         // AutoCAD raises CommandEnded once native Ortho processing is done.
         // Do not write from the event itself; schedule document-context work.
         if(!Pending.Contains(doc))Pending.Enqueue(doc);
@@ -107,6 +144,7 @@ internal static class SupportOrthoDimensionRefresh49
             return;
         }
         running=true;
+        var pluginTimer=Stopwatch.StartNew();
         try
         {
             await AcadApp.DocumentManager.ExecuteInCommandContextAsync(_=>
@@ -122,6 +160,9 @@ internal static class SupportOrthoDimensionRefresh49
         }
         finally
         {
+            pluginTimer.Stop();
+            Trace.WriteLine("REV22.49.3 SPTC_POST_UPDATE_MS="+
+                pluginTimer.ElapsedMilliseconds);
             running=false;
             EnsureIdle();
         }
@@ -141,6 +182,7 @@ internal static class SupportOrthoDimensionRefresh49
             .Select(m=>new SupportOrthoDimensionUpdatePlan49.NativeMember(
                 m.Key,m.Kind)).ToArray();
         var viewRefs=new List<SupportOrthoDimensionUpdatePlan49.View>();
+        var viewCameras=new List<SupportOrthoMemberCalloutPlan17.Camera>();
         using(var tr=target.TransactionManager.StartTransaction())
         {
             foreach(var view in savedNativeViews)
@@ -152,13 +194,19 @@ internal static class SupportOrthoDimensionRefresh49
                 viewRefs.Add(new SupportOrthoDimensionUpdatePlan49.View(
                     view.Key,vp.Handle.ToString(),
                     vp.CenterPoint.X,vp.CenterPoint.Y,vp.Width,vp.Height));
+                viewCameras.Add(CameraFromViewport(view.Key,vp));
             }
         }
+        var sourceFile=new FileInfo(resolved);
         var manifest=new SupportOrthoDimensionUpdatePlan49.Manifest(
             SupportOrthoDimensionUpdatePlan49.ManifestVersion,
             resolved,layoutName,unitsToMm,paperW,paperH,
             referenceDetail,memberRefs,viewRefs,
-            SupportOrthoDimensionUpdatePlan49.Signature(dimensions));
+            SupportOrthoDimensionUpdatePlan49.Signature(dimensions),
+            sourceFile.LastWriteTimeUtc.Ticks,sourceFile.Length,
+            SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
+                viewCameras,paperW,paperH),
+            dimensions.Count);
         SupportOrthoDimensionUpdatePlan49.Validate(manifest);
         Store(target,manifest);
     }
