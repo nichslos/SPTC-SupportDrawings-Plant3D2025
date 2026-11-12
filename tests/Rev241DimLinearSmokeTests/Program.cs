@@ -157,6 +157,7 @@ Rev249DimensionUpdateTests.Run();
 Rev2492DynamicDimensionTests.Run();
 Rev2494MemberWitnessTests.Run();
 Rev251PdfReferenceLayoutTests.Run();
+Rev252ManualPdfDimensionTests.Run();
 Console.WriteLine("REV22.43 vertical overall-height fallback and cross-axis compact safety PASS");
 
 Console.WriteLine("REV22.42 compact DIMLINEAR across six views PASS");
