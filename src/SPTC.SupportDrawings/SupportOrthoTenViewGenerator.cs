@@ -1650,6 +1650,31 @@ public sealed class SupportOrthoTenViewGenerator
                             detailPlan.ChainDimensions);
                         Log("REV22_47_OVERALL_DIMENSIONS="+
                             detailPlan.OverallDimensions);
+                        Log("REV22_52_LOCAL_PROJECTED_MEMBER_DIMENSIONS="+
+                            detailPlan.LocalMemberDimensions);
+                        Log("REV22_52_REFERENCE_PDF_DIMENSION_RULES="+
+                            "CHAIN_NEAR_OVERALL_OUTER;LOCAL_MEMBER_MEASURED;"+
+                            "XREF_DIMENSIONS_DISABLED");
+                        foreach(string viewName in new[]{
+                            "TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK"})
+                        {
+                            int h=detailPlan.Dimensions.Count(x=>
+                                x.View==viewName&&x.Horizontal);
+                            int v=detailPlan.Dimensions.Count(x=>
+                                x.View==viewName&&!x.Horizontal);
+                            int local=detailPlan.Dimensions.Count(x=>
+                                x.View==viewName&&
+                                x.Source.Contains("/MEMBER_",
+                                    StringComparison.Ordinal));
+                            bool hasVOverall=detailPlan.Dimensions.Any(x=>
+                                x.View==viewName&&!x.Horizontal&&
+                                x.Source.EndsWith("/OVERALL",
+                                    StringComparison.Ordinal));
+                            Log("REV22_52_PDF_VIEW="+viewName+
+                                " H="+h+" V="+v+
+                                " LOCAL_PROFILE="+local+
+                                " V_OVERALL="+hasVOverall);
+                        }
                         Log("REV22_47_UNRESOLVED_DATUM_DIMENSIONS="+
                             detailPlan.Skipped.Count);
                         Log("REV22_47_BOLT_PITCH_NOT_ASSUMED=True");
