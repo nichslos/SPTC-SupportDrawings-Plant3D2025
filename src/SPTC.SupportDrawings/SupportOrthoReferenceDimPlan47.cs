@@ -28,7 +28,8 @@ public static class SupportOrthoReferenceDimPlan47
         int TerminalMemberRemainderDimensions=0,
         int RedundantChainsSuppressed=0,
         int HierarchyCrossingsRejected=0,
-        int ManualViewDetailsSuppressed=0);
+        int ManualViewDetailsSuppressed=0,
+        int UnintendedAcceptedWitnessIntersections=0);
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
@@ -40,7 +41,8 @@ public static class SupportOrthoReferenceDimPlan47
         bool TerminalRemainder=false);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
-        SupportOrthoSmartDimPlan46.Rect Text);
+        SupportOrthoSmartDimPlan46.Rect Text,
+        SupportOrthoDimIntersections58.Shape Geometry);
     // REV22.54: identify the real source of a blocked lane rather than
     // conflating nearby view labels, leaders, page boundary and members.
     private sealed record Obstacle(
@@ -69,7 +71,8 @@ public static class SupportOrthoReferenceDimPlan47
             priorityOverallCount=0,midpointNative=0,
             midpointBounds=0,terminalRemainders=0,
             redundantChains=0,hierarchyRejected=0,
-            manualViewSuppressed=0,rejected=0,requested=0;
+            manualViewSuppressed=0,acceptedIntersections=0,
+            rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
 
@@ -638,11 +641,22 @@ public static class SupportOrthoReferenceDimPlan47
                             "_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE");
                 }
             }
+            // Every accepted dimension has been checked against the
+            // baseline AND both witness lines of previously accepted
+            // dimensions. Keep an independently audited final count
+            // for the actual saved view, not just the rejection count.
+            for(int later=1;later<placed.Count;later++)
+                for(int earlier=0;earlier<later;earlier++)
+                    if(SupportOrthoDimIntersections58.Conflict(
+                        placed[later].Geometry,
+                        placed[earlier].Geometry)!=null)
+                        acceptedIntersections++;
         }
         return new Result(dimensions,skipped,views,chain,overall,rejected,
             requested,localCount,priorityOverallCount,
             midpointNative,midpointBounds,terminalRemainders,
-            redundantChains,hierarchyRejected,manualViewSuppressed);
+            redundantChains,hierarchyRejected,manualViewSuppressed,
+            acceptedIntersections);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
@@ -848,7 +862,8 @@ public static class SupportOrthoReferenceDimPlan47
             aX,aY,bX,bY,request.Horizontal?center:line,
             request.Horizontal?line:center,request.Measurement,
             provenance,tx,ty,request.PaperToModelMm);
-        return (dim,new Placed(request.Horizontal,dimRect,textRect));
+        var drawn=SupportOrthoDimIntersections58.Project(dim,textRect);
+        return (dim,new Placed(request.Horizontal,dimRect,textRect,drawn));
     }
 
     private static bool Fits(Placed p,
@@ -875,6 +890,18 @@ public static class SupportOrthoReferenceDimPlan47
                 return "LINE_OVER_"+obstacle.Type;
             if(p.Text.Intersects(obstacle.Area,.45))
                 return "TEXT_OVER_"+obstacle.Type;
+            // REV22.58: extension lines are part of the annotation
+            // geometry. They may touch their actual native member
+            // faces but must not run THROUGH plotted title or label
+            // text. Keep leader endpoints permitted, since a pipe
+            // leader can legitimately start at the same member.
+            if(obstacle.Type.StartsWith("ANNOTATION_TEXT_",
+                    StringComparison.Ordinal)||
+               obstacle.Type.StartsWith("VIEW_TITLE_",
+                    StringComparison.Ordinal))
+                if(p.Geometry.Witnesses.Any(w=>
+                    w.Bounds().Intersects(obstacle.Area,.10)))
+                    return "WITNESS_OVER_"+obstacle.Type;
         }
         foreach(var prev in existing)
         {
@@ -899,6 +926,13 @@ public static class SupportOrthoReferenceDimPlan47
                 if(span<8&&earlier<8&&Math.Abs(at-priorAt)<7)
                     return "SHORT_DIMENSION_LABELS_TOO_CLOSE";
             }
+            // Old layout validation checked only DIMLINEAR baselines
+            // and text. That allowed local 100mm witness lines to
+            // cut across the 828.28/928.28 dimension arrangements.
+            // Genuine shared stations/endpoints remain accepted.
+            string? crossing=SupportOrthoDimIntersections58.Conflict(
+                p.Geometry,prev.Geometry);
+            if(crossing!=null)return crossing;
             if(p.Text.Intersects(prev.Text,.45))
                 return "TEXT_OVER_DIMENSION_TEXT";
             if(p.Text.Intersects(prev.Line,.4))
