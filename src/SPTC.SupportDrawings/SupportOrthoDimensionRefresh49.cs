@@ -112,7 +112,7 @@ internal static class SupportOrthoDimensionRefresh49
         if(NativeUpdateTimers.Remove(doc,out var nativeTimer))
         {
             nativeTimer.Stop();
-            Trace.WriteLine("REV22.49.3 NATIVE_PLANTORTHOUPDATE_MS="+
+            System.Diagnostics.Trace.WriteLine("REV22.49.3 NATIVE_PLANTORTHOUPDATE_MS="+
                 nativeTimer.ElapsedMilliseconds);
         }
         // AutoCAD raises CommandEnded once native Ortho processing is done.
@@ -161,7 +161,7 @@ internal static class SupportOrthoDimensionRefresh49
         finally
         {
             pluginTimer.Stop();
-            Trace.WriteLine("REV22.49.3 SPTC_POST_UPDATE_MS="+
+            System.Diagnostics.Trace.WriteLine("REV22.49.3 SPTC_POST_UPDATE_MS="+
                 pluginTimer.ElapsedMilliseconds);
             running=false;
             EnsureIdle();
@@ -290,7 +290,7 @@ internal static class SupportOrthoDimensionRefresh49
                 fastState.OwnedDimensions+").");
             return;
         }
-        Trace.WriteLine("REV22.49.3 DIM_REFRESH_MODEL_RELOAD=REQUIRED");
+        System.Diagnostics.Trace.WriteLine("REV22.49.3 DIM_REFRESH_MODEL_RELOAD=REQUIRED");
 
         using var source=new Database(false,true);
         // Use SAVED model coordinates. Never read unsaved transient data,
