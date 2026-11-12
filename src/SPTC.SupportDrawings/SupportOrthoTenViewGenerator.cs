@@ -1659,6 +1659,11 @@ public sealed class SupportOrthoTenViewGenerator
                                 d.View=="RIGHT"&&!d.Horizontal&&
                                 d.Source.EndsWith("/OVERALL",
                                     StringComparison.Ordinal)));
+                        Log("REV22_54_RIGHT_OVERALL_COLLISION_DIAGNOSTICS="+
+                            string.Join("|",detailPlan.Skipped.Where(
+                                x=>x.StartsWith(
+                                    "RIGHT/V:REV22_54_OVERALL_DIAGNOSTICS=",
+                                    StringComparison.Ordinal))));
                         Log("REV22_53_DIMENSION_PROVENANCE="+
                             "NATIVE_ONLY;GEOMETRIC_ENVELOPE_VS_ENDPOINT_CHAIN");
                         Log("REV22_53_PROJECTED_DIMENSIONS_DYNAMIC_NOT_HARDCODED=True");
