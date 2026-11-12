@@ -289,21 +289,30 @@ public static class SupportOrthoReferenceDimPlan47
                         ?Math.Max(0,chainOffset+
                             SupportOrthoReferenceLayout51.OverallSeparation()
                             -offset):0;
-                    var candidate=Candidate(camera,assembly,
-                        projected,verifiedWitnessPoints,
-                        big,sign,offset+extra);
-                    if(candidate==null||
-                       !Fits(candidate.Value.P,blocks,paper,placed,
-                            projected))
+                    // REV22.52: a previously occupied text row is NOT a
+                    // reason to abandon the vertical overall dimension.
+                    // Search additional text tiers independently of the
+                    // dimension line lane. This fixes RIGHT/V overall
+                    // omissions on tight portrait support details.
+                    for(int textTier=0;textTier<10;textTier++)
                     {
-                        rejected++;
-                        continue;
+                        var candidate=Candidate(camera,assembly,
+                            projected,verifiedWitnessPoints,
+                            big,sign,offset+extra,textTier);
+                        if(candidate==null||
+                           !Fits(candidate.Value.P,blocks,paper,placed,
+                                projected))
+                        {
+                            rejected++;
+                            continue;
+                        }
+                        dimensions.Add(candidate.Value.D);
+                        placed.Add(candidate.Value.P);
+                        overall++;
+                        overallPlaced=true;
+                        break;
                     }
-                    dimensions.Add(candidate.Value.D);
-                    placed.Add(candidate.Value.P);
-                    overall++;
-                    overallPlaced=true;
-                    break;
+                    if(overallPlaced)break;
                 }
                 }
                 if(!overallPlaced)
@@ -376,7 +385,11 @@ public static class SupportOrthoReferenceDimPlan47
                                 // its own member, but never cut across an
                                 // unrelated structure member.
                                 if(projected.Any(b=>b!=member.Bounds&&
-                                    candidate.Value.P.Line.Intersects(b,.20)))
+                                    candidate.Value.P.Line.Intersects(b,.20))||
+                                   placed.Any(prior=>
+                                        prior.Horizontal==horizontal &&
+                                        candidate.Value.P.Line.Intersects(
+                                            prior.Line,.35)))
                                 {
                                     rejected++;
                                     continue;
