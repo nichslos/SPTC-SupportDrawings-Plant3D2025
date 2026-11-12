@@ -174,7 +174,8 @@ internal static class SupportOrthoDimensionRefresh49
         IReadOnlyList<SupportOrthoAllViewDimPlan44.Member> nativeMembers,
         IReadOnlyDictionary<string,ObjectId> savedNativeViews,
         IReadOnlyList<SupportOrthoDimLinearPlan41.Dimension> dimensions,
-        IReadOnlyList<SupportOrthoDimensionSource41.Segment>? nativeSourceEndpoints=null)
+        IReadOnlyList<SupportOrthoDimensionSource41.Segment>? nativeSourceEndpoints=null,
+        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeStraightEdges=null)
     {
         if(dimensions.Count==0||nativeMembers.Count==0)return;
         string resolved=Path.GetFullPath(sourcePath);
@@ -200,6 +201,17 @@ internal static class SupportOrthoDimensionRefresh49
                     s.Key,s.Kind,s.Ax,s.Ay,s.Az,s.Bx,s.By,s.Bz,
                     s.SourceLength,s.Millimeters,s.Provenance))
                 .ToArray():null;
+        // Cache only a bounded amount of actual native straight-edge
+        // evidence. Never persist an XREF, a synthetic bounds corner,
+        // or geometry from an unselected member.
+        var verifiedEdges=savedGeometry!=null?
+            (nativeStraightEdges??Array.Empty<SupportOrthoNativeEdgeGeometry59.Edge>())
+                .Where(edge=>SupportOrthoNativeEdgeGeometry59.Valid(edge)&&
+                    verifiedNative.Any(m=>m.Key.Equals(edge.Key,
+                        StringComparison.OrdinalIgnoreCase)&&
+                        m.Kind==edge.Kind)).ToArray():null;
+        if(verifiedEdges!=null&&verifiedEdges.Length>512)
+            verifiedEdges=null;
         var viewRefs=new List<SupportOrthoDimensionUpdatePlan49.View>();
         var viewCameras=new List<SupportOrthoMemberCalloutPlan17.Camera>();
         using(var tr=target.TransactionManager.StartTransaction())
@@ -225,7 +237,7 @@ internal static class SupportOrthoDimensionRefresh49
             sourceFile.LastWriteTimeUtc.Ticks,sourceFile.Length,
             SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
                 viewCameras,paperW,paperH),
-            dimensions.Count,savedGeometry,savedEndpoints);
+            dimensions.Count,savedGeometry,savedEndpoints,verifiedEdges);
         SupportOrthoDimensionUpdatePlan49.Validate(manifest);
         Store(target,manifest);
     }
