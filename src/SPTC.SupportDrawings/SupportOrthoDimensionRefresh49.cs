@@ -515,14 +515,36 @@ internal static class SupportOrthoDimensionRefresh49
             }
         }
         IReadOnlyList<SupportOrthoDimLinearPlan41.Dimension> dimensions;
+        IReadOnlyList<string> plannerSkipped;
         if(original.ReferenceDetailDimensions)
-            dimensions=SupportOrthoReferenceDimPlan47.Build(
+        {
+            var referencePlan=SupportOrthoReferenceDimPlan47.Build(
                 cameras,native,paperW,paperH,original.UnitsToMm,
-                segments,null,null,keepouts,edges).Dimensions;
+                segments,null,null,keepouts,edges);
+            dimensions=referencePlan.Dimensions;
+            plannerSkipped=referencePlan.Skipped;
+        }
         else
-            dimensions=SupportOrthoSmartDimPlan46.Build(
+        {
+            var ordinaryPlan=SupportOrthoSmartDimPlan46.Build(
                 cameras,native,paperW,paperH,original.UnitsToMm,
-                null,null,keepouts).Dimensions;
+                null,null,keepouts);
+            dimensions=ordinaryPlan.Dimensions;
+            plannerSkipped=ordinaryPlan.Skipped;
+        }
+        // REV22.61: every changed model or native viewport that
+        // rebuilds plugin-owned dimensions gets the same independent
+        // QA as initial generation. Missing OPTIONAL details are not
+        // a reason to abort a safe update; required defects stay REVIEW.
+        var qaBefore=SupportOrthoDrawingQualityAudit61.Review(
+            cameras,native,dimensions,plannerSkipped,
+            original.UnitsToMm,original.ReferenceDetailDimensions,
+            nativeEdges:edges);
+        Message(target,"REV22.61 DIM_QA_PREWRITE="+qaBefore.Status+
+            " REQUIRED_HV="+qaBefore.PresentOverallAxes+"/"+
+            qaBefore.ExpectedOverallAxes+
+            " OPTIONAL_OMITTED="+qaBefore.OptionalOmissions+
+            " REVIEW_ISSUES="+qaBefore.ReviewIssues);
         if(dimensions.Count==0)
             throw new InvalidOperationException(
                 "No safe regenerated dimensions; old dimensions kept.");
@@ -554,6 +576,15 @@ internal static class SupportOrthoDimensionRefresh49
         int created=SupportOrthoDimLinearWriter41.Write(
             target.Database,original.LayoutName,dimensions,
             out var diagnostics,replaceGenerated:true);
+        var qaWritten=SupportOrthoDrawingQualityAudit61.Review(
+            cameras,native,dimensions,plannerSkipped,
+            original.UnitsToMm,original.ReferenceDetailDimensions,
+            writtenCount:created,nativeEdges:edges);
+        Message(target,"REV22.61 DIM_QA_STATUS="+qaWritten.Status+
+            " REQUIRED_HV="+qaWritten.PresentOverallAxes+"/"+
+            qaWritten.ExpectedOverallAxes+
+            " WRITER_MISMATCHES="+qaWritten.WrittenCountMismatches+
+            " REVIEW_ISSUES="+qaWritten.ReviewIssues);
         Store(target.Database,original with {LastSignature=next,
             PaperWidth=paperW,PaperHeight=paperH,
             SourceWriteUtcTicks=sourceWriteTicks,
