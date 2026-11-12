@@ -30,8 +30,9 @@ jobs:
              $commands.Contains('SPTC REV19:')) {
             throw 'Obsolete REV19 NETLOAD banner has returned'
           }
-          if(-not $commands.Contains('public void Initialize() { }')) {
-            throw 'Expected silent Initialize() for the cleaned production DLL'
+          if(-not $commands.Contains('SupportOrthoDimensionRefresh49.Start();') -or
+             -not $commands.Contains('SupportOrthoDimensionRefresh49.Stop();')) {
+            throw 'REV22.49 silent event initialization and disposal required'
           }
           $labels=Get-Content "$root/SupportOrthoPipeCallout29.cs" -Raw
           if(-not $gen.Contains('SPTC_SUPPORTORTHO10')) {throw 'Production 10-view command missing'}
@@ -200,7 +201,7 @@ jobs:
           $dimWriter=Get-Content "$root/SupportOrthoDimLinearWriter41.cs" -Raw
           foreach($token in @('ExplicitPoint(', 'DIM_ENDPOINTS_NOT_DECLARED',
               'DIM_ENDPOINTS_OUTSIDE_NATIVE_EXTENTS','id.Database',
-              'member.ToHost','StructureMember','SupportOrthoSupportLabel24')) {
+              'Matrix3d.Identity','StructureMember','SupportOrthoSupportLabel24')) {
             if(-not $dimSource.Contains($token)) {
               throw "REV22.41 verified dimension source missing: $token"
             }
@@ -271,6 +272,269 @@ jobs:
               throw "REV22.43 vertical height integration missing: $token"
             }
           }
+          # REV22.49.1: narrow structural supports still require
+          # a correctly sized native TOP/ISO paper caption. Reserve only
+          # paper-space title width, not source OrthoCube geometry/scale.
+          $titlePlan=Get-Content "$root/NativeOrthoViewTitlePlan.cs" -Raw
+          $tenPlan=Get-Content "$root/NativeOrthoTenViewPlan.cs" -Raw
+          foreach($token in @('MinimumFrameWidth(', 'CaptionFor(viewName)',
+              'TextHeightMm*.68', 'REV22.13 viewport too narrow')) {
+            if(-not $titlePlan.Contains($token)) {
+              throw "REV22.49.1 caption width invariant missing: $token"
+            }
+          }
+          if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
+            throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
+          }
+          # REV22.53: reserve native H and V overall dimensions before
+          # any optional 50/100 mm member details, especially RIGHT/V
+          # which REV22.52 skipped after local H placements.
+          $priority53=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          foreach($token in @('reservedOverallAxes',
+              'foreach(bool horizontal in new[]{false,true})',
+              'PriorityOverallDimensions',
+              'bool overallPlaced=reservedOverallAxes.Contains(horizontal)',
+              'WitnessAt(request.Horizontal,request.From')) {
+            if(-not $priority53.Contains($token)) {
+              throw "REV22.53 overall-first collision priority missing: $token"
+            }
+          }
+          $generator53=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('REV22_53_RIGHT_VERTICAL_OVERALL_PRESENT=',
+              'REV22_53_OVERALL_DIMENSIONS_RESERVED_FIRST=')) {
+            if(-not $generator53.Contains($token)) {
+              throw "REV22.53 overall diagnostic missing: $token"
+            }
+          }
+          # REV22.52: manual PDF requires missing measured native
+          # profile widths and a RIGHT vertical overall, while invalid
+          # connection/bolt station chains remain prohibited.
+          $detail52=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $gen52=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('LocalMemberDimensions',
+              'REFERENCE_PROJECTED_MEMBER_ENVELOPE_NOT_CUT_LENGTH',
+              'LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE',
+              'for(int textTier=0;textTier<10;textTier++)')) {
+            if(-not $detail52.Contains($token)) {
+              throw "REV22.52 reference PDF dimension improvement missing: $token"
+            }
+          }
+          foreach($token in @('SPTC_ORTHO_VIEWPORT_NOPLOT',
+              'EnsureNativeViewportsNoPlot52(',
+              'IsPlottable=false',
+              'REV22_52_PDF_VIEW=')) {
+            if(-not $gen52.Contains($token)) {
+              throw "REV22.52 native Ortho plot/dimension integration missing: $token"
+            }
+          }
+          # REV22.51: mimic the user's explicitly re-positioned
+          # six-view support PDF. H dimensions above, V left, inner
+          # chain closer to the geometry than its outer overall line;
+          # labels may not cover support outlines/callout gutters.
+          $pdfLayout51=Get-Content "$root/SupportOrthoReferenceLayout51.cs" -Raw
+          $refPlanner51=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          foreach($token in @('PreferredSide(','ShortTextBefore(',
+              'OverallSeparation(', 'LaneOffsets(')) {
+            if(-not $pdfLayout51.Contains($token) -or
+               -not $refPlanner51.Contains($token)) {
+              throw "REV22.51 reference PDF layout rule missing: $token"
+            }
+          }
+          if(-not $refPlanner51.Contains('sourceMembers.Any(m=>p.Text.Intersects')) {
+            throw 'REV22.51 dimension text must avoid structural silhouettes'
+          }
+          # REV22.50: local/50 mm chain distances must have two
+          # independently verified source Start/End stations. AABB
+          # contacts alone are not sufficient for a drafting dimension.
+          # When only the Ortho viewport changes, re-project a bounded
+          # native-only snapshot instead of reopening the source DWG.
+          $detail50=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          foreach($token in @('LOCAL_CHAIN_UNVERIFIED_MEMBER_ENDPOINTS',
+              'verifiedWitnessPoints.Any',
+              'if(!VerifiedAt(start)||!VerifiedAt(end))',
+              'if(preferExplicit&&exact.Length>0)')) {
+            if(-not $detail50.Contains($token)) {
+              throw "REV22.50 verified-native-datum guard missing: $token"
+            }
+          }
+          $cache50=Get-Content "$root/SupportOrthoDimensionUpdatePlan49.cs" -Raw
+          $refresh50=Get-Content "$root/SupportOrthoDimensionRefresh49.cs" -Raw
+          foreach($token in @('NativeExtentSnapshot',
+              'NativeEndpointSnapshot','CanReuseGeometrySnapshot(')) {
+            if(-not $cache50.Contains($token) -or
+               -not $refresh50.Contains($token)) {
+              throw "REV22.50 reuse cache invariant missing: $token"
+            }
+          }
+          if(-not $gen.Contains('REV22_50_NATIVE_GEOMETRY_CACHE_SAVED=') -or
+             -not $gen.Contains('nativeDimensionSegments);')) {
+            throw "REV22.50 generator native endpoint snapshot missing"
+          }
+          # REV22.49.4: dimension witnesses must use each real native
+          # member face or an explicit matching Plant endpoint, not the
+          # overall view envelope. Short 50-mm labels use alternating
+          # exterior positions to avoid piling identical values.
+          $refDim=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $smartDim=Get-Content "$root/SupportOrthoSmartDimPlan46.cs" -Raw
+          $writer=Get-Content "$root/SupportOrthoDimLinearWriter41.cs" -Raw
+          foreach($token in @('WitnessAt(', 'verifiedWitnessPoints',
+              'startWitness.Value','endWitness.Value',
+              'bool putBefore=', 'textTier/2')) {
+            if(-not $refDim.Contains($token)) {
+              throw "REV22.49.4 source endpoint dimension invariant missing: $token"
+            }
+          }
+          foreach($token in @('double face=horizontal?',
+              'Thin(b.L,face', 'horizontal?face:b.B')) {
+            if(-not $smartDim.Contains($token)) {
+              throw "REV22.49.4 fallback native face invariant missing: $token"
+            }
+          }
+          if(-not $writer.Contains('dim.Dimexo=0.0')) {
+            throw 'REV22.49.4 reference DIMLINEAR must start exactly at member witness'
+          }
+          # REV22.49.3: skip full model DWG load if the original
+          # source file stamp, native viewport poses and owned dimensions
+          # match the persisted drawing snapshot.
+          $refresh=Get-Content "$root/SupportOrthoDimensionRefresh49.cs" -Raw
+          $updatePlan=Get-Content "$root/SupportOrthoDimensionUpdatePlan49.cs" -Raw
+          foreach($token in @('ReadFastPaperState(','CanSkipModelReload(',
+              'DIM_FAST_PATH=SKIPPED_SOURCE_RELOAD',
+              'SourceWriteUtcTicks=sourceWriteTicks',
+              'ViewPoseSignature(','Stopwatch.StartNew()')) {
+            if(-not $refresh.Contains($token)) {
+              throw "REV22.49.3 fast update path missing: $token"
+            }
+          }
+          foreach($token in @('SourceWriteUtcTicks=0',
+              'SourceFileLength=-1','LastViewPoseSignature',
+              'LastOwnedDimensionCount=-1','CanSkipModelReload(',
+              'ViewPoseSignature(')) {
+            if(-not $updatePlan.Contains($token)) {
+              throw "REV22.49.3 persisted change-detection policy missing: $token"
+            }
+          }
+          # REV22.49.2: use actual native saved-viewport scale to
+          # let AutoCAD generate dimension text; no numeric overrides.
+          $dyn=Get-Content "$root/SupportOrthoDynamicDimension492.cs" -Raw
+          $dimPlan=Get-Content "$root/SupportOrthoDimLinearPlan41.cs" -Raw
+          $dimWriter=Get-Content "$root/SupportOrthoDimLinearWriter41.cs" -Raw
+          foreach($token in @('ModelMillimetersPerPaperUnit',
+              'MeasuredMillimeters','MatchesDiagnostic')) {
+            if(-not $dyn.Contains($token)) {
+              throw "REV22.49.2 dynamic dimension math missing: $token"
+            }
+          }
+          foreach($token in @('dim.Dimlfac=item.PaperToModelMm!.Value',
+              'dim.DimensionText=string.Empty',
+              'dimensionLine,dynamicMeasurement?string.Empty:',
+              'SupportOrthoDynamicDimension492.MatchesDiagnostic')) {
+            if(-not $dimWriter.Contains($token)) {
+              throw "REV22.49.2 hard-coded dimension guard missing: $token"
+            }
+          }
+          if(-not $dimPlan.Contains('double? PaperToModelMm=null')) {
+            throw 'REV22.49.2 dimension record must carry native factor'
+          }
+          foreach($filename in @('SupportOrthoReferenceDimPlan47.cs',
+              'SupportOrthoSmartDimPlan46.cs',
+              'SupportOrthoAllViewDimPlan44.cs')) {
+            $planner=Get-Content "$root/$filename" -Raw
+            if(-not $planner.Contains('ModelMillimetersPerPaperUnit')) {
+              throw "REV22.49.2 numeric text still hard-coded in $filename"
+            }
+          }
+          # REV22.49: source and saved viewport identity persisted in
+          # paper DWG. CommandEnded/Idle triggers atomic owner-only
+          # dimension replacement; no new public commands.
+          $update=Get-Content "$root/SupportOrthoDimensionRefresh49.cs" -Raw
+          $policy=Get-Content "$root/SupportOrthoDimensionUpdatePlan49.cs" -Raw
+          foreach($token in @('PLANTORTHOUPDATE',
+              'DocumentCreated','CommandEnded','AcadApp.Idle',
+              'SaveInitial(', 'NamedObjectsDictionaryId',
+              'ReadDwgFile(', 'replaceGenerated:true',
+              'XREF', 'SupportOrthoNativeDimensionPolicy48')) {
+            if(-not $update.Contains($token)) {
+              throw "REV22.49 automatic update architecture missing: $token"
+            }
+          }
+          foreach($token in @('NeedsReplace','ManifestKey',
+              'Resolve(','Signature(','IsNativeKey')) {
+            if(-not ($policy+$update).Contains($token)) {
+              throw "REV22.49 safety invariant missing: $token"
+            }
+          }
+          $writer=Get-Content "$root/SupportOrthoDimLinearWriter41.cs" -Raw
+          foreach($token in @('GetXDataForApplication(',
+              'DxfCode.ExtendedDataRegAppName',
+              'previous.Erase();','replaceGenerated')) {
+            if(-not $writer.Contains($token)) {
+              throw "REV22.49 owner-only atomic rewrite missing: $token"
+            }
+          }
+          if(-not $gen.Contains('REV22_49_AUTO_UPDATE_MANIFEST=PASS') -or
+             -not $gen.Contains('REV22_49_XREF_DIMENSIONS_DISABLED=TRUE')) {
+            throw 'REV22.49 generated drawing registration missing'
+          }
+          # REV22.48: host-native-only dimensions. XREFs may have
+          # annotations but never a DIMLINEAR source or datum station.
+          $nativePolicy=Get-Content "$root/SupportOrthoNativeDimensionPolicy48.cs" -Raw
+          $nativeSource=Get-Content "$root/SupportOrthoDimensionSource41.cs" -Raw
+          foreach($token in @('StartsWith("NATIVE:"',
+              'XREF', 'AcceptMember(', 'AcceptSegment(')) {
+            if(-not $nativePolicy.Contains($token)) {
+              throw "REV22.48 native dimension boundary missing: $token"
+            }
+          }
+          if($nativeSource.Contains('TryRead(member.Id,member.ToHost') -or
+             -not $nativeSource.Contains('DIM48_XREF_SOURCE_SEGMENTS_EXCLUDED=')) {
+            throw 'REV22.48 XREF endpoint extraction must be disabled'
+          }
+          foreach($token in @('REV22_48_XREF_DIMENSION_POLICY=DISABLED',
+              'REV22_48_NATIVE_MEMBER_DIMENSION_SOURCES=',
+              'REV22_48_XREF_DIMENSIONS_CREATED=0')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.48 native-only integration missing: $token"
+            }
+          }
+          # REV22.47 preserves the user-supplied p15/p16 shop-drawing
+          # dimension-chain and overall conventions as a selectable mode.
+          $detail=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          foreach($token in @('SelectStations','CHAIN_NOT_FITTED_TO_ONE_LANE',
+              'REFERENCE_PROJECTED_OVERALL_NOT_CUT_LENGTH',
+              'REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH')) {
+            if(-not $detail.Contains($token)) {
+              throw "REV22.47 reference-detail planner missing: $token"
+            }
+          }
+          if(-not $ui.Contains('Reference detail: chain + overall (PDF style)') -or
+             -not $ui.Contains('referenceDimensions.Checked = true')) {
+            throw 'REV22.47 reference-detail UI default missing'
+          }
+          foreach($token in @('SupportOrthoReferenceDimPlan47.Build(',
+              'REV22_47_CHAIN_DIMENSIONS=',
+              'REV22_47_OVERALL_DIMENSIONS=')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV22.47 native generator integration missing: $token"
+            }
+          }
+          # REV22.46 collision-aware planner has fixed annotation obstacles,
+          # native view/title keepouts and no forced overlapping placements.
+          $smart = Get-Content 'src/SPTC.SupportDrawings/SupportOrthoSmartDimPlan46.cs' -Raw
+          foreach($token in @('BuildFixedZones','CollisionCandidatesRejected',
+              'NO_COLLISION_FREE_DIMENSION_LANE','repositioned++',
+              'ProjectBounds')) {
+            if ($smart -notmatch [regex]::Escape($token)) {
+              throw "REV22.46 smart-layout invariant missing: $token"
+            }
+          }
+          foreach($token in @('REV22_46_AUTO_REPOSITIONED=',
+              'REV22_46_COLLIDING_CANDIDATES_REJECTED=',
+              'REV22_46_DIMENSION_COVERAGE=')) {
+            if ($gen -notmatch [regex]::Escape($token)) {
+              throw "REV22.46 integration log missing: $token"
+            }
+          }
           # REV22.44: all recognized structure/support members receive
           # independent horizontal/vertical projected OVERALL dimensions on
           # each of six orthographic views (no cross-view size dedup).
@@ -296,7 +560,7 @@ jobs:
             }
           }
           foreach($token in @('SupportOrthoAllMemberExtent44.Read(',
-              'SupportOrthoAllViewDimPlan44.Build(',
+              'SupportOrthoSmartDimPlan46.Build(',
               'REV22_44_DIMENSION_MODE=PER_MEMBER_PER_ORTHOGRAPHIC_VIEW_H_AND_V',
               'REV22_44_HV_AXES_REQUESTED=',
               'REV22_44_VIEW=',
@@ -305,22 +569,22 @@ jobs:
               throw "REV22.44 model-Ortho integration missing: $token"
             }
           }
-          if(-not $ui.Contains('Auto H/V dimensions: all Ortho members/views')) {
+          if(-not $ui.Contains('Auto H/V dimensions: native members only')) {
             throw 'REV22.44 auto H/V all-members UI control missing'
           }
           foreach($token in @('options.AutoDimLinear',
               'SupportOrthoDimensionSource41.Read(',
-              'SupportOrthoAllViewDimPlan44.Build(',
+              'SupportOrthoSmartDimPlan46.Build(',
               'SupportOrthoDimLinearWriter41.Write(',
               'REV22_41_DIMENSIONS_CREATED=',
-              'REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=TRUE')) {
+              'REV22_49_DIMENSIONS_REGENERATE_ON_PLANTORTHOUPDATE=TRUE')) {
             if(-not $gen.Contains($token)) {
               throw "REV22.41 ten-view integration missing: $token"
             }
           }
-          if(-not $ui.Contains('Auto H/V dimensions: all Ortho members/views') -or
+          if(-not $ui.Contains('Auto H/V dimensions: native members only') -or
              -not $ui.Contains('autoDimLinear.Checked = true') -or
-             -not $ui.Contains('autoDimLinear.Checked);')) {
+             -not $ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked);')) {
             throw 'REV22.41 persistent UI option must be default ON and retained'
           }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
@@ -403,11 +667,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.44 all-views all-structure H/V DIMLINEAR DLL bytes: $size"
+          Write-Host "REV22.53 overall-first native dimensioning and PDF match DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_44-ALL-VIEWS-HV
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_53-SMART-NATIVE-DIMENSIONS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
