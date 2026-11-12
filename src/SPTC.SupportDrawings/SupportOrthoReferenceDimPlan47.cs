@@ -709,6 +709,27 @@ public static class SupportOrthoReferenceDimPlan47
         }
         foreach(var prev in existing)
         {
+            // REV22.54: repeated short 50/75/100 mm labels must not
+            // stack in the same paper-space text column even if they
+            // happen to be on different dimension tiers. Apply this
+            // to ALL short dynamically measured spans, not to a
+            // hard-coded 50 mm model length.
+            if(p.Horizontal==prev.Horizontal)
+            {
+                double span=p.Horizontal?p.Line.R-p.Line.L:
+                    p.Line.T-p.Line.B;
+                double earlier=prev.Horizontal?
+                    prev.Line.R-prev.Line.L:
+                    prev.Line.T-prev.Line.B;
+                double at=p.Horizontal?
+                    (p.Text.L+p.Text.R)*.5:
+                    (p.Text.B+p.Text.T)*.5;
+                double priorAt=prev.Horizontal?
+                    (prev.Text.L+prev.Text.R)*.5:
+                    (prev.Text.B+prev.Text.T)*.5;
+                if(span<8&&earlier<8&&Math.Abs(at-priorAt)<7)
+                    return "SHORT_DIMENSION_LABELS_TOO_CLOSE";
+            }
             if(p.Text.Intersects(prev.Text,.45))
                 return "TEXT_OVER_DIMENSION_TEXT";
             if(p.Text.Intersects(prev.Line,.4))
