@@ -20,12 +20,15 @@ public static class SupportOrthoReferenceDimPlan47
         IReadOnlyList<SupportOrthoDimLinearPlan41.Dimension> Dimensions,
         IReadOnlyList<string> Skipped,
         int OrthographicViews,int ChainDimensions,int OverallDimensions,
-        int CollisionCandidatesRejected,int RequestedDimensions);
+        int CollisionCandidatesRejected,int RequestedDimensions,
+        int LocalMemberDimensions=0);
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
         bool Overall,int Index,string Measurement,
-        double PaperToModelMm);
+        double PaperToModelMm,
+        SupportOrthoSmartDimPlan46.Rect? LocalBounds=null,
+        string SourceKey="");
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text);
@@ -49,7 +52,8 @@ public static class SupportOrthoReferenceDimPlan47
             throw new ArgumentException("REV22.47 invalid drafting inputs.");
         var dimensions=new List<SupportOrthoDimLinearPlan41.Dimension>();
         var skipped=new List<string>();
-        int views=0,chain=0,overall=0,rejected=0,requested=0;
+        int views=0,chain=0,overall=0,localCount=0,
+            rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
 
@@ -74,6 +78,9 @@ public static class SupportOrthoReferenceDimPlan47
                 frame.L+1.4,frame.B+1.4,
                 frame.R-1.4,frame.T-1.4);
             var projected=new List<SupportOrthoSmartDimPlan46.Rect>();
+            var projectedMembers=new List<(
+                SupportOrthoAllViewDimPlan44.Member Member,
+                SupportOrthoSmartDimPlan46.Rect Bounds)>();
             // REV22.48: only HOST-DWG native Plant members contribute to
             // overall lengths or connected-edge dimension chain stations.
             var visibleNative=new Dictionary<string,
@@ -102,6 +109,7 @@ public static class SupportOrthoReferenceDimPlan47
                     continue;
                 }
                 projected.Add(bounds);
+                projectedMembers.Add((member,bounds));
                 visibleNative[member.Key]=bounds;
             }
             if(projected.Count==0)
@@ -301,10 +309,96 @@ public static class SupportOrthoReferenceDimPlan47
                 if(!overallPlaced)
                     skipped.Add(camera.Name+"/"+(horizontal?"H":"V")+
                         ":OVERALL_NO_CLEAR_DIMENSION_LANE");
+
+                // REV22.52: selected native structure profiles may have a
+                // measured cross-section width (e.g. 100 mm) that is not
+                // a chain interval between explicit Plant endpoints.
+                // Permit a distinctly verified projected MEMBER extent,
+                // never an assumed connection station, hole pitch or
+                // fabricated 50/100 value. Limit to two different local
+                // widths per view direction to avoid duplicate clutter.
+                var localCandidates=projectedMembers
+                    .Select(m=>new {
+                        m.Member,
+                        m.Bounds,
+                        From=horizontal?m.Bounds.L:m.Bounds.B,
+                        To=horizontal?m.Bounds.R:m.Bounds.T
+                    })
+                    .Where(m=>m.To-m.From>=.25&&
+                        m.To-m.From<(max-min)*.45&&
+                        m.To-m.From<=Math.Max(16.0,(max-min)*.28))
+                    .OrderBy(m=>m.To-m.From)
+                    .ThenBy(m=>m.Member.Key,StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                var measuredLocalSpans=new List<double>();
+                foreach(var member in localCandidates)
+                {
+                    double length=member.To-member.From;
+                    // Identical parallel projected member widths on the
+                    // same view need only one measurement.
+                    if(measuredLocalSpans.Any(x=>Math.Abs(x-length)<.12))
+                        continue;
+                    if(measuredLocalSpans.Count>=2)break;
+                    // An existing verified chain interval at exactly the
+                    // same stations already conveys this member width.
+                    bool chainAlreadyShows=dimensions.Any(d=>
+                        d.View==camera.Name&&d.Horizontal==horizontal&&
+                        d.Source.Contains("/CHAIN_",StringComparison.Ordinal)&&
+                        Math.Abs((horizontal?d.Ax:d.Ay)-member.From)<.12&&
+                        Math.Abs((horizontal?d.Bx:d.By)-member.To)<.12);
+                    if(chainAlreadyShows)continue;
+                    var localReq=MakeRequest(horizontal,member.From,
+                        member.To,false,0,camera.Scale,unitsToMm)
+                        with {LocalBounds=member.Bounds,
+                            SourceKey=member.Member.Key};
+                    requested++;
+                    bool fitted=false;
+                    foreach(double sign in PreferredSigns(camera.Name,horizontal))
+                    {
+                        if(fitted)break;
+                        foreach(double offset in
+                            SupportOrthoReferenceLayout51.LaneOffsets())
+                        {
+                            if(fitted)break;
+                            for(int tier=0;tier<8;tier++)
+                            {
+                                var candidate=Candidate(camera,assembly,
+                                    projected,verifiedWitnessPoints,
+                                    localReq,sign,offset,tier);
+                                if(candidate==null||
+                                   !Fits(candidate.Value.P,blocks,paper,
+                                       placed,projected))
+                                {
+                                    rejected++;
+                                    continue;
+                                }
+                                // Local dimension line may be adjacent to
+                                // its own member, but never cut across an
+                                // unrelated structure member.
+                                if(projected.Any(b=>b!=member.Bounds&&
+                                    candidate.Value.P.Line.Intersects(b,.20)))
+                                {
+                                    rejected++;
+                                    continue;
+                                }
+                                dimensions.Add(candidate.Value.D);
+                                placed.Add(candidate.Value.P);
+                                measuredLocalSpans.Add(length);
+                                localCount++;
+                                fitted=true;
+                                break;
+                            }
+                        }
+                    }
+                    if(!fitted)
+                        skipped.Add(camera.Name+"/"+member.Member.Key+
+                            ":"+(horizontal?"H":"V")+
+                            "_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE");
+                }
             }
         }
         return new Result(dimensions,skipped,views,chain,overall,rejected,
-            requested);
+            requested,localCount);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
@@ -401,17 +495,24 @@ public static class SupportOrthoReferenceDimPlan47
         IReadOnlyList<(double X,double Y)> explicitEndpoints,
         Request request,double sign,double offset,int textTier=0)
     {
-        double? startWitness=WitnessAt(
-            request.Horizontal,request.From,sign,
-            memberBounds,explicitEndpoints);
-        double? endWitness=WitnessAt(
-            request.Horizontal,request.To,sign,
-            memberBounds,explicitEndpoints);
+        var layoutBox=request.LocalBounds??box;
+        // Local member cross-section dimensions must terminate on that
+        // particular native member's projected faces, not on the
+        // unrelated outer envelope of the whole support assembly.
+        double? startWitness=request.LocalBounds.HasValue?
+            (request.Horizontal?
+                (sign>0?layoutBox.T:layoutBox.B):
+                (sign>0?layoutBox.R:layoutBox.L)):
+            WitnessAt(request.Horizontal,request.From,sign,
+                memberBounds,explicitEndpoints);
+        double? endWitness=request.LocalBounds.HasValue?
+            startWitness:WitnessAt(request.Horizontal,request.To,sign,
+                memberBounds,explicitEndpoints);
         if(!startWitness.HasValue||!endWitness.HasValue)
             return null;
-        double line= request.Horizontal?
-            (sign>0?box.T+offset:box.B-offset):
-            (sign>0?box.R+offset:box.L-offset);
+        double line=request.Horizontal?
+            (sign>0?layoutBox.T+offset:layoutBox.B-offset):
+            (sign>0?layoutBox.R+offset:layoutBox.L-offset);
         double center=(request.From+request.To)*.5;
         double printedWidth=Math.Max(7,request.Measurement.Length*1.85+3);
         double textAt=center;
@@ -450,10 +551,14 @@ public static class SupportOrthoReferenceDimPlan47
         string axis=request.Horizontal?"H":"V";
         string source="DETAIL:"+c.Name+"/"+axis+"/"+
             (request.Overall?"OVERALL":
-                "CHAIN_"+request.Index);
-        string provenance=request.Overall
-            ?"REFERENCE_PROJECTED_OVERALL_NOT_CUT_LENGTH"
-            :"REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH";
+                request.LocalBounds.HasValue?
+                    "MEMBER_"+request.SourceKey:
+                    "CHAIN_"+request.Index);
+        string provenance=request.Overall?
+            "REFERENCE_PROJECTED_OVERALL_NOT_CUT_LENGTH":
+            request.LocalBounds.HasValue?
+                "REFERENCE_PROJECTED_MEMBER_ENVELOPE_NOT_CUT_LENGTH":
+                "REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH";
         // Each A/B dimension extension line now starts at its own
         // matching source member endpoint, rather than at an unrelated
         // edge of the whole multi-member assembly.
