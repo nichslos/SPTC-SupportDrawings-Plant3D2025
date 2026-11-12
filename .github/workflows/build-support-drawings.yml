@@ -30,8 +30,9 @@ jobs:
              $commands.Contains('SPTC REV19:')) {
             throw 'Obsolete REV19 NETLOAD banner has returned'
           }
-          if(-not $commands.Contains('public void Initialize() { }')) {
-            throw 'Expected silent Initialize() for the cleaned production DLL'
+          if(-not $commands.Contains('SupportOrthoDimensionRefresh49.Start();') -or
+             -not $commands.Contains('SupportOrthoDimensionRefresh49.Stop();')) {
+            throw 'REV22.49 silent event initialization and disposal required'
           }
           $labels=Get-Content "$root/SupportOrthoPipeCallout29.cs" -Raw
           if(-not $gen.Contains('SPTC_SUPPORTORTHO10')) {throw 'Production 10-view command missing'}
