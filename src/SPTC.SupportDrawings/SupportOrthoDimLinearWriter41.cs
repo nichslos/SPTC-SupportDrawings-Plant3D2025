@@ -62,6 +62,44 @@ internal static class SupportOrthoDimLinearWriter41
                 {
                     LayerId=layerId
                 };
+                // REV22.45: a short 50/75/100 mm projected span at
+                // 1:30 can be narrower than its text or arrowheads.
+                // Let AutoCAD move those elements OUTSIDE the witness
+                // lines rather than squeezing/hiding their content.
+                // Only the paper dimension is changed, never the model.
+                double measuredPaperSpan=item.Horizontal
+                    ? Math.Abs(item.Bx-item.Ax)
+                    : Math.Abs(item.By-item.Ay);
+                if(measuredPaperSpan<8.0)
+                {
+                    dim.Dimatfit=3;
+                    dim.Dimtix=false;
+                    dim.Dimtofl=true;
+                }
+                // REV22.47: match the technical reference's compact
+                // fabrication-detail DIMLINEAR text/arrow/extension style,
+                // without changing the project-wide DIMSTYLE definition.
+                // These are paper-space sizes in millimetres.
+                if(item.Provenance.StartsWith("REFERENCE_PROJECTED_",
+                    StringComparison.Ordinal))
+                {
+                    dim.Dimtxt=2.0;
+                    dim.Dimasz=1.5;
+                    dim.Dimexo=.8;
+                    dim.Dimexe=1.2;
+                    dim.Dimgap=.7;
+                }
+                // REV22.46: obey the collision planner's reserved text
+                // position rather than letting an automatic style move
+                // text back across another dimension or leader.
+                if(item.PaperTextX.HasValue&&item.PaperTextY.HasValue &&
+                   double.IsFinite(item.PaperTextX.Value)&&
+                   double.IsFinite(item.PaperTextY.Value))
+                {
+                    dim.UsingDefaultTextPosition=false;
+                    dim.TextPosition=new Point3d(
+                        item.PaperTextX.Value,item.PaperTextY.Value,0);
+                }
                 paper.AppendEntity(dim);
                 tr.AddNewlyCreatedDBObject(dim,true);
                 created++;
