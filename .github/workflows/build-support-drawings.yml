@@ -352,7 +352,7 @@ jobs:
           foreach($token in @('LOCAL_CHAIN_UNVERIFIED_MEMBER_ENDPOINTS',
               'verifiedWitnessPoints.Any',
               'if(!VerifiedAt(start)||!VerifiedAt(end))',
-              'if(exact.Length>0)')) {
+              'if(preferExplicit&&exact.Length>0)')) {
             if(-not $detail50.Contains($token)) {
               throw "REV22.50 verified-native-datum guard missing: $token"
             }
