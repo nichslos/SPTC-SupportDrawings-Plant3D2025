@@ -162,6 +162,7 @@ Rev253OverallPriorityTests.Run();
 Rev254RightGutterDiagnosticsTests.Run();
 Rev255NativeMidpointWitnessTests.Run();
 Rev256ManualTerminalDatumTests.Run();
+Rev257ManualFourViewTests.Run();
 Console.WriteLine("REV22.43 vertical overall-height fallback and cross-axis compact safety PASS");
 
 Console.WriteLine("REV22.42 compact DIMLINEAR across six views PASS");
