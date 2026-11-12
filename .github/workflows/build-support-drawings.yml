@@ -513,7 +513,7 @@ jobs:
             }
           }
           if(-not $gen.Contains('REV22_50_NATIVE_GEOMETRY_CACHE_SAVED=') -or
-             -not $gen.Contains('nativeDimensionSegments);')) {
+             -not $gen.Contains('nativeDimensionSegments,nativeEdges59.Edges);')) {
             throw "REV22.50 generator native endpoint snapshot missing"
           }
           # REV22.49.4: dimension witnesses must use each real native
