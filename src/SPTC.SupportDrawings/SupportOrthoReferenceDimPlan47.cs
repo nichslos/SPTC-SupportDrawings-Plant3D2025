@@ -22,14 +22,17 @@ public static class SupportOrthoReferenceDimPlan47
         int OrthographicViews,int ChainDimensions,int OverallDimensions,
         int CollisionCandidatesRejected,int RequestedDimensions,
         int LocalMemberDimensions=0,
-        int PriorityOverallDimensions=0);
+        int PriorityOverallDimensions=0,
+        int NativeMidpointMemberDimensions=0,
+        int BoundsMidpointMemberDimensions=0);
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
         bool Overall,int Index,string Measurement,
         double PaperToModelMm,
         SupportOrthoSmartDimPlan46.Rect? LocalBounds=null,
-        string SourceKey="");
+        string SourceKey="",
+        double? MidpointWitness=null);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text);
@@ -58,7 +61,8 @@ public static class SupportOrthoReferenceDimPlan47
         var dimensions=new List<SupportOrthoDimLinearPlan41.Dimension>();
         var skipped=new List<string>();
         int views=0,chain=0,overall=0,localCount=0,
-            priorityOverallCount=0,rejected=0,requested=0;
+            priorityOverallCount=0,midpointNative=0,
+            midpointBounds=0,rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
 
@@ -137,6 +141,13 @@ public static class SupportOrthoReferenceDimPlan47
             // both axis chains and overall witness selection. The
             // projected AABB alone never authorizes connection stations.
             var verifiedWitnessPoints=new List<(double X,double Y)>();
+            // REV22.55: a selected Plant member's Start/End line
+            // identifies its TRUE axis midpoint. Keep that midpoint
+            // separately by native handle: global bounding boxes alone
+            // cannot locate a sloping member's centerline.
+            var nativeAxisMidpoints=new Dictionary<string,(
+                double X,double Y,double Dx,double Dy)>(
+                StringComparer.OrdinalIgnoreCase);
             if(sources!=null)
                 foreach(var source in sources)
                 {
@@ -158,6 +169,27 @@ public static class SupportOrthoReferenceDimPlan47
                             continue;
                         verifiedWitnessPoints.Add((p.X,p.Y));
                     }
+                    if(!source.Provenance.Equals(
+                        "EXPLICIT_MEMBER_ENDPOINTS",
+                        StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var a=SupportOrthoMemberCalloutPlan17.Project(camera,
+                        source.Ax,source.Ay,source.Az);
+                    var b=SupportOrthoMemberCalloutPlan17.Project(camera,
+                        source.Bx,source.By,source.Bz);
+                    var middle=SupportOrthoMemberCalloutPlan17.Project(
+                        camera,(source.Ax+source.Bx)*.5,
+                        (source.Ay+source.By)*.5,
+                        (source.Az+source.Bz)*.5);
+                    if(!new[]{middle.X,middle.Y,a.X,a.Y,b.X,b.Y}
+                            .All(double.IsFinite)||
+                       middle.X<sourceBounds.L-.20||
+                       middle.X>sourceBounds.R+.20||
+                       middle.Y<sourceBounds.B-.20||
+                       middle.Y>sourceBounds.T+.20)
+                        continue;
+                    nativeAxisMidpoints[source.Key]=(
+                        middle.X,middle.Y,b.X-a.X,b.Y-a.Y);
                 }
 
             // Reserve the two OUTER overall dimensions before chain
@@ -429,10 +461,39 @@ public static class SupportOrthoReferenceDimPlan47
                         Math.Abs((horizontal?d.Ax:d.Ay)-member.From)<.12&&
                         Math.Abs((horizontal?d.Bx:d.By)-member.To)<.12);
                     if(chainAlreadyShows)continue;
+                    // Dimension the true member CROSS-SECTION at the
+                    // projected midpoint of its own longitudinal axis.
+                    // This is different from using a global assembly
+                    // center or the outer member face as witness origin.
+                    // If the native Start/End axis cannot be verified,
+                    // the projected member midpoint is an explicitly
+                    // diagnosed envelope approximation, never a
+                    // fabricated Plant centerline or connection point.
+                    bool verifiedMidpoint=nativeAxisMidpoints.TryGetValue(
+                        member.Member.Key,out var axis);
+                    // Projected member axis must be transverse to the
+                    // measured width (the long direction of the member).
+                    // If it runs along the measured direction instead,
+                    // the axis midpoint does not prove that width.
+                    if(verifiedMidpoint)
+                    {
+                        double longChange=horizontal?
+                            Math.Abs(axis.Dy):Math.Abs(axis.Dx);
+                        double widthChange=horizontal?
+                            Math.Abs(axis.Dx):Math.Abs(axis.Dy);
+                        verifiedMidpoint=longChange>.4&&
+                            longChange>widthChange*2;
+                    }
+                    double witness=verifiedMidpoint?
+                        (horizontal?axis.Y:axis.X):
+                        horizontal?
+                            (member.Bounds.B+member.Bounds.T)*.5:
+                            (member.Bounds.L+member.Bounds.R)*.5;
                     var localReq=MakeRequest(horizontal,member.From,
                         member.To,false,0,camera.Scale,unitsToMm)
                         with {LocalBounds=member.Bounds,
-                            SourceKey=member.Member.Key};
+                            SourceKey=member.Member.Key,
+                            MidpointWitness=witness};
                     requested++;
                     bool fitted=false;
                     foreach(double sign in PreferredSigns(camera.Name,horizontal))
@@ -471,6 +532,8 @@ public static class SupportOrthoReferenceDimPlan47
                                 placed.Add(candidate.Value.P);
                                 measuredLocalSpans.Add(length);
                                 localCount++;
+                                if(verifiedMidpoint)midpointNative++;
+                                else midpointBounds++;
                                 fitted=true;
                                 break;
                             }
@@ -484,7 +547,8 @@ public static class SupportOrthoReferenceDimPlan47
             }
         }
         return new Result(dimensions,skipped,views,chain,overall,rejected,
-            requested,localCount,priorityOverallCount);
+            requested,localCount,priorityOverallCount,
+            midpointNative,midpointBounds);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
@@ -591,9 +655,9 @@ public static class SupportOrthoReferenceDimPlan47
         // particular native member's projected faces, not on the
         // unrelated outer envelope of the whole support assembly.
         double? startWitness=request.LocalBounds.HasValue?
-            (request.Horizontal?
-                (sign>0?layoutBox.T:layoutBox.B):
-                (sign>0?layoutBox.R:layoutBox.L)):
+            request.MidpointWitness??(request.Horizontal?
+                (layoutBox.B+layoutBox.T)*.5:
+                (layoutBox.L+layoutBox.R)*.5):
             WitnessAt(request.Horizontal,request.From,sign,
                 memberBounds,explicitEndpoints,!request.Overall);
         double? endWitness=request.LocalBounds.HasValue?
