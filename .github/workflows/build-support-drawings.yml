@@ -286,6 +286,24 @@ jobs:
           if(($tenPlan.Split('NativeOrthoViewTitlePlan.MinimumFrameWidth(').Count-1) -lt 2) {
             throw 'REV22.49.1 title width must apply both during anchor fitting and final viewport output'
           }
+          # REV22.54: the RIGHT overall lane must not be pushed into
+          # LEFT view's printed pipe/steel labels by reserving two
+          # imaginary outer lanes; log precise collision classes instead.
+          $dim54=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $layout54=Get-Content "$root/SupportOrthoReferenceLayout51.cs" -Raw
+          $generator54=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('RejectionReason(',
+              'OVERALL_DIAGNOSTICS=', 'ANNOTATION_TEXT_NEIGHBOR_VIEW_',
+              'foreach(double offset in SupportOrthoReferenceLayout51')) {
+            if(-not $dim54.Contains($token)) {
+              throw "REV22.54 strict collision and near-left gutter guard missing: $token"
+            }
+          }
+          if(-not $layout54.Contains('OverallLaneOffsets(') -or
+             -not $generator54.Contains(
+                 'REV22_54_RIGHT_OVERALL_COLLISION_DIAGNOSTICS=')) {
+            throw 'REV22.54 paper gutter search and diagnostics integration missing'
+          }
           # REV22.53: reserve native H and V overall dimensions before
           # any optional 50/100 mm member details, especially RIGHT/V
           # which REV22.52 skipped after local H placements.
@@ -667,11 +685,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.53 overall-first native dimensioning and PDF match DLL bytes: $size"
+          Write-Host "REV22.54 right overall lane + classified collisions DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_53-SMART-NATIVE-DIMENSIONS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_54-RIGHT-OVERALL-GUTTER
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
