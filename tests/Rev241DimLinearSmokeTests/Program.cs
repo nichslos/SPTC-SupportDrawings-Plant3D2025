@@ -151,6 +151,27 @@ Assert(twinPlan.Dimensions.Count==1 &&
     twinPlan.Skipped.Any(x=>x.Contains("EQUAL_LENGTH_ALREADY_DIMENSIONED_BY_")),
     "identical vertical overall-height dimensions remain compact");
 Rev244AllViewTests.Run();
+Rev246SmartLayoutTests.Run();
+Rev247ReferenceStyleTests.Run();
+Rev249DimensionUpdateTests.Run();
+Rev2492DynamicDimensionTests.Run();
+Rev2494MemberWitnessTests.Run();
+Rev251PdfReferenceLayoutTests.Run();
+Rev252ManualPdfDimensionTests.Run();
+Rev253OverallPriorityTests.Run();
+Rev254RightGutterDiagnosticsTests.Run();
+Rev255NativeMidpointWitnessTests.Run();
+Rev256ManualTerminalDatumTests.Run();
+Rev257ManualFourViewTests.Run();
+Rev258WitnessIntersectionsTests.Run();
+Rev259NativeStraightEdgeTests.Run();
+Rev260CoordinatedLayoutTests.Run();
+Rev261DrawingQualityAuditTests.Run();
+Rev262TosAndLocalRecoveryTests.Run();
+Rev263AdaptiveLocalDimensionTests.Run();
+Rev264LeaderDimensionCoordinationTests.Run();
+Rev265LabelClearanceTests.Run();
+DimensionReflowTests.Run();
 Console.WriteLine("REV22.43 vertical overall-height fallback and cross-axis compact safety PASS");
 
 Console.WriteLine("REV22.42 compact DIMLINEAR across six views PASS");
