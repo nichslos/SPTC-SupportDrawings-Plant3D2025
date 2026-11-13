@@ -176,8 +176,9 @@ public static class SupportOrthoReferenceDimPlan47
             double minY=projected.Min(b=>b.B),maxY=projected.Max(b=>b.T);
             var assembly=new SupportOrthoSmartDimPlan46.Rect(
                 minX,minY,maxX,maxY);
-            lanePreferences?.TryGetValue(camera.Name,
-                out var preference);
+            PlacementPreference? preference=null;
+            if(lanePreferences!=null)
+                lanePreferences.TryGetValue(camera.Name,out preference);
             var blocks=FixedZones(camera,cameras,callouts,titles);
             if(additionalKeepouts!=null)
                 blocks.AddRange(additionalKeepouts.Where(x=>x.IsFinite)
