@@ -28,6 +28,10 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
     private readonly CheckBox skipExisting=new();
     private readonly CheckBox publishPdf=new();
     private readonly ComboBox pdfDevice=new();
+    private readonly Label saveStatus=new();
+    internal SupportProductionPackagePlan.Settings? VerifiedSettings{
+        get;private set;
+    }
 
     internal SupportProductionPackageDialog(string projectRoot)
     {
@@ -56,8 +60,10 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
                 AnchorStyles.Right;
             panel.Controls.Add(control);
         }
+        enabled.Name="SPTC_PRODUCTION_ENABLED";
         enabled.Text="Enable production package metadata and draft register";
         enabled.SetBounds(20,15,630,30);
+        enabled.AutoCheck=true;
         panel.Controls.Add(enabled);
         LabelAt("Project code",56);TextAt(projectCode,53);
         LabelAt("Drawing series",94);TextAt(series,91);
@@ -94,9 +100,21 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
         skipExisting.Text="Allow skipping separately verified, unchanged issued drawings";
         skipExisting.SetBounds(20,550,645,25);
         panel.Controls.Add(skipExisting);
+        publishPdf.Name="SPTC_PUBLISH_PDF_ENABLED";
         publishPdf.Text="Auto-save generated Ortho DWG and publish native PDF (opt-in)";
         publishPdf.SetBounds(20,580,650,27);
+        publishPdf.AutoCheck=true;
         panel.Controls.Add(publishPdf);
+        // PDF publishing requires the master production package. Do not
+        // silently discard an explicitly checked PDF setting because the
+        // master checkbox was accidentally left disabled.
+        publishPdf.CheckedChanged+=(_,_)=>{
+            if(publishPdf.Checked)enabled.Checked=true;
+        };
+        enabled.CheckedChanged+=(_,_)=>{
+            if(!enabled.Checked&&publishPdf.Checked)
+                publishPdf.Checked=false;
+        };
         panel.Controls.Add(new Label {
             Text="PDF plotter:",Location=new Point(20,618),Size=new Size(240,24)
         });
@@ -122,12 +140,19 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
         };
         panel.Controls.Add(save);
         panel.Controls.Add(cancel);
+        saveStatus.Name="SPTC_PRODUCTION_SAVE_STATUS";
+        saveStatus.SetBounds(20,752,663,25);
+        saveStatus.ForeColor=Color.DarkSlateGray;
+        panel.Controls.Add(saveStatus);
         AcceptButton=save;
         CancelButton=cancel;
 
-        SupportProductionPackageSettingsStore.TryLoad(
-            projectRoot,out var current,out _);
+        bool found=SupportProductionPackageSettingsStore.TryLoad(
+            projectRoot,out var current,out string loadStatus);
         Apply(current);
+        saveStatus.Text=found?
+            "Loaded from this project's settings: "+loadStatus:
+            "No valid saved production settings ("+loadStatus+").";
         save.Click+=(_,_)=>Save();
     }
 
@@ -177,7 +202,15 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
                 overwrite.Checked,requirePdf.Checked,
                 fullDimensions.Checked,skipExisting.Checked,
                 supportTagAttribute.Text,publishPdf.Checked,pdfDevice.Text);
-            SupportProductionPackageSettingsStore.Save(projectRoot,settings);
+            // Never report success or close until the same project and
+            // both checkbox values have been round-trip verified from disk.
+            var verified=SupportProductionPackageSettingsStore.SaveAndVerify(
+                projectRoot,settings);
+            VerifiedSettings=verified;
+            saveStatus.Text="Verified: Production="+verified.Enabled+
+                " PDF="+verified.PublishPdf+
+                " | "+SupportProductionPackageSettingsStore.PathForProject(
+                    projectRoot);
             DialogResult=WinForms.DialogResult.OK;
             Close();
         }
