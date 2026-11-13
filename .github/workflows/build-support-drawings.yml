@@ -320,6 +320,34 @@ jobs:
                'REV22_62_COMPACT_LOCAL_DIMENSIONS_RECOVERED=')) {
             throw 'REV22.62 source-grounded TOS and local recovery diagnostics missing'
           }
+          # REV22.65: the real TEST5 1.8-mm label row gap MUST
+          # pass preflight; genuine overlapping labels must still fail.
+          # Count proposals separately from dimension replans so a
+          # zero-attempt run cannot silently hide its rejection cause.
+          $layout65=Get-Content "$root/SupportOrthoLeaderDimensionLayout64.cs" -Raw
+          $gen65=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('LABEL_TO_LABEL_OVERLAP',
+              'const double textInsetSafety=.35',
+              'PaperLayoutRejectionReason(',
+              'ProposedLayouts=0',
+              'LayoutRejections=null',
+              'Reject(view,issue)',
+              'NO_ADDITIONAL_LOCAL_DIMENSION')) {
+            if(-not $layout65.Contains($token)) {
+              throw "REV22.65 label clearance/rejection evidence missing: $token"
+            }
+          }
+          foreach($token in @('REV22_65_LAYOUTS_PROPOSED=',
+              'REV22_65_PREFLIGHT_VALID_LAYOUTS=',
+              'REV22_65_LAYOUT_REJECTION=')) {
+            if(-not $gen65.Contains($token)) {
+              throw "REV22.65 diagnostic not written: $token"
+            }
+          }
+          if(-not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw).Contains(
+              'Rev265LabelClearanceTests.Run();')) {
+            throw 'REV22.65 TEST5 row-spacing regression not registered'
+          }
           # REV22.64: annotate first on the draft plan, but permit
           # a joint leader/dimension placement only if it keeps EVERY
           # previously accepted dynamic dimension exactly unchanged.
@@ -948,11 +976,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.64 verified coordinated annotation/dimension DLL bytes: $size"
+          Write-Host "REV22.65 verified callout clearance and layout rejection diagnostics DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_64-COORDINATED-LEADER-DIMENSIONS
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_65-LABEL-CLEARANCE-DIAGNOSTICS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
