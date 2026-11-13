@@ -115,6 +115,34 @@ public static class SupportOrthoReferenceLayout51
             yield return first+gap*i/16.0;
     }
 
+    // REV22.63 optional recovery: explore closer paper-space offsets,
+    // without changing model endpoints or the protected overall lane.
+    // The planner still rejects candidates outside the overall hierarchy.
+    public static IEnumerable<double> AdaptiveLocalMemberLaneOffsets(
+        double textHeight=2.0)
+    {
+        double first=ChainOffset(textHeight);
+        yield return first;
+        yield return Math.Max(textHeight*.85,first-textHeight*.55);
+        yield return Math.Max(textHeight*.65,first-textHeight);
+        yield return first+textHeight*.30;
+        yield return first+textHeight*.65;
+        yield return first+textHeight*1.0;
+    }
+
+    // Move a SHORT optional dimension label along its existing
+    // dimension line only; this NEVER modifies its witness points,
+    // DIMLFAC, measurement or source member. Earlier compact tiers
+    // are retained first and additional bounded offsets tried later.
+    public static double AdaptiveLocalLabelAdvance(int tier,
+        double textHeight=2.0)
+    {
+        if(tier<0)throw new ArgumentOutOfRangeException(nameof(tier));
+        int pair=tier/2;
+        return pair<4?pair*textHeight*.375:
+            textHeight*(1.125+(pair-3)*.9);
+    }
+
     // REV22.62: the FIRST chain lane is unchanged, so verified
     // successful drawings retain their placement. Where the only
     // first lane collides with a view leader, try intermediate lanes
