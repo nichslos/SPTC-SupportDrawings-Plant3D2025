@@ -1515,10 +1515,20 @@ public sealed class SupportOrthoTenViewGenerator
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 var supportHandles=plantSupports.Members.Select(m=>m.Handle)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                int steelTosLabels=options.Tos?
-                    visibleCallouts.Count(x=>steelHandles.Contains(x.Handle)):0;
-                int supportTosLabels=options.Tos?
-                    visibleCallouts.Count(x=>supportHandles.Contains(x.Handle)):0;
+                // REV22.62: steel/support TOS must be counted only
+                // where the selected native source HAS a true TOS
+                // property/qualified approximation AND the plotted
+                // callout actually carries a TOS line. A description
+                // by itself is NOT a TOS label. This also works when
+                // the user enables TOS but disables Description.
+                var steelTos62=SupportOrthoTosAudit62.Count(
+                    sourceAnnotations,visibleCallouts,steelHandles,
+                    options.Views.Count,options.Tos);
+                var supportTos62=SupportOrthoTosAudit62.Count(
+                    sourceAnnotations,visibleCallouts,supportHandles,
+                    options.Views.Count,options.Tos);
+                int steelTosLabels=steelTos62.Visible;
+                int supportTosLabels=supportTos62.Visible;
                 Log("STEP10_HORIZONTAL_TOS_LABEL_COUNT="+steelTosLabels);
                 Log("STEP10_SUPPORT_TOS_LABEL_COUNT="+supportTosLabels);
                 Log("STEP10_TOTAL_TOS_LABEL_COUNT="+
@@ -1553,10 +1563,15 @@ public sealed class SupportOrthoTenViewGenerator
                         ? options.LineNumber||options.Bop
                         : options.Description||(options.Tos&&m.HasTos)));
                 int target=options.Views.Count*perViewExpected;
-                int steelTosTarget=options.Tos?
-                    options.Views.Count*horizontalSteel.HorizontalCount:0;
-                int supportTosTarget=options.Tos?
-                    options.Views.Count*plantSupports.Members.Count:0;
+                int steelTosTarget=steelTos62.Expected;
+                int supportTosTarget=supportTos62.Expected;
+                Log("REV22_62_TOS_REAL_SOURCE_MEMBERS="+
+                    (steelTosTarget+supportTosTarget)/
+                        Math.Max(1,options.Views.Count));
+                Log("REV22_62_STEEL_TOS="+steelTosLabels+
+                    "/"+steelTosTarget);
+                Log("REV22_62_SUPPORT_TOS="+supportTosLabels+
+                    "/"+supportTosTarget);
                 int pipeBopTarget=options.Bop?
                     options.Views.Count*pipeRead.Pipes.Count:0;
                 // XREF file-name notes are best-effort; failure/overflow
