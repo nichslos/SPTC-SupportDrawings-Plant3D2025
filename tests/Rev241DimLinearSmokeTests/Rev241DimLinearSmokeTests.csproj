@@ -50,6 +50,8 @@
              Link="SupportOrthoNativeDimensionPolicy48.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoUpdatePerformancePolicy.cs"
              Link="SupportOrthoUpdatePerformancePolicy.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPdfPolicy.cs"
+             Link="SupportProductionPdfPolicy.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPackagePlan.cs"
              Link="SupportProductionPackagePlan.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPackageSettingsStore.cs"

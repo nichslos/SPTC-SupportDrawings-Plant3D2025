@@ -1,0 +1,62 @@
+# Phase 2 — Native PDF publishing for SPTC SupportDrawings
+
+**State:** opt-in test candidate, not a live-validated issue/release process.
+
+## Design and safety
+
+This change is based on Phase 1 production package work and retains all existing production commands:
+`SPTC_SUPPORTORTHO10`, `SPTC_SUPPORTEXPORT`, `SPTC_SUPPORTBATCH`, and `SPTC_SUPPORT2DBATCH`.
+
+Native Autodesk Ortho generation, the 10 cameras, dimension calculations, XREF policy, native title/view annotations, `PLANTORTHOUPDATE` scheduling/fast path and the existing safe 25/27 dimension plan are not modified.
+
+New native PDF plotting is **off by default**. It only affects the `SPTC_SUPPORTORTHO10` single/batch native Ortho workflow when a valid per-project production package is enabled and its **Auto-save generated Ortho DWG and publish native PDF** option is explicitly enabled.
+
+In the existing **Production package...** dialog, the operator can choose:
+- `DWG To PDF.pc3`
+- `AutoCAD PDF (General Documentation).pc3`
+
+These are approved device names; a requested device must also actually be installed on the local AutoCAD machine.
+
+### PDF publication sequence
+
+1. Generate the registered native Ortho drawing normally, preserving existing native view/dimension QA checks and the result TXT log.
+2. Build the draft production package entry with the stable project/series/support-derived drawing number.
+3. **Preflight:** require QA PASS, the expected number of registered native views, verified essential H/V overall dimensions, no reported witness intersections, and complete explicitly mapped title-block attributes if configured. Optional local omissions may remain if the operator has not requested full dimension coverage.
+4. Reject a missing DWG or a pre-existing same-name PDF. Never overwrite or delete a pre-existing issued PDF.
+5. Verify the active target document is the newly generated Ortho DWG and not the source model; reject model-space plotting.
+6. Explicitly save the annotated target Ortho DWG through the AutoCAD database API while its document is locked. Verify the saved file exists and has nonzero substantive content.
+7. Use native `Autodesk.AutoCAD.PlottingServices.PlotFactory.CreatePublishEngine()` for a **single recorded paper-space layout**. Copy the layout's page setup to an in-memory override; use an exact installed PC3 and exactly matching canonical paper-media name. Disable paper-size auto-matching to avoid silently changing sheet dimensions.
+8. Temporarily set foreground plotting (`BACKGROUNDPLOT=0`) and restore the previous value in a finally block. Keep Autodesk's plot progress dialog hidden because the existing SPTC progress window is visible.
+9. Confirm the resulting new PDF physically exists and has a PDF file header and EOF trailer before recording `PDF_PUBLISHED_VERIFIED`.
+10. Update the per-drawing JSON sidecar and single/batch CSV register with the PDF output path, PDF byte count, saved DWG byte count, and plot device. On failed/blocked jobs record an explicit `PDF_FAILED_*` or `PDF_BLOCKED_*` status and no fabricated PDF path.
+
+### Generated outputs
+
+For each successful job:
+- Native project-registered drawing: `<generated drawing>.dwg`
+- Verified PDF after explicit opt-in: `<generated drawing>.pdf`
+- Existing Ortho generation report: `<generated drawing>_RESULT.txt`
+- Production metadata sidecar: `<generated drawing>_RESULT.production.json`
+- CSV register: `<generated drawing>_RESULT.register.csv` (single) or `SPTC_DRAWING_REGISTER_*.csv` (batch)
+
+For batch runs, failures and blocked PDFs appear as failed package rows, even when DWG generation succeeds. The existing per-support sequential progress bar counts completed jobs, not just generated PDFs.
+
+**All successful PDFs remain marked `DRAFT_SAVED_DWG_PDF_NEEDS_REVIEW`, not issue-verified.** PDF file integrity checks are not a substitute for inspecting the plotted layout, lineweights, dimensions, title block and company drawing standards. No automatic engineering approval or revision issue is performed.
+
+## Test procedure (copied Plant 3D 2025 project only)
+
+1. Close Plant 3D and back up the last accepted DLL before `NETLOAD` of this test DLL.
+2. On the copied TEST5 project, set the actual registered EMPTY native Ortho seed and select known support geometry. Confirm old baseline: 10 views, 25/27 dimensions, 12/12 essential overall dimensions, 10/10 TOS, zero clashes, and successful update scheduling.
+3. Configure the production package with real project/series/title and **exact** company title-block attributes. Check that an unknown or ambiguous mapped title block blocks publishing instead of guessing.
+4. Enable PDF publishing and choose a PDF PC3 actually installed on that machine. Confirm the existing native Ortho sheet media is available on that PC3.
+5. Generate **one** Ortho first; inspect the saved DWG, PDF page size/orientation/scale, viewport content, dimensions, TOS/BOP annotations, filename and sidecars.
+6. Repeat for 2–3 selected supports using batch Ortho; inspect the CSV's individual DWG, PDF and QA statuses.
+7. Test an unavailable PDF plotter, missing/invalid title block, already present output PDF, and missing dimension QA. No silent overwrite or false `PDF_PUBLISHED_VERIFIED` status should occur.
+8. Run `PLANTORTHOUPDATE` and verify existing fast-path behavior is unchanged. PDF auto-publishing is **not** attached to `PLANTORTHOUPDATE` events.
+9. Retain the old DLL rollback package until the new PDF workflow passes a real Plant 3D run.
+
+## CI coverage and limitations
+
+Windows CI compiles against the existing AutoCAD 2025 references and runs pure regression tests for opt-in defaults, exact page/device policy source invariants, QA gating, protected overall dimensions, missing title blocks, non-overwriting, PDF magic/EOF audit, batch status reporting and the old dimension/refresh tests.
+
+The GitHub Actions runner does **not** launch licensed Plant 3D to execute the real native PlotEngine or to inspect rendered PDF geometry. Therefore this build is **not** certified as a field-tested plotting workflow until the user-side TEST5 checks above succeed. A native plotting failure must not invalidate or overwrite the original registered native Ortho drawing.

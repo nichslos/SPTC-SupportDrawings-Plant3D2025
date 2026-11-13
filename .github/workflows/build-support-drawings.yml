@@ -197,6 +197,41 @@ jobs:
                   'ProductionPackageSmokeTests.Run();')) {
             throw 'Production package palette/regression integration missing'
           }
+          # Phase 2 native PDF publishing: only an opted-in session,
+          # after complete view + dimension QA, an exact DWG save and
+          # a verified physical PDF. No UPDATE event may initiate plots.
+          $pdfPolicy=Get-Content "$root/SupportProductionPdfPolicy.cs" -Raw
+          $pdfNative=Get-Content "$root/SupportProductionNativePdfPublisher.cs" -Raw
+          $pdfConfig=Get-Content "$root/SupportProductionPackageDialog.cs" -Raw
+          foreach($token in @('PDF_BLOCKED_QA','PDF_BLOCKED_TITLEBLOCK',
+              'PDF_ALREADY_EXISTS_NO_OVERWRITE','VerifyPdf(',
+              '%%EOF','PDF_PUBLISHED_VERIFIED',
+              'DRAFT_SAVED_DWG_PDF_NEEDS_REVIEW')) {
+            if(-not $pdfPolicy.Contains($token)) {
+              throw "Phase 2 native PDF preflight guard missing: $token"
+            }
+          }
+          foreach($token in @('targetDoc.Database.SaveAs(',
+              'targetDoc.LockDocument()',
+              'PlotFactory.ProcessPlotState',
+              'PlotFactory.CreatePublishEngine()',
+              'MatchingPolicy.MatchDisabled',
+              'SetPlotConfigurationName(sheet,plotDevice,media)',
+              'SetPlotType(sheet,',
+              'BACKGROUNDPLOT',
+              'ReportLine(')) {
+            if($token -eq 'ReportLine('){continue}
+            if(-not $pdfNative.Contains($token)) {
+              throw "Phase 2 native PDF publishing integration missing: $token"
+            }
+          }
+          if(-not $pdfConfig.Contains('publishPdf.Text=') -or
+             -not $productionGenerator.Contains(
+                 'SupportProductionNativePdfPublisher.Publish(') -or
+             -not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw
+                 ).Contains('ProductionPdfSmokeTests.Run();')) {
+            throw 'Phase 2 opt-in PDF UI, batch publishing or regression absent'
+          }
           # Palette DPI/resize regression is independent of geometry
           # and native PLANTORTHOUPDATE. Never solve clipping by removing
           # a command, option or the modeless palette.

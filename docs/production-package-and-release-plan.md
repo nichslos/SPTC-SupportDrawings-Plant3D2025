@@ -82,8 +82,9 @@ dimension count, QA PASS, witness intersections and optional omissions.
 - **Every generated sidecar starts as \`DRAFT_NEEDS_SAVED_DWG_AND_QA\`.**
   Existing native project APIs may hold the new DWG in memory; a cloned disk
   file is not proof that the annotated DWG was saved.
-- PDF is \`PDF_REQUIRED_NOT_PUBLISHED\` when required. **No native PDF
-  plotting is performed** by this phase; an output file is never invented.
+- PDF is \`PDF_REQUIRED_NOT_PUBLISHED\` when required. **Phase 2 implements opt-in native PDF plotting** after a verified
+  DWG save, passing essential QA, exact media and physical PDF checks.
+  Any generated PDF remains a draft requiring engineering review.
 - The existing attribute-only material register remains the safe BOM
   starting point. Actual fabrication takeoff requires verified class/spec
   and unit rules, so no quantities or cut lengths are fabricated.
@@ -117,9 +118,9 @@ mass-merge open PRs based solely on a successful compilation:
 
 ## Follow-on stages, NOT implicitly enabled by this phase
 
-- Real native PDF plotting: implement as a separate guarded AutoCAD
-  PlotEngine/PDF publisher, verify plot configuration/layout, saved DWG
-  and media size, ensure PDF output actually exists, then integrate into QA.
+- Native PDF plotting is implemented in Phase 2 as an **opt-in test
+  candidate**; runtime operation, output fidelity and company sheet
+  compatibility must be validated in Plant 3D 2025 before release.
 - Explicit approved/released revision state and issue-number allocation,
   with rollback and no overwriting of issued PDFs.
 - Safe batch resume/skip with confirmed saved drawing and verified PDF.
