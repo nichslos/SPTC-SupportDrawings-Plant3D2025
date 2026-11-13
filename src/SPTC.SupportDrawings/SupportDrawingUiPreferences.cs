@@ -18,6 +18,10 @@ internal static class SupportDrawingUiPreferences
 {
     internal static readonly string[] AllViews =
         {"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK","NW","NE","SW","SE"};
+    private static readonly string[] UiScales =
+        {SupportDrawingPaperScale39.Automatic,"1:10","1:20","1:30",
+         "1:40","1:50","1:75","1:100","1:150","1:200",
+         "1:250","1:500",SupportDrawingPaperScale39.Custom};
 
     internal sealed record Values(
         string ScaleSelection,int CustomScale,string DrawingPrefix,
@@ -52,6 +56,10 @@ internal static class SupportDrawingUiPreferences
         if(value.CustomScale<SupportDrawingPaperScale39.Min||
            value.CustomScale>SupportDrawingPaperScale39.Max)
             throw new ArgumentException("Custom paper scale is invalid.");
+        if(!UiScales.Contains(value.ScaleSelection,
+            StringComparer.Ordinal))
+            throw new ArgumentException(
+                "Saved scale must match an available UI choice.");
         SupportDrawingPaperScale39.Resolve(
             value.ScaleSelection,value.CustomScale);
         string prefix=value.DrawingPrefix??"";
@@ -100,8 +108,7 @@ internal static class SupportDrawingUiPreferences
     {
         string path=StoragePath(projectRoot);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        string tmp=path+"."+Guid.NewGuid().ToString("N",
-            CultureInfo.InvariantCulture)+".tmp";
+        string tmp=path+"."+Guid.NewGuid().ToString("N")+".tmp";
         try
         {
             File.WriteAllText(tmp,Serialize(value),new UTF8Encoding(false));
@@ -125,7 +132,8 @@ internal static class SupportDrawingUiPreferences
         }
         catch(Exception ex) when (ex is IOException or
             UnauthorizedAccessException or ArgumentException or
-            JsonException or NotSupportedException)
+            JsonException or NotSupportedException or
+            System.Security.SecurityException)
         {
             // Malformed/stale files must never stop Plant 3D or a
             // production SPTC drawing. Fall back to validated defaults.
