@@ -39,6 +39,11 @@ internal sealed record SupportDrawingUiOptions(
 
 internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 {
+    // A fixed reference canvas inside a scrollable, DPI-aware host
+    // prevents clipped Run/Preflight controls when an AutoCAD palette is
+    // docked narrow or Windows display scaling is 125%/150%.
+    // Geometry and commands are untouched; only WinForms layout changes.
+    private readonly Panel layoutSurface = new();
     private readonly TabControl tabs = new();
     private readonly ComboBox cubeMode = new();
     private readonly CheckBox autoSeed = new();
@@ -75,43 +80,58 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         Name = "SPTC_SupportDrawingManager40";
         Font = new Font("Segoe UI", 9f);
         Size = new Size(805, 765);
-        MinimumSize = new Size(780, 740);
+        MinimumSize = new Size(360, 420);
         BackColor = Color.White;
+        AutoScaleMode = AutoScaleMode.Dpi;
         AutoScroll = true;
+        // The scrollable reference canvas retains the established 805px
+        // layout, including all four operation tabs and footer controls.
+        // Docking below its width exposes horizontal/vertical scrollbars
+        // rather than overlapping columns or hiding action buttons.
+        layoutSurface.Name = "SPTC_UI_LAYOUT_SURFACE";
+        layoutSurface.SetBounds(0,0,805,765);
+        layoutSurface.BackColor = Color.White;
+        Controls.Add(layoutSurface);
         // REV22.40: Hosted permanently as a modeless AutoCAD PaletteSet
         // UserControl. No WinForms DialogResult or Close() on Run.
 
         // The supplied SPTC Engineering logo is embedded; no image path needed.
         // A larger top band keeps the full wordmark readable at Windows DPI.
-        Controls.Add(SupportBranding36.MakeLogo(18, 10, 184, 118));
+        layoutSurface.Controls.Add(SupportBranding36.MakeLogo(18, 10, 184, 118));
         Label heading = new()
         {
             Text = "SUPPORT DRAWING MANAGER",
             Font = new Font("Segoe UI", 13f, FontStyle.Bold),
             Location = new Point(222, 21), Size = new Size(545, 33)
         };
-        Controls.Add(heading);
+        layoutSurface.Controls.Add(heading);
         Label brandSubtitle = new()
         {
             Text = "SPTC Engineering  |  AutoCAD Plant 3D 2025",
             ForeColor = Color.DimGray,
             Location = new Point(222, 57), Size = new Size(545, 25)
         };
-        Controls.Add(brandSubtitle);
+        layoutSurface.Controls.Add(brandSubtitle);
         sourceLabel.Text = "Source: " + Path.GetFileName(sourceDwg) +
             "     |     Project: " + Path.GetFileName(projectRoot.TrimEnd('\\','/'));
         sourceLabel.Location = new Point(222, 94);
         sourceLabel.Size = new Size(545, 24);
         sourceLabel.AutoEllipsis = true;
-        Controls.Add(sourceLabel);
+        layoutSurface.Controls.Add(sourceLabel);
 
         tabs.Location = new Point(18, 140);
         tabs.Size = new Size(770, 475);
         tabs.Anchor = AnchorStyles.Top | AnchorStyles.Bottom |
             AnchorStyles.Left | AnchorStyles.Right;
-        Controls.Add(tabs);
+        layoutSurface.Controls.Add(tabs);
 
-        TabPage orthoTab = new("10-View Ortho") { Name = "ortho", AutoScroll = true };
+        TabPage orthoTab = new("10-View Ortho") {
+            Name = "ortho", AutoScroll = true
+        };
+        // The settings area extends below the original tab viewport.
+        // Explicit scroll extent makes the save/load/default controls
+        // reachable at narrow palette sizes and higher Windows DPI.
+        orthoTab.AutoScrollMinSize = new Size(735,600);
         tabs.TabPages.Add(orthoTab);
         tabs.TabPages.Add(MakeInfoTab("export", "Support Export",
             "Export ONE selected support as an independent DWG.\r\n" +
@@ -296,7 +316,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 
         Label previewLabel = L("Preflight / configuration summary", 22, 630, 420);
         previewLabel.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-        Controls.Add(previewLabel);
+        layoutSurface.Controls.Add(previewLabel);
         preview.SetBounds(20, 652, 600, 73);
         preview.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         preview.Multiline = true;
@@ -304,21 +324,21 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         preview.ScrollBars = ScrollBars.Vertical;
         preview.Text = "Project: " + projectRoot +
             "\r\nNo drawing writes occur until validation has passed.";
-        Controls.Add(preview);
+        layoutSurface.Controls.Add(preview);
 
         preflightButton.Text = "Preflight";
         preflightButton.Size = new Size(110, 29);
         preflightButton.Location = new Point(637, 652);
         preflightButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         preflightButton.Click += (_,_) => ShowPreflight();
-        Controls.Add(preflightButton);
+        layoutSurface.Controls.Add(preflightButton);
 
         runButton.Text = "Run selected";
         runButton.Size = new Size(112, 30);
         runButton.Location = new Point(637, 689);
         runButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         runButton.Click += (_,_) => RunSelected();
-        Controls.Add(runButton);
+        layoutSurface.Controls.Add(runButton);
         // A newly opened palette restores only settings explicitly
         // saved for this Plant 3D project. No persisted queued command
         // or source geometry can be replayed.
