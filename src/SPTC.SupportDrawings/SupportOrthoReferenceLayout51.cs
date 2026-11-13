@@ -101,6 +101,37 @@ public static class SupportOrthoReferenceLayout51
                 yield return lane;
     }
 
+    // REV22.62: supplementary PAPER millimetre lanes for optional
+    // member widths when the old local lanes coincide with overall
+    // witness/leader geometry. The legacy lanes are ALWAYS tried
+    // first; these compact lanes never change model dimensions.
+    public static IEnumerable<double> CompactLocalMemberLaneOffsets(
+        double textHeight=2.0)
+    {
+        double first=ChainOffset(textHeight);
+        double gap=OverallSeparation(textHeight);
+        yield return first;
+        for(int i=1;i<=6;i++)
+            yield return first+gap*i/9.0;
+    }
+
+    // REV22.62: the FIRST chain lane is unchanged, so verified
+    // successful drawings retain their placement. Where the only
+    // first lane collides with a view leader, try intermediate lanes
+    // inside the protected outer overall before omitting the chain.
+    public static IEnumerable<double> LocalChainLaneOffsets(
+        double textHeight=2.0)
+    {
+        double first=ChainOffset(textHeight);
+        double gap=OverallSeparation(textHeight);
+        yield return first;
+        for(int i=1;i<=6;i++)
+            yield return first+gap*i/9.0;
+        foreach(double lane in LaneOffsets(textHeight))
+            if(lane>first+.1)
+                yield return lane;
+    }
+
     // Text may be outside both witnesses for a short dimension. Prefer
     // RIGHT of a short horizontal segment, as in TOP/BOTTOM/FRONT/BACK.
     // For a tightly packed chain, alternate sides if collision checks
