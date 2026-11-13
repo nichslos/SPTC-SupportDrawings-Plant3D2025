@@ -255,39 +255,55 @@ internal static class SupportProductionNativePdfPublisher
             throw new InvalidOperationException(
                 "Native paper layout physical size unavailable or invalid.");
 
-        using var sheet=new PlotSettings(layout.ModelType);
-        sheet.CopyFrom(layout);
-        // Null asks AutoCAD to choose a valid default for this PC3.
-        // Do not pass the original device's unsupported media name.
+        // The previous implementation copied the native layout first,
+        // leaving a plotter-specific canonical media attached while asking
+        // the PDF PC3 for its default media. That can cause eNoMatchingMedia.
+        // Discover all media on a fresh, device-only PlotSettings probe.
+        // Keep the native layout and every original plot style untouched.
         log("SPTC_PDF_PUBLISH_STAGE=PLOT_CONFIG_ENUMERATE_MEDIA "+
             "DEVICE="+plotDevice+" ORIGINAL="+previousMedia+
             " ORIGINAL_MM="+originalWidth.ToString("0.###",
                 System.Globalization.CultureInfo.InvariantCulture)+"x"+
             originalHeight.ToString("0.###",
                 System.Globalization.CultureInfo.InvariantCulture));
-        validator.SetPlotConfigurationName(sheet,plotDevice,null!);
-        validator.RefreshLists(sheet);
-        var available=validator.GetCanonicalMediaNameList(sheet);
         var choices=new List<SupportProductionPdfMediaMatcher.Candidate>();
-        foreach(string? candidate in available)
+        using(var probe=new PlotSettings(layout.ModelType))
         {
-            if(string.IsNullOrWhiteSpace(candidate))continue;
-            try
+            MediaStep("PROBE_INITIALIZE_DEFAULT",
+                ()=>validator.SetDefaultPlotConfig(probe),log);
+            MediaStep("PROBE_ASSIGN_PDF_DEVICE",
+                ()=>validator.SetPlotConfigurationName(
+                    probe,plotDevice,null!),log);
+            MediaStep("PROBE_REFRESH_PDF_MEDIA",
+                ()=>validator.RefreshLists(probe),log);
+            var available=MediaStep("PROBE_GET_MEDIA_NAMES",
+                ()=>validator.GetCanonicalMediaNameList(probe),log);
+            int rejected=0;
+            foreach(string? candidate in available)
             {
-                validator.SetCanonicalMediaName(sheet,candidate);
-                if(sheet.PlotPaperUnits==PlotPaperUnit.Pixels)continue;
-                double units=sheet.PlotPaperUnits==PlotPaperUnit.Inches?
-                    25.4:1.0;
-                var size=sheet.PlotPaperSize;
-                choices.Add(new SupportProductionPdfMediaMatcher.Candidate(
-                    candidate,size.X*units,size.Y*units));
+                if(string.IsNullOrWhiteSpace(candidate))continue;
+                try
+                {
+                    validator.SetCanonicalMediaName(probe,candidate);
+                    if(probe.PlotPaperUnits==PlotPaperUnit.Pixels)
+                    {
+                        rejected++;
+                        continue;
+                    }
+                    double units=probe.PlotPaperUnits==PlotPaperUnit.Inches?
+                        25.4:1.0;
+                    var size=probe.PlotPaperSize;
+                    choices.Add(new SupportProductionPdfMediaMatcher.Candidate(
+                        candidate,size.X*units,size.Y*units));
+                }
+                catch(Autodesk.AutoCAD.Runtime.Exception)
+                {
+                    // Skip a bad PC3 media entry, never alter the original.
+                    rejected++;
+                }
             }
-            catch(Autodesk.AutoCAD.Runtime.Exception)
-            {
-                // Some PC3 devices list unsupported/no-device entries.
-                // A failed candidate must not alter the real layout.
-                continue;
-            }
+            log("SPTC_PDF_MEDIA_PROBE_RESULTS=VALID_"+choices.Count+
+                " REJECTED_"+rejected);
         }
         var match=SupportProductionPdfMediaMatcher.Select(
             originalWidth,originalHeight,choices,previousMedia);
@@ -309,7 +325,18 @@ internal static class SupportProductionNativePdfPublisher
                 " mm paper layout. No PDF was published.");
         }
 
-        validator.SetCanonicalMediaName(sheet,match.MediaName!);
+        // Only after the supported PDF media has been identified do
+        // we create the final plotting override from the original layout.
+        // Pass a valid media explicitly, never null or the seed's old name.
+        using var sheet=new PlotSettings(layout.ModelType);
+        sheet.CopyFrom(layout);
+        MediaStep("OVERRIDE_ASSIGN_PDF_DEVICE_AND_MEDIA",
+            ()=>validator.SetPlotConfigurationName(
+                sheet,plotDevice,match.MediaName!),log);
+        MediaStep("OVERRIDE_REFRESH_MEDIA",
+            ()=>validator.RefreshLists(sheet),log);
+        MediaStep("OVERRIDE_SELECT_MATCHED_MEDIA",
+            ()=>validator.SetCanonicalMediaName(sheet,match.MediaName!),log);
         // The PDF device may expose A1 only as landscape while native
         // layout is portrait. Compensate 90 degrees in this disposable
         // plot override, never in the original layout or its viewports.
@@ -325,9 +352,11 @@ internal static class SupportProductionNativePdfPublisher
                     "Unknown plot rotation; cannot preserve orientation")
             };
         }
-        validator.SetPlotRotation(sheet,rotation);
-        validator.SetPlotType(sheet,
-            Autodesk.AutoCAD.DatabaseServices.PlotType.Layout);
+        MediaStep("OVERRIDE_SET_ROTATION",
+            ()=>validator.SetPlotRotation(sheet,rotation),log);
+        MediaStep("OVERRIDE_SET_LAYOUT_PLOT_AREA",
+            ()=>validator.SetPlotType(sheet,
+                Autodesk.AutoCAD.DatabaseServices.PlotType.Layout),log);
         log("SPTC_PDF_MEDIA_MATCH=PASS DEVICE="+plotDevice+
             " SELECTED="+match.MediaName+
             " ROTATE_90="+match.Rotate90+
@@ -340,7 +369,8 @@ internal static class SupportProductionNativePdfPublisher
         using var validate=new PlotInfoValidator {
             MediaMatchingPolicy=MatchingPolicy.MatchDisabled
         };
-        validate.Validate(plotInfo);
+        MediaStep("VALIDATE_FINAL_PLOT_INFO",
+            ()=>validate.Validate(plotInfo),log);
 
         log("SPTC_PDF_PUBLISH_STAGE=PLOT_ENGINE_CREATE");
         using var engine=PlotFactory.CreatePublishEngine();
@@ -367,5 +397,31 @@ internal static class SupportProductionNativePdfPublisher
             progress.OnEndPlot();
         }
         tx.Commit();
+    }
+
+    private static void MediaStep(string step,Action action,
+        Action<string> log)
+    {
+        log("SPTC_PDF_MEDIA_STEP="+step);
+        try {action();}
+        catch(System.Exception ex)
+        {
+            throw new InvalidOperationException(
+                "PDF_MEDIA_STEP="+step+" "+ex.GetType().Name+": "+
+                ex.Message,ex);
+        }
+    }
+
+    private static T MediaStep<T>(string step,Func<T> action,
+        Action<string> log)
+    {
+        log("SPTC_PDF_MEDIA_STEP="+step);
+        try {return action();}
+        catch(System.Exception ex)
+        {
+            throw new InvalidOperationException(
+                "PDF_MEDIA_STEP="+step+" "+ex.GetType().Name+": "+
+                ex.Message,ex);
+        }
     }
 }
