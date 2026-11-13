@@ -159,6 +159,44 @@ jobs:
              -not $ui.Contains('Nearby XREF members: label source DWG')) {
             throw 'REV22.37 XREF filename checkbox or default missing'
           }
+          # Production UI: source-only preferences and progress controls.
+          # No geometry writer, dimension planning, native command names
+          # or Ortho refresh callback is changed by these UI additions.
+          $prefSource=Get-Content "$root/SupportDrawingUiPreferences.cs" -Raw
+          $uiSource=Get-Content "$root/SupportDrawingManagerForm35.cs" -Raw
+          $generatorUi=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('ProjectPreferences',
+              'TryLoad(', 'Save(', 'AllViews.Take(6)',
+              'AllViews.Skip(6)', 'DrawingPrefix',
+              'LastVerifiedDimensions')) {
+            # Saved preferences must contain project identity guards;
+            # LastVerifiedDimensions is checked in the existing
+            # native dimension integrity test, not in this class.
+            if($token -ne 'LastVerifiedDimensions' -and
+               -not $prefSource.Contains($token)) {
+              throw "Production UI persistence/preset token missing: $token"
+            }
+          }
+          foreach($token in @('SaveProjectPreferences()',
+              'LoadProjectPreferences(showFeedback:false)',
+              'View preset:', 'Ortho 6', 'ISO 4',
+              'SetWorkload(int jobs)', 'AdvanceWorkload(bool succeeded)',
+              'Process', 'SetRunning(bool running)')) {
+            if(-not $uiSource.Contains($token)) {
+              throw "Production UI control/progress guard missing: $token"
+            }
+          }
+          foreach($token in @('progress.SetWorkload(ids.Count);',
+              'progress.AdvanceWorkload(supportSucceeded);',
+              'progress.SetWorkload(1);')) {
+            if(-not $generatorUi.Contains($token)) {
+              throw "Batch progress connection missing: $token"
+            }
+          }
+          if(-not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw).Contains(
+              'ProductionUiPreferencesTests.Run();')) {
+            throw 'Production UI preference regression not registered'
+          }
           # REV22.40: exactly one persistent AutoCAD modeless PaletteSet.
           # Reuse the same four command registrations for button-queued
           # drawing creation; no direct native Editor calls from WinForms.
