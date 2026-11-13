@@ -116,6 +116,33 @@ internal static class ProductionPdfSmokeTests
             Need(failed.PdfPath==null&&failed.VerifiedPdfBytes==0&&
                 failed.IssueStatus=="DRAFT_NEEDS_SAVED_DWG_AND_QA",
                 "PDF plot failure never claims success or issue approval");
+            Need(SupportProductionPdfPolicy.FailureCode("DWG_SAVE")==
+                "PDF_FAILED_DWG_SAVE"&&
+                SupportProductionPdfPolicy.FailureCode("PLOT_SETUP")==
+                "PDF_FAILED_PLOT_SETUP"&&
+                SupportProductionPdfPolicy.FailureCode("NATIVE_PLOT_ENGINE")==
+                "PDF_FAILED_NATIVE_PLOT"&&
+                SupportProductionPdfPolicy.FailureCode("PDF_FILE_VERIFY")==
+                "PDF_FAILED_FILE_VALIDATION"&&
+                SupportProductionPdfPolicy.FailureCode("UNRECOGNIZED")==
+                "PDF_FAILED_UNKNOWN_STAGE",
+                "exact DWG save, plot preparation and engine failure stages preserved");
+            var failureWithCause=failed with {
+                IssueNote="PDF_FAILED_DWG_SAVE STAGE=DWG_SAVE EXCEPTION=AutodeskException: eFileSharingViolation"
+            };
+            var diagnosticCsv=SupportProductionPackagePlan.RegisterCsv(
+                new[]{failureWithCause});
+            Need(diagnosticCsv.Contains("PDFDiagnostic")&&
+                diagnosticCsv.Contains("STAGE=DWG_SAVE")&&
+                diagnosticCsv.Contains("eFileSharingViolation"),
+                "CSV register preserves exact failure stage and native exception message");
+            SupportProductionPackagePlan.SaveEntry(failureWithCause);
+            string diagnosticJson=System.IO.File.ReadAllText(
+                System.IO.Path.ChangeExtension(
+                    entry.ReportPath,".production.json"));
+            Need(diagnosticJson.Contains("STAGE=DWG_SAVE")&&
+                diagnosticJson.Contains("eFileSharingViolation"),
+                "atomic JSON sidecar persists the same actionable publish stage");
             var register=SupportProductionPackagePlan.RegisterCsv(new[]{
                 plotted,failed});
             Need(register.Contains("PDF_PUBLISHED_VERIFIED")&&

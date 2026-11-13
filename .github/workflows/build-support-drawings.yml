@@ -232,6 +232,29 @@ jobs:
                  ).Contains('ProductionPdfSmokeTests.Run();')) {
             throw 'Phase 2 opt-in PDF UI, batch publishing or regression absent'
           }
+          # Native PDF phase failures must disclose SaveAs versus
+          # PlotEngine versus validation, not just a generic native error.
+          $pdfNativeDiagnostics=Get-Content "$root/SupportProductionNativePdfPublisher.cs" -Raw
+          $pdfPolicyDiagnostics=Get-Content "$root/SupportProductionPdfPolicy.cs" -Raw
+          $pdfRegisterDiagnostics=Get-Content "$root/SupportProductionPackagePlan.cs" -Raw
+          $pdfSmokeDiagnostics=Get-Content 'tests/Rev241DimLinearSmokeTests/ProductionPdfSmokeTests.cs' -Raw
+          foreach($token in @('SPTC_PDF_PUBLISH_ERROR_STAGE=',
+              'IssueNote=code+" STAGE="','FailureCode(stage)')) {
+            if(-not $pdfNativeDiagnostics.Contains($token)) {
+              throw "PDF publishing failure diagnostic missing: $token"
+            }
+          }
+          foreach($token in @('PDF_FAILED_DWG_SAVE',
+              'PDF_FAILED_PLOT_SETUP','PDF_FAILED_NATIVE_PLOT',
+              'PDF_FAILED_FILE_VALIDATION')) {
+            if(-not $pdfPolicyDiagnostics.Contains($token)) {
+              throw "PDF publishing stage policy missing: $token"
+            }
+          }
+          if(-not $pdfRegisterDiagnostics.Contains('"PDFDiagnostic"') -or
+             -not $pdfSmokeDiagnostics.Contains('STAGE=DWG_SAVE')) {
+            throw 'PDF stage details do not propagate into the testable CSV register'
+          }
           # Fix: real UI checkboxes must survive Save->JSON->Load.
           # The producer must not silently return CONFIGURED_DISABLED
           # after a checked PDF option is saved.

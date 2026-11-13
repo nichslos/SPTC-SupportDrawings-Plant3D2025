@@ -34,6 +34,7 @@ internal static class SupportProductionNativePdfPublisher
         string pdf=pre.ExpectedPdfPath;
         bool saved=false,plotStarted=false;
         long savedBytes=0;
+        string stage="TARGET_DOCUMENT_CHECK";
         // Output has been proven absent before any publishing call.
         // Never delete or replace a file that was already present.
         try
@@ -51,6 +52,7 @@ internal static class SupportProductionNativePdfPublisher
                 return SupportProductionPdfPolicy.AfterFailure(
                     entry,"PDF_BLOCKED_ANOTHER_PLOT_ACTIVE");
 
+            stage="READ_SHEET_LAYOUT";
             string? layoutName=ReadVerifiedLayout(entry.ReportPath);
             if(string.IsNullOrWhiteSpace(layoutName))
                 return SupportProductionPdfPolicy.AfterFailure(
@@ -59,13 +61,15 @@ internal static class SupportProductionNativePdfPublisher
             // The generator has finished its ExecuteInCommandContextAsync
             // native view/dimension writes; the queued SPTC command is
             // Session-scoped. Lock this exact output document only.
-            log("SPTC PDF saving annotated native Ortho: "+
-                Path.GetFileName(entry.DestinationDwg));
+            stage="DWG_SAVE";
+            log("SPTC_PDF_PUBLISH_STAGE="+stage+
+                " DOC="+Path.GetFileName(entry.DestinationDwg));
             using(targetDoc.LockDocument())
             {
                 targetDoc.Database.SaveAs(
                     entry.DestinationDwg,DwgVersion.Current);
             }
+            stage="DWG_VERIFY";
             var persisted=new FileInfo(entry.DestinationDwg);
             persisted.Refresh();
             if(!persisted.Exists||persisted.Length<1024)
@@ -76,6 +80,9 @@ internal static class SupportProductionNativePdfPublisher
 
             // PDF plotting must be foreground and single-flight. The
             // original environment is restored regardless of outcome.
+            stage="PLOT_SETUP";
+            log("SPTC_PDF_PUBLISH_STAGE="+stage+
+                " PDF_DEVICE="+config.PdfPlotDevice);
             object? previousBackground=null;
             bool backgroundChanged=false;
             try
@@ -84,7 +91,10 @@ internal static class SupportProductionNativePdfPublisher
                 AcadApp.SetSystemVariable("BACKGROUNDPLOT",0);
                 backgroundChanged=true;
                 PlotNativeLayout(targetDoc,layoutName,config.PdfPlotDevice,
-                    pdf,()=>plotStarted=true);
+                    pdf,()=>{
+                        plotStarted=true;
+                        stage="NATIVE_PLOT_ENGINE";
+                    },log);
             }
             finally
             {
@@ -99,6 +109,7 @@ internal static class SupportProductionNativePdfPublisher
                 }
             }
 
+            stage="PDF_FILE_VERIFY";
             if(!SupportProductionPdfPolicy.VerifyPdf(pdf,out long pdfBytes))
                 throw new IOException("PDF plot ended without a valid PDF header/EOF.");
             log("SPTC PDF verified: "+Path.GetFileName(pdf)+
@@ -108,9 +119,12 @@ internal static class SupportProductionNativePdfPublisher
         }
         catch(System.Exception ex)
         {
-            string code=ex is IOException?
-                "PDF_FAILED_FILE_VALIDATION":"PDF_FAILED_NATIVE_PLOT";
-            log("SPTC PDF "+code+": "+ex.GetType().Name+": "+ex.Message);
+            string code=SupportProductionPdfPolicy.FailureCode(stage);
+            string details=(ex.GetType().Name+": "+ex.Message)
+                .Replace("\r"," ").Replace("\n"," ").Trim();
+            if(details.Length>500)details=details.Substring(0,500);
+            log("SPTC_PDF_PUBLISH_ERROR_STAGE="+stage+
+                " CODE="+code+" EXCEPTION="+details);
             // Only remove the new incomplete PDF created by this call.
             // Never delete a pre-existing issue drawing or plot.
             if(plotStarted&&File.Exists(pdf))
@@ -122,8 +136,11 @@ internal static class SupportProductionNativePdfPublisher
                         cleanup.Message);
                 }
             }
-            return SupportProductionPdfPolicy.AfterFailure(
+            var failed=SupportProductionPdfPolicy.AfterFailure(
                 entry,code,saved,savedBytes);
+            return failed with {
+                IssueNote=code+" STAGE="+stage+" EXCEPTION="+details
+            };
         }
     }
 
@@ -153,7 +170,7 @@ internal static class SupportProductionNativePdfPublisher
 
     private static void PlotNativeLayout(
         Document targetDoc,string layoutName,string plotDevice,
-        string pdfPath,Action started)
+        string pdfPath,Action started,Action<string> log)
     {
         if(File.Exists(pdfPath))
             throw new IOException("Destination PDF already exists: no overwrite.");
@@ -174,6 +191,7 @@ internal static class SupportProductionNativePdfPublisher
             throw new InvalidOperationException(
                 "Cannot publish native Ortho model space.");
 
+        log("SPTC_PDF_PUBLISH_STAGE=PLOT_CONFIG_READ_LAYOUT");
         var validator=PlotSettingsValidator.Current;
         var devices=validator.GetPlotDeviceList();
         if(!devices.Cast<string>().Contains(plotDevice,
@@ -190,6 +208,7 @@ internal static class SupportProductionNativePdfPublisher
         // style and lineweight settings; never modify the actual layout.
         using var sheet=new PlotSettings(layout.ModelType);
         sheet.CopyFrom(layout);
+        log("SPTC_PDF_PUBLISH_STAGE=PLOT_CONFIG_EXACT_MEDIA MEDIA="+media);
         validator.SetPlotConfigurationName(sheet,plotDevice,media);
         validator.RefreshLists(sheet);
         var available=validator.GetCanonicalMediaNameList(sheet);
@@ -209,6 +228,7 @@ internal static class SupportProductionNativePdfPublisher
         };
         validate.Validate(plotInfo);
 
+        log("SPTC_PDF_PUBLISH_STAGE=PLOT_ENGINE_CREATE");
         using var engine=PlotFactory.CreatePublishEngine();
         using var progress=new PlotProgressDialog(false,1,true);
         progress.IsVisible=false; // SPTC progress form is already visible.

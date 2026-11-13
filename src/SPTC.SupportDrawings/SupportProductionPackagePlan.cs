@@ -295,7 +295,7 @@ internal static class SupportProductionPackagePlan
             "PDFStatus","PDFPath","Dimensions","ExpectedOveralls",
             "PresentOveralls","OptionalOmissions","ReportPath","MaterialRegister",
             "CreatedUTC","SavedDWGVerified","SavedDWGBytes",
-            "VerifiedPDFBytes","PDFDevice"};
+            "VerifiedPDFBytes","PDFDevice","PDFDiagnostic"};
         var sb=new StringBuilder().AppendLine(string.Join(",",columns));
         foreach(var e in entries)
         {
@@ -314,7 +314,7 @@ internal static class SupportProductionPackagePlan
                 e.SavedDwgVerified.ToString(),
                 e.SavedDwgLength.ToString(CultureInfo.InvariantCulture),
                 e.VerifiedPdfBytes.ToString(CultureInfo.InvariantCulture),
-                e.PdfDeviceUsed??""
+                e.PdfDeviceUsed??"",e.IssueNote??""
             };
             sb.AppendLine(string.Join(",",fields.Select(Csv)));
         }
