@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.PlottingServices;
@@ -18,7 +19,7 @@ namespace SPTC.SupportDrawings;
 /// </summary>
 internal static class SupportProductionNativePdfPublisher
 {
-    internal static SupportProductionPackagePlan.Entry Publish(
+    internal static async Task<SupportProductionPackagePlan.Entry> PublishAsync(
         Document sourceDoc,SupportProductionPackagePlan.Settings config,
         SupportProductionPackagePlan.Entry entry,
         Action<string> log)
@@ -58,25 +59,61 @@ internal static class SupportProductionNativePdfPublisher
                 return SupportProductionPdfPolicy.AfterFailure(
                     entry,"PDF_BLOCKED_LAYOUT_NOT_RECORDED");
 
-            // The generator has finished its ExecuteInCommandContextAsync
-            // native view/dimension writes; the queued SPTC command is
-            // Session-scoped. Lock this exact output document only.
+            // The target DWG is already a named/open AutoCAD document.
+            // A SECOND Database.SaveAs to that same open filename raised
+            // eFilerError on the live TEST5 run. Do not call SaveAs on the
+            // active document. Native QSAVE in its own document command
+            // context is the supported same-name save operation.
+            //
+            // This entire method is called from a Session command, so
+            // Editor.CommandAsync requires ExecuteInCommandContextAsync.
+            // Do not hold a DocumentLock around QSAVE: that command owns
+            // its current document lock. Fail closed if AutoCAD switches
+            // drawings before we can save.
             stage="DWG_SAVE";
+            var beforeSave=new FileInfo(entry.DestinationDwg);
+            long beforeBytes=beforeSave.Exists?beforeSave.Length:0;
+            DateTime beforeTimestamp=beforeSave.Exists?
+                beforeSave.LastWriteTimeUtc:DateTime.MinValue;
             log("SPTC_PDF_PUBLISH_STAGE="+stage+
-                " DOC="+Path.GetFileName(entry.DestinationDwg));
-            using(targetDoc.LockDocument())
+                " METHOD=NATIVE_QSAVE DOC="+
+                Path.GetFileName(entry.DestinationDwg));
+            System.Exception? quickSaveError=null;
+            var manager=AcadApp.DocumentManager;
+            await manager.ExecuteInCommandContextAsync(async _=>
             {
-                targetDoc.Database.SaveAs(
-                    entry.DestinationDwg,DwgVersion.Current);
-            }
+                // Protect AutoCAD from an exception escaping the native
+                // command-context callback; rethrow in the caller instead.
+                try
+                {
+                    if(manager.IsApplicationContext||
+                       !ReferenceEquals(manager.MdiActiveDocument,targetDoc)||
+                       !SamePath(targetDoc.Database.Filename,
+                           entry.DestinationDwg))
+                        throw new InvalidOperationException(
+                            "Ortho DWG is no longer the current command document.");
+                    await targetDoc.Editor.CommandAsync("_.QSAVE");
+                }
+                catch(System.Exception ex){quickSaveError=ex;}
+            },null);
+            if(quickSaveError!=null)
+                throw new InvalidOperationException(
+                    "Native QSAVE could not save the current Ortho drawing: "+
+                    quickSaveError.Message,quickSaveError);
+            if(!ReferenceEquals(manager.MdiActiveDocument,targetDoc)||
+               !SamePath(targetDoc.Database.Filename,entry.DestinationDwg))
+                throw new InvalidOperationException(
+                    "Active Ortho drawing changed during QSAVE.");
             stage="DWG_VERIFY";
-            var persisted=new FileInfo(entry.DestinationDwg);
-            persisted.Refresh();
-            if(!persisted.Exists||persisted.Length<1024)
+            if(!SupportProductionPdfPolicy.VerifyNewDwgSave(
+                   entry.DestinationDwg,beforeBytes,beforeTimestamp,
+                   out savedBytes))
                 return SupportProductionPdfPolicy.AfterFailure(
                     entry,"PDF_BLOCKED_DWG_SAVE_NOT_VERIFIED");
-            savedBytes=persisted.Length;
             saved=true;
+            log("SPTC_PDF_PUBLISH_DWG_QSAVE_VERIFIED=TRUE BYTES="+
+                savedBytes+" UPDATED_UTC="+
+                File.GetLastWriteTimeUtc(entry.DestinationDwg).ToString("O"));
 
             // PDF plotting must be foreground and single-flight. The
             // original environment is restored regardless of outcome.

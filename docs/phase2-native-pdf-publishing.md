@@ -24,7 +24,7 @@ These are approved device names; a requested device must also actually be instal
 3. **Preflight:** require QA PASS, the expected number of registered native views, verified essential H/V overall dimensions, no reported witness intersections, and complete explicitly mapped title-block attributes if configured. Optional local omissions may remain if the operator has not requested full dimension coverage.
 4. Reject a missing DWG or a pre-existing same-name PDF. Never overwrite or delete a pre-existing issued PDF.
 5. Verify the active target document is the newly generated Ortho DWG and not the source model; reject model-space plotting.
-6. Explicitly save the annotated target Ortho DWG through the AutoCAD database API while its document is locked. Verify the saved file exists and has nonzero substantive content.
+6. Explicitly save the already-open, named Ortho DWG using native AutoCAD `_.QSAVE` in its **own document command context** (awaited from the Session command). Do not call `Database.SaveAs` a second time against the same open target file: TEST5 returned `eFilerError` at that step. Verify the DWG was actually rewritten (timestamp/bytes), rather than trusting the earlier empty-seed clone.
 7. Use native `Autodesk.AutoCAD.PlottingServices.PlotFactory.CreatePublishEngine()` for a **single recorded paper-space layout**. Copy the layout's page setup to an in-memory override; use an exact installed PC3 and exactly matching canonical paper-media name. Disable paper-size auto-matching to avoid silently changing sheet dimensions.
 8. Temporarily set foreground plotting (`BACKGROUNDPLOT=0`) and restore the previous value in a finally block. Keep Autodesk's plot progress dialog hidden because the existing SPTC progress window is visible.
 9. Confirm the resulting new PDF physically exists and has a PDF file header and EOF trailer before recording `PDF_PUBLISHED_VERIFIED`.
@@ -85,3 +85,11 @@ unchanged. Capture and share both the new JSON and CSV after a new copied
 TEST5 run; they identify the operation and exception needed for a targeted
 fix. Avoid deleting the previous working DLL until the actual exception
 has been isolated and the PDF passes a real in-Plant-3D print review.
+
+## TEST5 SaveAs eFilerError — targeted fix (2026-11-13)
+
+The live uploaded `074645_e81b` production JSON recorded `PDF_FAILED_DWG_SAVE STAGE=DWG_SAVE EXCEPTION=Exception: eFilerError`, despite `PRODUCTION_PACKAGE_ENABLED=True`, `PRODUCTION_PDF_ENABLED=True`, QA PASS, 10/10 views and 12/12 essential dimensions. The native PDF PlotEngine had not yet run. A `Database.SaveAs(targetPath, DwgVersion.Current)` performed on an already-open registered Ortho document was the failing call.
+
+The dependent fix replaces that **specific** call with an awaited `Editor.CommandAsync("_.QSAVE")` executed through `DocumentCollection.ExecuteInCommandContextAsync` against the verified active target document. It does **not** alter the separate seed-clone `Database.SaveAs` used when creating a new drawing. Native save errors are trapped within the command-context callback and propagated as `PDF_FAILED_DWG_SAVE` with exception text. An existing DWG without a physical new save is `PDF_BLOCKED_DWG_SAVE_NOT_VERIFIED` and cannot proceed to plotting.
+
+The plugin must continue to report separate plot failures, as passing a save test does **not** demonstrate that the configured PDF device and page media work on this Plant 3D installation. Validate on a copied TEST5 project, inspect the result JSON `PdfStatus` and `IssueNote`, confirm DWG content persisted and inspect any resulting PDF before using it for fabrication or issue.
