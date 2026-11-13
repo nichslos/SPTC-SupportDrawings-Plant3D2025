@@ -73,7 +73,7 @@ internal static class ProductionUiPreferencesTests
 
         invalid=false;
         try{SupportDrawingUiPreferences.Validate(
-            defaults with {DrawingPrefix="..\\wrong"}});}
+            defaults with {DrawingPrefix="..\\wrong"});}
         catch(ArgumentException){invalid=true;}
         Need(invalid,"Windows drawing filename injection rejected");
 
