@@ -163,6 +163,9 @@ public sealed class SupportOrthoTenViewGenerator
             else
             {
                 progress.SetWorkload(1);
+                // Show the existing non-modal progress window during
+                // a single run as well as sequential batch runs.
+                progress.Show();
                 bool ok=await GenerateOne(sourceDoc,null,options,progress);
                 progress.AdvanceWorkload(ok);
                 progress.Report("Single Ortho result: "+(ok?"PASS":"FAIL / SEE TXT"));
