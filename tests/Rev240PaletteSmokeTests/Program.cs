@@ -54,6 +54,18 @@ internal static class Program
 
         TestScrollableDpiLayout();
         TestBatchProgressReporting();
+        var surface=manager.Controls.Find(
+            "SPTC_UI_LAYOUT_SURFACE",false).Single();
+        var nativeTabs=surface.Controls.OfType<TabControl>().Single();
+        var configButton=nativeTabs.TabPages[0].Controls
+            .OfType<Button>().SingleOrDefault(b=>
+                b.Text=="Production package...");
+        Check(configButton!=null,
+            "optional package configuration remains inside modeless Ortho tab");
+        using(var configured=new SupportProductionPackageDialog(
+            @"C:\Projects\SAMPLE"))
+            Check(configured is Form&&configured.AutoScaleMode==AutoScaleMode.Dpi,
+                "production metadata editor is DPI aware and has no AutoCAD command side effects");
         Console.WriteLine("REV22.40 persistent modeless UI/settings and busy tests PASS");
     }
 
