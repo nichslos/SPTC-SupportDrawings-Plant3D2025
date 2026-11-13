@@ -18,6 +18,12 @@
              Link="SupportOrthoMemberCalloutPlan27.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoSmartDimPlan46.cs"
              Link="SupportOrthoSmartDimPlan46.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoProfileStationPlan.cs"
+             Link="SupportOrthoProfileStationPlan.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoViewNaming.cs"
+             Link="SupportOrthoViewNaming.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportBuildIdentity.cs"
+             Link="SupportBuildIdentity.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDimensionReflow.cs"
              Link="SupportOrthoDimensionReflow.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoReferenceDimPlan47.cs"
