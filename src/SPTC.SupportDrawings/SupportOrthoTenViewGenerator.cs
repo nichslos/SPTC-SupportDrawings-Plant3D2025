@@ -90,6 +90,7 @@ public sealed class SupportOrthoTenViewGenerator
         Editor ed=sourceDoc.Editor;
         string source=sourceDoc.Database.Filename??"";
         var progress=new SupportDrawingProgressForm35();
+        var productionEntries=new List<SupportProductionPackagePlan.Entry>();
         try
         {
             if(options.BatchOrtho)
@@ -125,7 +126,8 @@ public sealed class SupportOrthoTenViewGenerator
                     {
                         AcadApp.DocumentManager.MdiActiveDocument=sourceDoc;
                         progress.Report("Starting support handle "+id.Handle);
-                        bool ok=await GenerateOne(sourceDoc,new[]{id},options,progress);
+                        bool ok=await GenerateOne(sourceDoc,new[]{id},options,progress,
+                            productionEntries.Add);
                         if(ok)passed++; else failed++;
                         supportSucceeded=ok;
                         report.AppendLine("HANDLE="+id.Handle+" STATUS="+(ok?"PASS":"FAIL"));
@@ -146,6 +148,28 @@ public sealed class SupportOrthoTenViewGenerator
                     }
                 }
                 report.AppendLine("PASS="+passed+" FAIL="+failed);
+                if(productionEntries.Count>0)
+                {
+                    try
+                    {
+                        // Project-local run register, not a global
+                        // mutable register shared by unrelated projects.
+                        string index=Path.Combine(Path.GetDirectoryName(source)!,
+                            "SPTC_DRAWING_REGISTER_"+
+                            DateTime.UtcNow.ToString("yyyyMMdd_HHmmss",
+                                CultureInfo.InvariantCulture)+".csv");
+                        SupportProductionPackagePlan.SaveRegister(index,
+                            productionEntries);
+                        report.AppendLine("DRAWING_REGISTER="+index);
+                        progress.Report("Production drawing register: "+index);
+                    }
+                    catch(System.Exception ex)
+                    {
+                        report.AppendLine("DRAWING_REGISTER_ERROR="+
+                            ex.GetType().Name+":"+ex.Message);
+                        progress.Report("Production register not written: "+ex.Message);
+                    }
+                }
                 try
                 {
                     string output=Path.Combine(Path.GetDirectoryName(source)!,
@@ -166,8 +190,25 @@ public sealed class SupportOrthoTenViewGenerator
                 // Show the existing non-modal progress window during
                 // a single run as well as sequential batch runs.
                 progress.Show();
-                bool ok=await GenerateOne(sourceDoc,null,options,progress);
+                bool ok=await GenerateOne(sourceDoc,null,options,progress,
+                    productionEntries.Add);
                 progress.AdvanceWorkload(ok);
+                if(productionEntries.Count>0)
+                {
+                    try
+                    {
+                        var entry=productionEntries[0];
+                        string index=Path.ChangeExtension(entry.ReportPath,
+                            ".register.csv");
+                        SupportProductionPackagePlan.SaveRegister(index,
+                            productionEntries);
+                        progress.Report("Draft drawing register: "+index);
+                    }
+                    catch(System.Exception ex)
+                    {
+                        progress.Report("Register not written: "+ex.Message);
+                    }
+                }
                 progress.Report("Single Ortho result: "+(ok?"PASS":"FAIL / SEE TXT"));
             }
         }
@@ -185,7 +226,8 @@ public sealed class SupportOrthoTenViewGenerator
 
     private async Task<bool> GenerateOne(Document sourceDoc,
         ObjectId[]? selectedOverride,SupportDrawingUiOptions options,
-        SupportDrawingProgressForm35 progress)
+        SupportDrawingProgressForm35 progress,
+        Action<SupportProductionPackagePlan.Entry>? onProductionEntry=null)
     {
         Editor ed=sourceDoc.Editor;
         bool succeeded=false;
@@ -486,6 +528,30 @@ public sealed class SupportOrthoTenViewGenerator
             return false;
         }
 
+        // Production package generation is strictly opt-in per project.
+        // Invalid or absent settings fail closed without changing native
+        // Ortho geometry, model files or the current SPTC drawing workflow.
+        SupportProductionPackageSettingsStore.TryLoad(
+            part.ProjectRoot,out var packageSettings,out string packageConfigStatus);
+        string? explicitSupportTag=null;
+        if(packageSettings.Enabled&&
+           !string.IsNullOrWhiteSpace(packageSettings.SupportTagAttribute))
+        {
+            try
+            {
+                explicitSupportTag=SupportProductionSupportTagReader.Read(
+                    sourceDoc.Database,selectedSupportIds.ToArray(),
+                    packageSettings.SupportTagAttribute);
+            }
+            catch(System.Exception)
+            {
+                // Ambiguous/nonexistent selected block tag: retain unique
+                // verified source-handle identity, never guess a tag.
+                explicitSupportTag=null;
+            }
+        }
+        string titleBlockStatus="NOT_CONFIGURED";
+
         // REV22.35: discover only native, project-registered and EMPTY seeds.
         // Never treat a previous generated Ortho or an arbitrary DWG as a seed.
         string seed="";
@@ -634,6 +700,7 @@ public sealed class SupportOrthoTenViewGenerator
         try
         {
             Log("SPTC_SUPPORT_ORTHO_GENERATION");
+            Log("PRODUCTION_PACKAGE_CONFIG="+packageConfigStatus);
             Log("SPTC_BUILD_ID="+SupportBuildIdentity.Id);
             Log("SPTC_BUILD_ASSEMBLY="+SupportBuildIdentity.AssemblyName);
             Log("PROJECT=" + part.ProjectRoot);
@@ -2129,6 +2196,40 @@ public sealed class SupportOrthoTenViewGenerator
                 annotationStatus);
             succeeded=annotationStatus=="PASS" ||
                 annotationStatus=="NO_NATIVE_STEEL_OR_PLANT_SUPPORTS";
+
+            // This optional step occurs AFTER native views and DIMLINEAR
+            // QA have completed. Only explicitly mapped attributes of
+            // one matching paper-space title block can be changed.
+            // No title block geometry, manual text, XREF or Ortho view
+            // is guessed or rewritten.
+            if(packageSettings.Enabled)
+            {
+                try
+                {
+                    string number=SupportProductionPackagePlan.DrawingNumber(
+                        packageSettings,source,handles,explicitSupportTag);
+                    string scaleText="1:"+candidate.Denominator;
+                    var metadata=SupportProductionTitleBlockWriter.Metadata(
+                        packageSettings,number,source,
+                        explicitSupportTag??string.Join("+",handles),
+                        scaleText);
+                    var stamped=SupportProductionTitleBlockWriter.Apply(
+                        targetDoc.Database,paperLayout,packageSettings,metadata);
+                    titleBlockStatus=stamped.Status;
+                    Log("PRODUCTION_DRAWING_NUMBER="+number);
+                    Log("PRODUCTION_TITLEBLOCK_STATUS="+stamped.Status+
+                        " WRITTEN="+stamped.Written+
+                        " EXISTING_PRESERVED="+stamped.ExistingPreserved+
+                        " MISSING_TAGS="+string.Join(";",stamped.MissingTags));
+                    Log("PRODUCTION_PDF_STATUS=NOT_PUBLISHED");
+                    Log("PRODUCTION_ISSUE_STATUS=DRAFT_NEEDS_SAVED_DWG_AND_QA");
+                }
+                catch(System.Exception ex)
+                {
+                    titleBlockStatus="FAILED:"+ex.GetType().Name;
+                    Log("PRODUCTION_TITLEBLOCK_ERROR="+ex);
+                }
+            }
             SafeWriteToActiveEditor(
                 "SPTC: "+options.Views.Count+" native views and titles created. "+
                 annotated+" per-member leader annotations; "+
@@ -2199,6 +2300,37 @@ public sealed class SupportOrthoTenViewGenerator
             // have an active AutoCAD command context after switching to Ortho.
             // Never let eNotApplicable from WriteMessage mask the real exception.
             SafeWriteToActiveEditor("REV22 RESULT: " + report);
+        }
+        if(packageSettings.Enabled&&cloned&&File.Exists(dest))
+        {
+            try
+            {
+                var entry=SupportProductionPackagePlan.BuildEntry(
+                    packageSettings,source,handles,dest,report,
+                    log.ToString(),options.Views.ToArray(),
+                    options.ScaleDenominator>0?
+                        "1:"+options.ScaleDenominator:"Automatic",
+                    SupportBuildIdentity.Id,explicitSupportTag,
+                    titleBlockStatus);
+                if(!succeeded)
+                    entry=entry with {
+                        QaStatus="FAIL",IssueStatus="GENERATION_FAILED",
+                        IssueNote="GENERATION_DID_NOT_COMPLETE"
+                    };
+                SupportProductionPackagePlan.SaveEntry(entry);
+                onProductionEntry?.Invoke(entry);
+                Log("PRODUCTION_PACKAGE_SIDECAR=CREATED"+
+                    " DRAWING_NUMBER="+entry.DrawingNumber+
+                    " ISSUE_STATUS="+entry.IssueStatus);
+            }
+            catch(System.Exception ex)
+            {
+                // Sidecar failures NEVER invalidate an otherwise sound
+                // native Ortho and never cause native drawing regeneration.
+                try {Log("PRODUCTION_PACKAGE_ERROR="+
+                    ex.GetType().Name+":"+ex.Message);}
+                catch { /* native report may be unavailable */ }
+            }
         }
         return succeeded;
     }
