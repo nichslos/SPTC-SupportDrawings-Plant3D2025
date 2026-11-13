@@ -60,3 +60,28 @@ For batch runs, failures and blocked PDFs appear as failed package rows, even wh
 Windows CI compiles against the existing AutoCAD 2025 references and runs pure regression tests for opt-in defaults, exact page/device policy source invariants, QA gating, protected overall dimensions, missing title blocks, non-overwriting, PDF magic/EOF audit, batch status reporting and the old dimension/refresh tests.
 
 The GitHub Actions runner does **not** launch licensed Plant 3D to execute the real native PlotEngine or to inspect rendered PDF geometry. Therefore this build is **not** certified as a field-tested plotting workflow until the user-side TEST5 checks above succeed. A native plotting failure must not invalidate or overwrite the original registered native Ortho drawing.
+
+## Publisher diagnostics (2026-11-13)
+
+If the generated `*_RESULT.production.json` says `PDF_FAILED_NATIVE_PLOT`
+but `SavedDwgVerified=false`, the actual error has not been established
+from the Phase 2 report alone. In particular, this does **not** prove
+that an installed PDF plotter was unable to produce a PDF; failure may
+have occurred earlier during explicit DWG saving or native document setup.
+
+The publisher now writes a stage-specific failure code and an exception
+summary to `IssueNote` in `*_RESULT.production.json` and to the
+`PDFDiagnostic` field in `*_RESULT.register.csv`. Look for:
+
+- `PDF_FAILED_PREPARE` — target document/layout preflight exception
+- `PDF_FAILED_DWG_SAVE` — `Database.SaveAs` or document lock failed
+- `PDF_FAILED_DWG_VERIFY` — saved DWG verification failed
+- `PDF_FAILED_PLOT_SETUP` — PDF plot setup, PC3, or media configuration failed
+- `PDF_FAILED_NATIVE_PLOT` — AutoCAD PlotEngine failed after beginning publication
+- `PDF_FAILED_FILE_VALIDATION` — generated PDF failed physical integrity check
+
+The original native Ortho `*_RESULT.txt` and dimension planner remain
+unchanged. Capture and share both the new JSON and CSV after a new copied
+TEST5 run; they identify the operation and exception needed for a targeted
+fix. Avoid deleting the previous working DLL until the actual exception
+has been isolated and the PDF passes a real in-Plant-3D print review.
