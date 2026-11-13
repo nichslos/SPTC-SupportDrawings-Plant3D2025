@@ -50,6 +50,10 @@
              Link="SupportOrthoNativeDimensionPolicy48.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoUpdatePerformancePolicy.cs"
              Link="SupportOrthoUpdatePerformancePolicy.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingPaperScale39.cs"
+             Link="SupportDrawingPaperScale39.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingUiPreferences.cs"
+             Link="SupportDrawingUiPreferences.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDimensionUpdatePlan49.cs"
              Link="SupportOrthoDimensionUpdatePlan49.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDynamicDimension492.cs"
