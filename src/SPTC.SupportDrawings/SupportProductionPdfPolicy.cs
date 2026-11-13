@@ -69,6 +69,27 @@ internal static class SupportProductionPdfPolicy
         return new(true,"PDF_PREFLIGHT_PASS",path);
     }
 
+    // The Ortho DWG already exists because it was cloned as a seed.
+    // Its mere existence is not evidence that new views/dimensions were
+    // saved. Require an observed disk write (timestamp or byte change).
+    internal static bool VerifyNewDwgSave(string path,long previousBytes,
+        DateTime previousWriteUtc,out long savedBytes)
+    {
+        savedBytes=0;
+        try
+        {
+            var info=new FileInfo(path);
+            info.Refresh();
+            if(!info.Exists||info.Length<1024)return false;
+            if(info.LastWriteTimeUtc<=previousWriteUtc&&
+               info.Length==previousBytes)return false;
+            savedBytes=info.Length;
+            return true;
+        }
+        catch(IOException){return false;}
+        catch(UnauthorizedAccessException){return false;}
+    }
+
     internal static bool VerifyPdf(string file,out long byteCount)
     {
         byteCount=0;
