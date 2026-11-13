@@ -595,7 +595,7 @@ public sealed class SupportOrthoTenViewGenerator
         ed.WriteMessage("\nSPTC: Creating and registering a new 10-view Ortho DWG automatically: " + dest);
 
         string report = Path.Combine(Path.GetDirectoryName(dest)!,
-            Path.GetFileNameWithoutExtension(dest) + "_REV22_29_RESULT.txt");
+            Path.GetFileNameWithoutExtension(dest) + "_RESULT.txt");
         var log = new StringBuilder(6000);
         void Log(string msg)
         {
@@ -618,7 +618,9 @@ public sealed class SupportOrthoTenViewGenerator
         Document? targetDoc = null;
         try
         {
-            Log("SPTC_REV22_ONE_COMMAND_NATIVE_TOP_TEST");
+            Log("SPTC_SUPPORT_ORTHO_GENERATION");
+            Log("SPTC_BUILD_ID="+SupportBuildIdentity.Id);
+            Log("SPTC_BUILD_ASSEMBLY="+SupportBuildIdentity.AssemblyName);
             Log("PROJECT=" + part.ProjectRoot);
             Log("SOURCE_MODEL=" + source);
             Log("SOURCE_HANDLES=" + string.Join(",", handles));
@@ -1727,6 +1729,40 @@ public sealed class SupportOrthoTenViewGenerator
                             paperWidth,paperHeight,units,verifiedSegments,
                             dimensionCollisionCallouts,titles,
                             nativeEdges:nativeEdges59.Edges);
+                        // Stable, revision-independent drawing optimizer:
+                        // try alternate native paper-space lane ranks only
+                        // when a verified optional dimension is missing or
+                        // an inner chain appears outside its overall. The
+                        // selected plan must preserve ALL source witness
+                        // coordinates, source dimensions and dynamic scaling.
+                        var optimized=SupportOrthoDimensionReflow.Improve(
+                            dimCameras,detailPlan,preferences=>
+                                SupportOrthoReferenceDimPlan47.Build(
+                                    dimCameras,nativeDimensionMembers,
+                                    paperWidth,paperHeight,units,
+                                    verifiedSegments,dimensionCollisionCallouts,
+                                    titles,nativeEdges:nativeEdges59.Edges,
+                                    lanePreferences:preferences));
+                        detailPlan=optimized.Plan;
+                        Log("DIM_LAYOUT_TRIALS="+optimized.AlternativesTested);
+                        Log("DIM_LAYOUT_REPOSITIONED_VIEWS="+
+                            optimized.ChangedViews);
+                        Log("DIM_LAYOUT_OPTIONAL_OMISSIONS="+
+                            optimized.OriginalOptionalOmissions+"/"+
+                            optimized.RemainingOptionalOmissions);
+                        Log("DIM_LAYOUT_HIERARCHY_ERRORS="+
+                            optimized.OriginalHierarchyErrors+"/"+
+                            optimized.RemainingHierarchyErrors);
+                        foreach(var pair in optimized.Preferences.OrderBy(
+                            x=>x.Key,StringComparer.OrdinalIgnoreCase))
+                            Log("DIM_LAYOUT_SELECTED="+pair.Key+
+                                ":OVERALL_LANE_RANK="+
+                                pair.Value.OverallLaneRank+
+                                ":CHAIN_LANE_RANK="+
+                                pair.Value.ChainLaneRank);
+                        foreach(string why in optimized.Rejections)
+                            Log("DIM_LAYOUT_REJECTED="+why);
+                        Log("DIM_LAYOUT_SOURCE_WITNESSES_PROTECTED=True");
                         // REV22.63: explicitly distinguish compact-only
                         // retries from adaptive title/short-text recovery.
                         // Per-view omitted member causes remain in
