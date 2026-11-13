@@ -2047,7 +2047,7 @@ public sealed class SupportOrthoTenViewGenerator
                     // successful paper DIMLINEAR generation. The manifest
                     // is required for any later automatic Update View
                     // refresh. Previous REV22.48 drawings are untouched.
-                    if(created>0)
+                    if(created>0&&created==dimensionPlan.Dimensions.Count)
                     {
                         try
                         {
