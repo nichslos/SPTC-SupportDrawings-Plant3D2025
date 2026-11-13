@@ -103,7 +103,7 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
         };
         var cancel=new Button{
             Text="Cancel",Location=new Point(558,633),
-            Size=new Size(127,34),DialogResult=DialogResult.Cancel,
+            Size=new Size(127,34),DialogResult=WinForms.DialogResult.Cancel,
             Anchor=AnchorStyles.Bottom|AnchorStyles.Right
         };
         panel.Controls.Add(save);
@@ -159,7 +159,7 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
                 fullDimensions.Checked,skipExisting.Checked,
                 supportTagAttribute.Text);
             SupportProductionPackageSettingsStore.Save(projectRoot,settings);
-            DialogResult=DialogResult.OK;
+            DialogResult=WinForms.DialogResult.OK;
             Close();
         }
         catch(Exception ex) when (ex is ArgumentException or
