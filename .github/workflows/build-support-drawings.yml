@@ -159,6 +159,28 @@ jobs:
              -not $ui.Contains('Nearby XREF members: label source DWG')) {
             throw 'REV22.37 XREF filename checkbox or default missing'
           }
+          # Palette DPI/resize regression is independent of geometry
+          # and native PLANTORTHOUPDATE. Never solve clipping by removing
+          # a command, option or the modeless palette.
+          $dpiUi=Get-Content "$root/SupportDrawingManagerForm35.cs" -Raw
+          $paletteUi=Get-Content "$root/SupportDrawingPalette40.cs" -Raw
+          $dpiTests=Get-Content 'tests/Rev240PaletteSmokeTests/Program.cs' -Raw
+          foreach($token in @('AutoScaleMode = AutoScaleMode.Dpi',
+              'layoutSurface.Name = "SPTC_UI_LAYOUT_SURFACE"',
+              'layoutSurface.Controls.Add(tabs)',
+              'orthoTab.AutoScrollMinSize',
+              'SPTC_PROGRESS_COUNTS',
+              'bar.Anchor=AnchorStyles.Top',
+              'AdvanceWorkload(bool succeeded)')) {
+            if(-not $dpiUi.Contains($token)) {
+              throw "DPI-safe production UI layout invariant missing: $token"
+            }
+          }
+          if(-not $paletteUi.Contains('MinimumSize=new Size(390,480)') -or
+             -not $dpiTests.Contains('TestScrollableDpiLayout();') -or
+             -not $dpiTests.Contains('TestBatchProgressReporting();')) {
+            throw 'Narrow dock scrolling or DPI/progress regression absent'
+          }
           # Production UI: source-only preferences and progress controls.
           # No geometry writer, dimension planning, native command names
           # or Ortho refresh callback is changed by these UI additions.
@@ -220,7 +242,7 @@ jobs:
           }
           foreach($token in @('RunRequested?.Invoke(Settings)',
               'if(IsRunning)return;', 'internal void SetRunning(',
-              'internal void UpdateProjectContext(', 'MinimumSize = new Size(780, 740)')) {
+              'internal void UpdateProjectContext(', 'MinimumSize = new Size(360, 420)', 'AutoScroll = true')) {
             if(-not $ui.Contains($token)) {
               throw "REV22.40 settings/busy guard missing: $token"
             }
