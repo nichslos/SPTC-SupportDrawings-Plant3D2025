@@ -35,7 +35,9 @@ public static class SupportOrthoReferenceDimPlan47
         int CoordinatedProfileGroups=0,
         int CoordinatedProfilesPlaced=0,
         int CoordinatedProfileGroupsOmitted=0,
-        int CoordinatedCandidateComparisons=0);
+        int CoordinatedCandidateComparisons=0,
+        int CompactLocalWidthDimensionsRecovered=0,
+        int IntermediateChainLaneGroupsRecovered=0);
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
@@ -45,7 +47,8 @@ public static class SupportOrthoReferenceDimPlan47
         string SourceKey="",
         double? MidpointWitness=null,
         bool TerminalRemainder=false,
-        bool ExactNativeProfileEdge=false);
+        bool ExactNativeProfileEdge=false,
+        bool CompactLocalLabel=false);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text,
@@ -83,6 +86,7 @@ public static class SupportOrthoReferenceDimPlan47
             exactProfiles=0,approxProfiles=0,
             coordinatedGroups=0,coordinatedPlaced=0,
             coordinatedOmitted=0,coordinatedComparisons=0,
+            compactLocalRecovered=0,intermediateChainRecovered=0,
             rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
@@ -316,7 +320,8 @@ public static class SupportOrthoReferenceDimPlan47
             var profileGroups=new List<SupportOrthoCoordinatedLayout60.Group>();
             var profileOptions=new Dictionary<int,(
                 SupportOrthoDimLinearPlan41.Dimension D,
-                Placed P,bool Exact,bool NativeAxis)>();
+                Placed P,bool Exact,bool NativeAxis,
+                bool Compact)>();
             int optionId=0;
             foreach(bool horizontal in new[]{true,false})
             {
@@ -426,7 +431,7 @@ public static class SupportOrthoReferenceDimPlan47
                     var lanes=steps.Any(x=>x.TerminalRemainder&&
                         !x.Horizontal)?
                         SupportOrthoReferenceLayout51.IntermediateMemberLaneOffsets():
-                        SupportOrthoReferenceLayout51.LaneOffsets();
+                        SupportOrthoReferenceLayout51.LocalChainLaneOffsets();
                     foreach(double offset in lanes)
                     {
                         var local=new List<(
@@ -488,6 +493,9 @@ public static class SupportOrthoReferenceDimPlan47
                             chainPlaced++;
                         }
                         chainOffset=offset;
+                        if(Math.Abs(offset-
+                            SupportOrthoReferenceLayout51.ChainOffset())>.10)
+                            intermediateChainRecovered++;
                         chainGroupPlaced=true;
                         break;
                     }
@@ -686,7 +694,7 @@ public static class SupportOrthoReferenceDimPlan47
                                 int id=optionId++;
                                 profileOptions.Add(id,(candidate.Value.D,
                                     candidate.Value.P,physical!=null,
-                                    verifiedMidpoint));
+                                    verifiedMidpoint,false));
                                 double paperCost=Math.Min(90,
                                     offset*.65+tier*.16);
                                 alternatives.Add(new(
@@ -694,11 +702,93 @@ public static class SupportOrthoReferenceDimPlan47
                             }
                         }
                     }
+                    // REV22.62: only when no legacy option can fit,
+                    // retry a compact paper-only lane with the member
+                    // label tucked toward its own profile. No geometry
+                    // points, line values, source provenance, reserved
+                    // overall, XREF policy or witness safety is relaxed.
+                    var localReasons=new SortedDictionary<string,int>(
+                        StringComparer.Ordinal);
+                    void LocalReject(string why)
+                    {
+                        localReasons[why]=localReasons
+                            .TryGetValue(why,out int n)?n+1:1;
+                    }
+                    if(alternatives.Count==0)
+                    {
+                        var compactReq=localReq with {
+                            CompactLocalLabel=true
+                        };
+                        foreach(double sign in PreferredSigns(
+                            camera.Name,horizontal))
+                        {
+                            foreach(double offset in
+                                SupportOrthoReferenceLayout51
+                                    .CompactLocalMemberLaneOffsets())
+                            {
+                                if(alternatives.Count>=24)break;
+                                for(int tier=0;tier<8;tier++)
+                                {
+                                    if(alternatives.Count>=24)break;
+                                    var candidate=Candidate(
+                                        camera,assembly,projected,
+                                        verifiedWitnessPoints,compactReq,
+                                        sign,offset,tier);
+                                    if(candidate==null)
+                                    {
+                                        LocalReject("MISSING_NATIVE_WITNESS");
+                                        continue;
+                                    }
+                                    if(!InnerThanReservedOverall(
+                                        candidate.Value.P))
+                                    {
+                                        hierarchyRejected++;
+                                        LocalReject("OUTER_DIM_HIERARCHY");
+                                        continue;
+                                    }
+                                    string? blocked=RejectionReason(
+                                        candidate.Value.P,blocks,paper,
+                                        placed,projected);
+                                    if(blocked!=null)
+                                    {
+                                        rejected++;
+                                        LocalReject(blocked);
+                                        continue;
+                                    }
+                                    if(projected.Any(b=>
+                                            b!=member.Bounds&&
+                                            candidate.Value.P.Line
+                                                .Intersects(b,.20))||
+                                       placed.Any(prior=>
+                                            prior.Horizontal==horizontal&&
+                                            candidate.Value.P.Line
+                                                .Intersects(prior.Line,.35)))
+                                    {
+                                        rejected++;
+                                        LocalReject(
+                                            "DIMENSION_LINE_OVER_OTHER_NATIVE_MEMBER");
+                                        continue;
+                                    }
+                                    int id=optionId++;
+                                    profileOptions.Add(id,(
+                                        candidate.Value.D,candidate.Value.P,
+                                        physical!=null,verifiedMidpoint,true));
+                                    double cost=Math.Min(90,
+                                        offset*.65+tier*.12+2.5);
+                                    alternatives.Add(new(id,cost));
+                                }
+                            }
+                        }
+                    }
                     if(alternatives.Count==0)
                     {
                         skipped.Add(camera.Name+"/"+member.Member.Key+
                             ":"+(horizontal?"H":"V")+
-                            "_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE");
+                            "_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE"+
+                            ";REV22_62_CAUSES="+string.Join(",",
+                                localReasons.OrderByDescending(
+                                    x=>x.Value).Take(5)
+                                    .Select(x=>x.Key+":"+x.Value)));
                         continue;
                     }
                     // Reserve one distinct physical profile width per
@@ -737,6 +827,7 @@ public static class SupportOrthoReferenceDimPlan47
                     coordinatedPlaced++;
                     if(picked.Exact)exactProfiles++;
                     else approxProfiles++;
+                    if(picked.Compact)compactLocalRecovered++;
                     if(picked.NativeAxis)midpointNative++;
                     else midpointBounds++;
                 }
@@ -762,7 +853,8 @@ public static class SupportOrthoReferenceDimPlan47
             redundantChains,hierarchyRejected,manualViewSuppressed,
             acceptedIntersections,exactProfiles,approxProfiles,
             coordinatedGroups,coordinatedPlaced,coordinatedOmitted,
-            coordinatedComparisons);
+            coordinatedComparisons,compactLocalRecovered,
+            intermediateChainRecovered);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
@@ -912,9 +1004,11 @@ public static class SupportOrthoReferenceDimPlan47
             // so identical labels don't stack on one another.
             bool putBefore=SupportOrthoReferenceLayout51
                 .ShortTextBefore(request.Index,textTier);
+            double extra=request.CompactLocalLabel?
+                (textTier/2)*.75:0.0;
             textAt=putBefore?
-                request.From-printedWidth*.5-2.0:
-                request.To+printedWidth*.5+2.0;
+                request.From-printedWidth*.5-2.0-extra:
+                request.To+printedWidth*.5+2.0+extra;
         }
         // Search opposite text sides first, then more distant tiers.
         // The dimension line itself stays collinear with the chain.
@@ -922,7 +1016,10 @@ public static class SupportOrthoReferenceDimPlan47
         // the reserved 4.6 mm corridor. The text's 1.3 mm half-width
         // plus text gap must not reach the 828.28/928.28 outer
         // witness at the native profile edge.
-        double textClearance=request.TerminalRemainder&&
+        double textClearance=request.CompactLocalLabel&&
+            request.LocalBounds.HasValue?
+            1.8:
+            request.TerminalRemainder&&
             !request.Horizontal?
             2.0+(textTier/5)*.2:
             request.Overall&&!request.Horizontal?
