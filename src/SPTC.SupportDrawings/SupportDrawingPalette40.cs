@@ -49,7 +49,10 @@ internal static class SupportDrawingPalette40
                       PaletteSetStyles.Snappable,
                 DockEnabled=DockSides.Left | DockSides.Right,
                 Dock=DockSides.None,
-                MinimumSize=new Size(790,765),
+                // Narrow docking is safe: the hosted manager retains
+                // a full scrollable, DPI-aware design canvas so no
+                // production option or Run/Preflight button is clipped.
+                MinimumSize=new Size(390,480),
                 Size=new Size(840,830)
             };
             palette.Add("SPTC Support Drawings",manager);
