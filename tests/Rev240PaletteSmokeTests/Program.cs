@@ -16,7 +16,8 @@ internal static class Program
             @"C:\Projects\SAMPLE\Orthos");
         Check(manager is UserControl && !manager.IsDisposed,
             "must be persistent UserControl, not a modal Form");
-        Check(manager.Controls.OfType<TabControl>().Single().TabCount==4,
+        Check(manager.Controls.Find("SPTC_UI_LAYOUT_SURFACE",false)
+                .Single().Controls.OfType<TabControl>().Single().TabCount==4,
             "four existing operation tabs preserved");
 
         int count=0;
