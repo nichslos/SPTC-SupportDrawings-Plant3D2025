@@ -242,7 +242,7 @@ jobs:
           }
           foreach($token in @('RunRequested?.Invoke(Settings)',
               'if(IsRunning)return;', 'internal void SetRunning(',
-              'internal void UpdateProjectContext(', 'MinimumSize = new Size(780, 740)')) {
+              'internal void UpdateProjectContext(', 'MinimumSize = new Size(360, 420)', 'AutoScroll = true')) {
             if(-not $ui.Contains($token)) {
               throw "REV22.40 settings/busy guard missing: $token"
             }
