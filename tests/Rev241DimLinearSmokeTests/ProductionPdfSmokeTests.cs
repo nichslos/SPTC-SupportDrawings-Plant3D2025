@@ -37,6 +37,70 @@ internal static class ProductionPdfSmokeTests
                 !SupportProductionPdfPolicy.AllowedDevice(
                     "GenericPrinter.pc3"),
                 "approved native PDF configurations only");
+            // Plant 3D TEST5: native paper is 594 x 841 mm (A1).
+            // The seed's canonical media name is not portable between PC3
+            // devices. Match actual physical dimensions, not strings.
+            var candidates=new[]{
+                new SupportProductionPdfMediaMatcher.Candidate(
+                    "ANSI_B_(11_x_17_in)",279.4,431.8),
+                new SupportProductionPdfMediaMatcher.Candidate(
+                    "ISO_A1_(594.00_x_841.00_MM)",594.0,841.0),
+                new SupportProductionPdfMediaMatcher.Candidate(
+                    "ISO_full_bleed_A1_(594.00_x_841.00_MM)",594.0,841.0),
+                new SupportProductionPdfMediaMatcher.Candidate(
+                    "ISO_A0_(841.00_x_1189.00_MM)",841.0,1189.0)
+            };
+            var a1=SupportProductionPdfMediaMatcher.Select(
+                594,841,candidates,"UNSUPPORTED_SEED_A1");
+            Need(a1.Found&&!a1.Rotate90&&
+                a1.MediaName=="ISO_full_bleed_A1_(594.00_x_841.00_MM)",
+                "native A1 matches physical PDF A1 regardless of old PC3 media name");
+            var keepName=SupportProductionPdfMediaMatcher.Select(
+                594,841,candidates,"ISO_A1_(594.00_x_841.00_MM)");
+            Need(keepName.MediaName=="ISO_A1_(594.00_x_841.00_MM)",
+                "preserve native media name when the selected PC3 really supports it");
+            var reversed=SupportProductionPdfMediaMatcher.Select(
+                594,841,new[]{
+                    new SupportProductionPdfMediaMatcher.Candidate(
+                        "PDF_A1_LANDSCAPE",841,594)
+                });
+            Need(reversed.Found&&reversed.Rotate90&&
+                reversed.MediaName=="PDF_A1_LANDSCAPE",
+                "match opposite A1 media orientation only with explicit 90-degree compensation");
+            var directPreferred=SupportProductionPdfMediaMatcher.Select(
+                594,841,new[]{
+                    new SupportProductionPdfMediaMatcher.Candidate(
+                        "A1_LANDSCAPE",841,594),
+                    new SupportProductionPdfMediaMatcher.Candidate(
+                        "A1_PORTRAIT",594,841)
+                },"A1_LANDSCAPE");
+            Need(!directPreferred.Rotate90&&
+                directPreferred.MediaName=="A1_PORTRAIT",
+                "matching orientation takes precedence over old canonical name");
+            Need(!SupportProductionPdfMediaMatcher.Select(
+                594,841,new[]{
+                    new SupportProductionPdfMediaMatcher.Candidate(
+                        "A2",420,594),
+                    new SupportProductionPdfMediaMatcher.Candidate(
+                        "A0",841,1189)
+                }).Found,
+                "never silently scale or crop A1 onto wrong media");
+            Need(!SupportProductionPdfMediaMatcher.Select(
+                594,841,new[]{
+                    new SupportProductionPdfMediaMatcher.Candidate(
+                        "BAD",594,843.5)
+                }).Found,
+                "physical media tolerance blocks materially wrong paper height");
+            Need(SupportProductionPdfMediaMatcher.Select(
+                594,841,new[]{
+                    new SupportProductionPdfMediaMatcher.Candidate(
+                        "PDF_A1_ROUNDED",594.2,840.8)
+                }).Found,
+                "allow sub-millimeter PC3 paper-size rounding");
+            Need(!SupportProductionPdfMediaMatcher.Select(
+                0,841,candidates).Found,
+                "invalid native paper dimensions fail closed");
+
             var entry=new SupportProductionPackagePlan.Entry(
                 "SPTC-PRODUCTION-DRAWING-1","T26-SUP-FOO","K1",
                 Path.Combine(folder,"source.dwg"),new[]{"8A4"},1,100,
