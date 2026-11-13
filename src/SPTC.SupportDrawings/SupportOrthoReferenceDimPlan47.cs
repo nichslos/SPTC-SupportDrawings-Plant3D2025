@@ -37,7 +37,8 @@ public static class SupportOrthoReferenceDimPlan47
         int CoordinatedProfileGroupsOmitted=0,
         int CoordinatedCandidateComparisons=0,
         int CompactLocalWidthDimensionsRecovered=0,
-        int IntermediateChainLaneGroupsRecovered=0);
+        int IntermediateChainLaneGroupsRecovered=0,
+        int AdaptiveLocalWidthDimensionsRecovered=0);
 
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
@@ -48,7 +49,9 @@ public static class SupportOrthoReferenceDimPlan47
         double? MidpointWitness=null,
         bool TerminalRemainder=false,
         bool ExactNativeProfileEdge=false,
-        bool CompactLocalLabel=false);
+        bool CompactLocalLabel=false,
+        bool AdaptiveShortLocalLabel=false,
+        bool OutwardLocalLabel=false);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text,
@@ -87,6 +90,7 @@ public static class SupportOrthoReferenceDimPlan47
             coordinatedGroups=0,coordinatedPlaced=0,
             coordinatedOmitted=0,coordinatedComparisons=0,
             compactLocalRecovered=0,intermediateChainRecovered=0,
+            adaptiveLocalRecovered=0,
             rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
@@ -321,7 +325,7 @@ public static class SupportOrthoReferenceDimPlan47
             var profileOptions=new Dictionary<int,(
                 SupportOrthoDimLinearPlan41.Dimension D,
                 Placed P,bool Exact,bool NativeAxis,
-                bool Compact)>();
+                bool Compact,bool Adaptive)>();
             int optionId=0;
             foreach(bool horizontal in new[]{true,false})
             {
@@ -694,7 +698,7 @@ public static class SupportOrthoReferenceDimPlan47
                                 int id=optionId++;
                                 profileOptions.Add(id,(candidate.Value.D,
                                     candidate.Value.P,physical!=null,
-                                    verifiedMidpoint,false));
+                                    verifiedMidpoint,false,false));
                                 double paperCost=Math.Min(90,
                                     offset*.65+tier*.16);
                                 alternatives.Add(new(
@@ -772,10 +776,100 @@ public static class SupportOrthoReferenceDimPlan47
                                     int id=optionId++;
                                     profileOptions.Add(id,(
                                         candidate.Value.D,candidate.Value.P,
-                                        physical!=null,verifiedMidpoint,true));
+                                        physical!=null,verifiedMidpoint,true,
+                                        false));
                                     double cost=Math.Min(90,
                                         offset*.65+tier*.12+2.5);
                                     alternatives.Add(new(id,cost));
+                                }
+                            }
+                        }
+                    }
+                    // REV22.63: last-resort layout search for SHORT
+                    // projected native profile dimensions. Keep the
+                    // existing successful options and both overall
+                    // dimensions unchanged. First retry on the preferred
+                    // side, then the opposite side ONLY if all safe
+                    // preferred positions fail. The latter also places
+                    // the label outward from the native member.
+                    // The actual MText caption has a conservative
+                    // measured-width keepout rather than reserving the
+                    // entire (possibly very wide) viewport caption band.
+                    if(alternatives.Count==0)
+                    {
+                        var adaptiveBlocks=FixedZones(
+                            camera,cameras,callouts,titles,
+                            compactTitleKeepout:true);
+                        if(additionalKeepouts!=null)
+                            adaptiveBlocks.AddRange(
+                                additionalKeepouts.Where(x=>x.IsFinite)
+                                    .Select(x=>new Obstacle(x,
+                                        "RESERVED_PAPER_AREA")));
+                        double preferred=SupportOrthoReferenceLayout51
+                            .PreferredSide(camera.Name,horizontal);
+                        foreach(double sign in new[]{preferred,-preferred})
+                        {
+                            if(alternatives.Count>0)break;
+                            var adaptiveReq=localReq with {
+                                CompactLocalLabel=true,
+                                AdaptiveShortLocalLabel=true,
+                                OutwardLocalLabel=sign!=preferred
+                            };
+                            foreach(double offset in
+                                SupportOrthoReferenceLayout51
+                                    .AdaptiveLocalMemberLaneOffsets())
+                            {
+                                if(alternatives.Count>=24)break;
+                                for(int tier=0;tier<20;tier++)
+                                {
+                                    if(alternatives.Count>=24)break;
+                                    var candidate=Candidate(camera,assembly,
+                                        projected,verifiedWitnessPoints,
+                                        adaptiveReq,sign,offset,tier);
+                                    if(candidate==null)
+                                    {
+                                        LocalReject("NO_VERIFIED_WITNESS");
+                                        continue;
+                                    }
+                                    if(!InnerThanReservedOverall(
+                                        candidate.Value.P))
+                                    {
+                                        hierarchyRejected++;
+                                        LocalReject("OUTER_DIM_HIERARCHY");
+                                        continue;
+                                    }
+                                    string? blocked=RejectionReason(
+                                        candidate.Value.P,adaptiveBlocks,
+                                        paper,placed,projected);
+                                    if(blocked!=null)
+                                    {
+                                        rejected++;
+                                        LocalReject(blocked);
+                                        continue;
+                                    }
+                                    if(projected.Any(b=>b!=member.Bounds&&
+                                            candidate.Value.P.Line
+                                                .Intersects(b,.20))||
+                                       placed.Any(prior=>
+                                            prior.Horizontal==horizontal&&
+                                            candidate.Value.P.Line
+                                                .Intersects(prior.Line,.35)))
+                                    {
+                                        rejected++;
+                                        LocalReject(
+                                            "LINE_CROSSES_NATIVE_OR_DIMENSION");
+                                        continue;
+                                    }
+                                    int id=optionId++;
+                                    profileOptions.Add(id,(candidate.Value.D,
+                                        candidate.Value.P,physical!=null,
+                                        verifiedMidpoint,true,true));
+                                    // Prefer shorter labels and the
+                                    // original drafting side when clear.
+                                    double paperCost=offset*.65+
+                                        tier*.20+4.0+
+                                        (sign!=preferred?15:0);
+                                    alternatives.Add(new(id,paperCost));
                                 }
                             }
                         }
@@ -828,6 +922,7 @@ public static class SupportOrthoReferenceDimPlan47
                     if(picked.Exact)exactProfiles++;
                     else approxProfiles++;
                     if(picked.Compact)compactLocalRecovered++;
+                    if(picked.Adaptive)adaptiveLocalRecovered++;
                     if(picked.NativeAxis)midpointNative++;
                     else midpointBounds++;
                 }
@@ -854,7 +949,8 @@ public static class SupportOrthoReferenceDimPlan47
             acceptedIntersections,exactProfiles,approxProfiles,
             coordinatedGroups,coordinatedPlaced,coordinatedOmitted,
             coordinatedComparisons,compactLocalRecovered,
-            intermediateChainRecovered);
+            intermediateChainRecovered,
+            adaptiveLocalRecovered);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
@@ -1005,7 +1101,10 @@ public static class SupportOrthoReferenceDimPlan47
             bool putBefore=SupportOrthoReferenceLayout51
                 .ShortTextBefore(request.Index,textTier);
             double extra=request.CompactLocalLabel?
-                (textTier/2)*.75:0.0;
+                request.AdaptiveShortLocalLabel?
+                    SupportOrthoReferenceLayout51
+                        .AdaptiveLocalLabelAdvance(textTier):
+                    (textTier/2)*.75:0.0;
             textAt=putBefore?
                 request.From-printedWidth*.5-2.0-extra:
                 request.To+printedWidth*.5+2.0+extra;
@@ -1034,6 +1133,7 @@ public static class SupportOrthoReferenceDimPlan47
         // away from the protected outer overall line. Leave the
         // witness and measured datum endpoints unchanged.
         double labelSide=
+            request.OutwardLocalLabel?sign:
             request.LocalBounds.HasValue||request.TerminalRemainder?
                 -sign:sign;
         double tx=request.Horizontal?textAt:
@@ -1173,7 +1273,8 @@ public static class SupportOrthoReferenceDimPlan47
         SupportOrthoMemberCalloutPlan17.Camera current,
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts,
-        IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles)
+        IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles,
+        bool compactTitleKeepout=false)
     {
         var zones=new List<Obstacle>();
         foreach(var c in cameras)
@@ -1186,11 +1287,21 @@ public static class SupportOrthoReferenceDimPlan47
                 "NEIGHBOR_VIEW_"+c.Name));
         }
         foreach(var title in titles??Array.Empty<NativeOrthoViewTitlePlan.Title>())
+        {
+            // This is a recovery-only exception: existing dimension
+            // planning continues using the full MText container width.
+            // The actual centered single-line title has a smaller,
+            // conservative minimum text width than a wide view frame.
+            double reservedWidth=compactTitleKeepout?
+                Math.Min(title.Width,
+                    NativeOrthoViewTitlePlan.MinimumFrameWidth(title.Name)):
+                title.Width;
             zones.Add(new Obstacle(new SupportOrthoSmartDimPlan46.Rect(
-                title.CenterX-title.Width*.5-1,
+                title.CenterX-reservedWidth*.5-1,
                 title.TopY-title.Height-1,
-                title.CenterX+title.Width*.5+1,title.TopY+1),
+                title.CenterX+reservedWidth*.5+1,title.TopY+1),
                 "VIEW_TITLE_"+title.Name));
+        }
         foreach(var c in callouts??Array.Empty<SupportOrthoMemberCalloutPlan27.Callout>())
         {
             string kind=c.View.Equals(current.Name,
