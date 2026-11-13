@@ -269,7 +269,7 @@ internal static class SupportProductionNativePdfPublisher
         validator.RefreshLists(sheet);
         var available=validator.GetCanonicalMediaNameList(sheet);
         var choices=new List<SupportProductionPdfMediaMatcher.Candidate>();
-        foreach(string candidate in available)
+        foreach(string? candidate in available)
         {
             if(string.IsNullOrWhiteSpace(candidate))continue;
             try
