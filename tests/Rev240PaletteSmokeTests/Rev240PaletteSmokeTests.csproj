@@ -9,6 +9,12 @@
   <ItemGroup>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingUiPreferences.cs"
              Link="SupportDrawingUiPreferences.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPackagePlan.cs"
+             Link="SupportProductionPackagePlan.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPackageSettingsStore.cs"
+             Link="SupportProductionPackageSettingsStore.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPackageDialog.cs"
+             Link="SupportProductionPackageDialog.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingManagerForm35.cs"
              Link="SupportDrawingManagerForm35.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingPaperScale39.cs"
