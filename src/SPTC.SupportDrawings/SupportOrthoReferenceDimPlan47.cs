@@ -40,6 +40,22 @@ public static class SupportOrthoReferenceDimPlan47
         int IntermediateChainLaneGroupsRecovered=0,
         int AdaptiveLocalWidthDimensionsRecovered=0);
 
+    // Revision-independent paper-space search policy. Rank indices
+    // reorder existing candidate lanes; they never prescribe geometry,
+    // source measurements, member sizes or project-specific positions.
+    public sealed record PlacementPreference(
+        int OverallLaneRank=0,int ChainLaneRank=0);
+
+    public static IEnumerable<double> PreferLaneRank(
+        IEnumerable<double> existing,int rank)
+    {
+        if(existing==null)throw new ArgumentNullException(nameof(existing));
+        var lanes=existing.ToArray();
+        if(rank<0||rank>=lanes.Length)
+            throw new ArgumentOutOfRangeException(nameof(rank));
+        return lanes.Skip(rank).Concat(lanes.Take(rank));
+    }
+
     private sealed record Station(double At,int Weight);
     private sealed record Request(bool Horizontal,double From,double To,
         bool Overall,int Index,string Measurement,
@@ -73,7 +89,8 @@ public static class SupportOrthoReferenceDimPlan47
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts=null,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles=null,
         IReadOnlyList<SupportOrthoSmartDimPlan46.Rect>? additionalKeepouts=null,
-        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeEdges=null)
+        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeEdges=null,
+        IReadOnlyDictionary<string,PlacementPreference>? lanePreferences=null)
     {
         if(cameras==null||members==null||!double.IsFinite(paperW)||
            !double.IsFinite(paperH)||!double.IsFinite(unitsToMm)||
@@ -159,6 +176,8 @@ public static class SupportOrthoReferenceDimPlan47
             double minY=projected.Min(b=>b.B),maxY=projected.Max(b=>b.T);
             var assembly=new SupportOrthoSmartDimPlan46.Rect(
                 minX,minY,maxX,maxY);
+            lanePreferences?.TryGetValue(camera.Name,
+                out var preference);
             var blocks=FixedZones(camera,cameras,callouts,titles);
             if(additionalKeepouts!=null)
                 blocks.AddRange(additionalKeepouts.Where(x=>x.IsFinite)
@@ -268,8 +287,11 @@ public static class SupportOrthoReferenceDimPlan47
                     // annotation gutter ends just before this band,
                     // so insisting on 11.8 mm pushed the vertical
                     // dimension text into the LEFT annotation labels.
-                    foreach(double offset in SupportOrthoReferenceLayout51
-                        .OverallLaneOffsets())
+                    foreach(double offset in
+                        PreferLaneRank(
+                            SupportOrthoReferenceLayout51
+                                .OverallLaneOffsets(),
+                            preference?.OverallLaneRank??0))
                     {
                         if(found)break;
                         for(int tier=0;tier<20;tier++)
@@ -436,7 +458,8 @@ public static class SupportOrthoReferenceDimPlan47
                         !x.Horizontal)?
                         SupportOrthoReferenceLayout51.IntermediateMemberLaneOffsets():
                         SupportOrthoReferenceLayout51.LocalChainLaneOffsets();
-                    foreach(double offset in lanes)
+                    foreach(double offset in PreferLaneRank(lanes,
+                        preference?.ChainLaneRank??0))
                     {
                         var local=new List<(
                             SupportOrthoDimLinearPlan41.Dimension D,
