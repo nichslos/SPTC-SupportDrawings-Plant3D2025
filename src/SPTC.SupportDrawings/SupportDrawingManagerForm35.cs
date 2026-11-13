@@ -566,6 +566,8 @@ internal sealed class SupportDrawingProgressForm35 : WinForms.Form
 {
     private readonly TextBox log = new();
     private readonly ProgressBar bar = new();
+    private readonly Label countLabel = new();
+    private int totalJobs,finishedJobs,failedJobs;
     internal SupportDrawingProgressForm35()
     {
         Text = "SPTC  /  Ortho generation progress";
@@ -583,6 +585,10 @@ internal sealed class SupportDrawingProgressForm35 : WinForms.Form
             Font = new Font("Segoe UI", 10f, FontStyle.Bold)
         };
         Controls.Add(title);
+        countLabel.SetBounds(136,59,467,24);
+        countLabel.Text="Preparing support drawings...";
+        countLabel.ForeColor=Color.DimGray;
+        Controls.Add(countLabel);
         bar.SetBounds(14,89,600,17);
         bar.Style = ProgressBarStyle.Marquee;
         Controls.Add(bar);
@@ -601,6 +607,43 @@ internal sealed class SupportDrawingProgressForm35 : WinForms.Form
     }
 
     private bool completed;
+
+    internal void SetWorkload(int jobs)
+    {
+        if(IsDisposed)return;
+        if(InvokeRequired)
+        {
+            BeginInvoke(new Action<int>(SetWorkload),jobs);
+            return;
+        }
+        totalJobs=Math.Max(0,jobs);
+        finishedJobs=0;
+        failedJobs=0;
+        bar.Style=ProgressBarStyle.Continuous;
+        bar.Minimum=0;
+        bar.Maximum=Math.Max(1,totalJobs);
+        bar.Value=0;
+        countLabel.Text=totalJobs>0?
+            "Completed 0 / "+totalJobs+" support drawing(s)":
+            "Preparing support drawing(s)...";
+    }
+
+    internal void AdvanceWorkload(bool succeeded)
+    {
+        if(IsDisposed)return;
+        if(InvokeRequired)
+        {
+            BeginInvoke(new Action<bool>(AdvanceWorkload),succeeded);
+            return;
+        }
+        finishedJobs=Math.Min(totalJobs,finishedJobs+1);
+        if(!succeeded)failedJobs++;
+        bar.Value=Math.Min(bar.Maximum,finishedJobs);
+        countLabel.Text="Processed "+finishedJobs+" / "+totalJobs+
+            "  |  Passed "+(finishedJobs-failedJobs)+
+            "  |  Failed "+failedJobs;
+    }
+
     internal void Report(string message)
     {
         if(IsDisposed) return;
@@ -617,7 +660,12 @@ internal sealed class SupportDrawingProgressForm35 : WinForms.Form
         completed=true;
         if(IsDisposed)return;
         bar.Style=ProgressBarStyle.Continuous;
-        bar.Value=bar.Maximum;
-        Report("Complete. Read the generated TXT reports for full diagnostics.");
+        bar.Value=Math.Min(bar.Maximum,finishedJobs);
+        countLabel.Text=totalJobs==0?
+            "Completed. See the report for details.":
+            "Finished "+finishedJobs+" / "+totalJobs+
+            "  |  Passed "+(finishedJobs-failedJobs)+
+            "  |  Failed "+failedJobs;
+        Report("Completed processing. Read generated TXT reports for full diagnostics.");
     }
 }
