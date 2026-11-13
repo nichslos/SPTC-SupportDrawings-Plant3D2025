@@ -320,6 +320,32 @@ jobs:
                'REV22_62_COMPACT_LOCAL_DIMENSIONS_RECOVERED=')) {
             throw 'REV22.62 source-grounded TOS and local recovery diagnostics missing'
           }
+          # REV22.64: annotate first on the draft plan, but permit
+          # a joint leader/dimension placement only if it keeps EVERY
+          # previously accepted dynamic dimension exactly unchanged.
+          $coordinate64=Get-Content "$root/SupportOrthoLeaderDimensionLayout64.cs" -Raw
+          $generator64=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('Preserves(originalPlan,checkedPlan)',
+              'PriorityOverallDimensions',
+              'UnintendedAcceptedWitnessIntersections',
+              'SafePaperLayout(candidate,cameras,titles',
+              'MissingView(activePlan,view)',
+              'REV22_60_OPTIONAL_PROFILE_NO_COMPATIBLE_LAYOUT')) {
+            if(-not $coordinate64.Contains($token)) {
+              throw "REV22.64 conservative joint layout rule missing: $token"
+            }
+          }
+          foreach($token in @('REV22_64_EXTRA_NATIVE_LOCAL_DIMENSIONS=',
+              'REV22_64_LEADER_STACKS_REPOSITIONED=',
+              'REV22_64_PREVIOUS_DIMENSIONS_PROTECTED=True')) {
+            if(-not $generator64.Contains($token)) {
+              throw "REV22.64 annotation/dimension diagnostics missing: $token"
+            }
+          }
+          if(-not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw).Contains(
+              'Rev264LeaderDimensionCoordinationTests.Run();')) {
+            throw 'REV22.64 executable regression is not included'
+          }
           # REV22.63: adaptive recovery must preserve real geometry,
           # prior overall dimensions and the strict intersection audit.
           $adaptive63=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
@@ -922,11 +948,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.63 verified adaptive dimension-clearance DLL bytes: $size"
+          Write-Host "REV22.64 verified coordinated annotation/dimension DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_63-ADAPTIVE-LOCAL-DIMENSION-CLEARANCE
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_64-COORDINATED-LEADER-DIMENSIONS
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
