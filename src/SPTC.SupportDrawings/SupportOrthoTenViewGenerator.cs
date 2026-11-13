@@ -91,6 +91,16 @@ public sealed class SupportOrthoTenViewGenerator
         string source=sourceDoc.Database.Filename??"";
         var progress=new SupportDrawingProgressForm35();
         var productionEntries=new List<SupportProductionPackagePlan.Entry>();
+        // Read optional project settings once for the whole batch.
+        // A damaged or absent production config does not affect Ortho.
+        var packageForRun=SupportProductionPackagePlan.Defaults;
+        try
+        {
+            var project=CurrentOrthoProject();
+            SupportProductionPackageSettingsStore.TryLoad(
+                project.ProjectRoot,out packageForRun,out _);
+        }
+        catch(System.Exception) { /* Opt-in publishing disabled. */ }
         try
         {
             if(options.BatchOrtho)
@@ -115,6 +125,7 @@ public sealed class SupportOrthoTenViewGenerator
                 progress.SetWorkload(ids.Count);
                 progress.Show();
                 int passed=0,failed=0;
+                int pdfPassed=0,pdfFailed=0;
                 var report=new StringBuilder();
                 report.AppendLine("SPTC_REV22_35_BATCH_REPORT");
                 report.AppendLine("SOURCE="+source);
@@ -122,22 +133,69 @@ public sealed class SupportOrthoTenViewGenerator
                 foreach(ObjectId id in ids)
                 {
                     bool supportSucceeded=false;
+                    int beforeEntries=productionEntries.Count;
                     try
                     {
                         AcadApp.DocumentManager.MdiActiveDocument=sourceDoc;
                         progress.Report("Starting support handle "+id.Handle);
                         bool ok=await GenerateOne(sourceDoc,new[]{id},options,progress,
                             productionEntries.Add);
-                        if(ok)passed++; else failed++;
-                        supportSucceeded=ok;
-                        report.AppendLine("HANDLE="+id.Handle+" STATUS="+(ok?"PASS":"FAIL"));
-                        progress.Report("Support "+id.Handle+": "+(ok?"PASS":"FAIL"));
+                        bool pdfOk=!packageForRun.Enabled||
+                            !packageForRun.PublishPdf;
+                        if(productionEntries.Count>beforeEntries)
+                        {
+                            var entry=productionEntries[^1];
+                            if(packageForRun.Enabled&&packageForRun.PublishPdf)
+                            {
+                                var published=SupportProductionNativePdfPublisher.Publish(
+                                    sourceDoc,packageForRun,entry,progress.Report);
+                                productionEntries[^1]=published;
+                                pdfOk=published.PdfStatus=="PDF_PUBLISHED_VERIFIED";
+                                if(pdfOk)pdfPassed++; else pdfFailed++;
+                                try {SupportProductionPackagePlan.SaveEntry(published);}
+                                catch(System.Exception ex)
+                                {
+                                    progress.Report("PDF register sidecar error: "+ex.Message);
+                                }
+                                report.AppendLine("HANDLE="+id.Handle+
+                                    " PDF_STATUS="+published.PdfStatus+
+                                    " PDF_PATH="+(published.PdfPath??""));
+                            }
+                        }
+                        else if(packageForRun.Enabled)
+                        {
+                            // A preflight failure has no output DWG. Record it
+                            // in the run CSV without fabricating a PDF path.
+                            productionEntries.Add(
+                                SupportProductionPackagePlan.FailedEntry(
+                                    packageForRun,source,
+                                    new[]{id.Handle.ToString()},
+                                    "GENERATION_DID_NOT_CREATE_DWG"));
+                            if(packageForRun.PublishPdf)pdfFailed++;
+                        }
+                        supportSucceeded=ok&&pdfOk;
+                        if(supportSucceeded)passed++; else failed++;
+                        report.AppendLine("HANDLE="+id.Handle+
+                            " DWG_STATUS="+(ok?"PASS":"FAIL")+
+                            " STATUS="+(supportSucceeded?"PASS":"FAIL"));
+                        progress.Report("Support "+id.Handle+": "+
+                            (supportSucceeded?"PASS":"FAIL / SEE DRAWING REGISTER"));
                     }
                     catch(System.Exception ex)
                     {
                         failed++;
                         report.AppendLine("HANDLE="+id.Handle+" STATUS=FAIL ERROR="+ex.Message);
                         progress.Report("Support "+id.Handle+" FAILED: "+ex.Message);
+                        if(packageForRun.Enabled&&
+                           productionEntries.Count==beforeEntries)
+                        {
+                            try{productionEntries.Add(
+                                SupportProductionPackagePlan.FailedEntry(
+                                    packageForRun,source,
+                                    new[]{id.Handle.ToString()},
+                                    ex.GetType().Name));}
+                            catch(System.Exception) { /* TXT still records failure */ }
+                        }
                     }
                     finally
                     {
@@ -148,6 +206,9 @@ public sealed class SupportOrthoTenViewGenerator
                     }
                 }
                 report.AppendLine("PASS="+passed+" FAIL="+failed);
+                if(packageForRun.Enabled&&packageForRun.PublishPdf)
+                    report.AppendLine("PDF_PUBLISHED="+pdfPassed+
+                        " PDF_FAILED_OR_BLOCKED="+pdfFailed);
                 if(productionEntries.Count>0)
                 {
                     try
@@ -192,7 +253,20 @@ public sealed class SupportOrthoTenViewGenerator
                 progress.Show();
                 bool ok=await GenerateOne(sourceDoc,null,options,progress,
                     productionEntries.Add);
-                progress.AdvanceWorkload(ok);
+                bool pdfOk=!packageForRun.Enabled||
+                    !packageForRun.PublishPdf;
+                if(productionEntries.Count>0&&packageForRun.Enabled&&
+                   packageForRun.PublishPdf)
+                {
+                    var published=SupportProductionNativePdfPublisher.Publish(
+                        sourceDoc,packageForRun,productionEntries[0],progress.Report);
+                    productionEntries[0]=published;
+                    pdfOk=published.PdfStatus=="PDF_PUBLISHED_VERIFIED";
+                    try {SupportProductionPackagePlan.SaveEntry(published);}
+                    catch(System.Exception ex)
+                    {progress.Report("PDF sidecar update error: "+ex.Message);}
+                }
+                progress.AdvanceWorkload(ok&&pdfOk);
                 if(productionEntries.Count>0)
                 {
                     try
@@ -209,7 +283,11 @@ public sealed class SupportOrthoTenViewGenerator
                         progress.Report("Register not written: "+ex.Message);
                     }
                 }
-                progress.Report("Single Ortho result: "+(ok?"PASS":"FAIL / SEE TXT"));
+                progress.Report("Single Ortho result: "+
+                    (ok?"DWG PASS":"DWG FAILED")+
+                    (packageForRun.Enabled&&packageForRun.PublishPdf?
+                        " | PDF "+(pdfOk?"PASS":"FAILED / BLOCKED"):
+                        " | PDF NOT REQUESTED"));
             }
         }
         catch(System.Exception ex)
