@@ -320,6 +320,37 @@ jobs:
                'REV22_62_COMPACT_LOCAL_DIMENSIONS_RECOVERED=')) {
             throw 'REV22.62 source-grounded TOS and local recovery diagnostics missing'
           }
+          # Stable signed-dimension integrity: native Ortho may
+          # delete or retag DIMLINEARs; never mark an incomplete set
+          # current or downgrade a previously verified drawing merely
+          # because an alternate planner finds fewer details.
+          $integrity=Get-Content "$root/SupportOrthoDimensionUpdatePlan49.cs" -Raw
+          $refreshIntegrity=Get-Content "$root/SupportOrthoDimensionRefresh49.cs" -Raw
+          foreach($token in @('LastVerifiedDimensions=null',
+              'HasTrustedVerifiedPlan(',
+              'CanRepairVerifiedDimensions(',
+              'LastOwnedDimensionCount==',
+              'LastSignature')) {
+            if(-not $integrity.Contains($token)) {
+              throw "Signed dimension integrity invariant missing: $token"
+            }
+          }
+          foreach($token in @('DIM_INTEGRITY_SAVED_EXPECTED=',
+              'DIM_INTEGRITY_REPAIR=RESTORED',
+              'DIM_INTEGRITY_REPLAN_BLOCKED=',
+              'REPAIRED_SIGNED_DIMENSION_PLAN',
+              'BLOCKED_UNOWNED_ON_AUTO_LAYER',
+              'replaceGenerated:true',
+              'LastVerifiedDimensions=dimensions.Count<=512?',
+              'LastOwnedDimensionCount=repaired')) {
+            if(-not $refreshIntegrity.Contains($token)) {
+              throw "Owner-only atomic dimension repair missing: $token"
+            }
+          }
+          if(-not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw).Contains(
+              'VerifiedDimensionIntegrityTests.Run();')) {
+            throw 'Signed 25-vs-23 dimension integrity regression not registered'
+          }
           # Native Ortho timing and safe post-update scheduling:
           # event hooks may only queue lightweight state, not block the
           # native PLANTORTHOUPDATE command or reload the source DWG.
