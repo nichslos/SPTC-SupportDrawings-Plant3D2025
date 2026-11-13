@@ -25,10 +25,30 @@ namespace SPTC.SupportDrawings;
 internal static class SupportOrthoDimensionRefresh49
 {
     private static readonly HashSet<Document> Watching=new();
-    private static readonly Queue<Document> Pending=new();
+    private sealed record PendingRefresh(long CompletedAtTicks,
+        long NativeMilliseconds,int NativeCommandsCoalesced);
+
+    private static readonly Dictionary<Document,PendingRefresh>
+        Pending=new();
     private static bool started,idleHooked,running;
     private static readonly Dictionary<Document,Stopwatch>
         NativeUpdateTimers=new();
+
+    // Bounded timing for diagnosing native Plant time separately from
+    // plugin time. No model or view inspection occurs in command events.
+    private sealed class RefreshTimings
+    {
+        internal string Mode="NOT_STARTED";
+        internal long ManifestMs,FastPaperMs,SourceMs,
+            LayoutMs,WriteMs;
+        internal string Summary() =>
+            "MODE="+Mode+
+            " MANIFEST_MS="+ManifestMs+
+            " FAST_PAPER_MS="+FastPaperMs+
+            " SOURCE_MS="+SourceMs+
+            " LAYOUT_MS="+LayoutMs+
+            " WRITE_MS="+WriteMs;
+    }
 
     internal static void Start()
     {
@@ -66,6 +86,7 @@ internal static class SupportOrthoDimensionRefresh49
     {
         if(!Watching.Remove(doc))return;
         NativeUpdateTimers.Remove(doc);
+        Pending.Remove(doc);
         try
         {
             doc.CommandWillStart-=OnCommandWillStart;
@@ -84,7 +105,7 @@ internal static class SupportOrthoDimensionRefresh49
     {
         // Deferred update may belong to a background document. Resume
         // once that exact Ortho DWG becomes active, without guessing.
-        if(Pending.Contains(e.Document))EnsureIdle();
+        if(Pending.ContainsKey(e.Document))EnsureIdle();
     }
 
     private static bool IsOrthoUpdate(string? command)=>
@@ -101,7 +122,12 @@ internal static class SupportOrthoDimensionRefresh49
     private static void OnCommandStopped(object sender,CommandEventArgs e)
     {
         if(sender is Document doc&&IsOrthoUpdate(e.GlobalCommandName))
+        {
             NativeUpdateTimers.Remove(doc);
+            // A cancelled/failed native update is not evidence that
+            // saved Ortho view geometry is ready for post-refresh.
+            Pending.Remove(doc);
+        }
     }
 
     private static void OnCommandEnded(object sender,CommandEventArgs e)
@@ -109,21 +135,29 @@ internal static class SupportOrthoDimensionRefresh49
         if(!IsOrthoUpdate(e.GlobalCommandName)||
            sender is not Document doc||
            !Watching.Contains(doc))return;
-        if(NativeUpdateTimers.Remove(doc,out var nativeTimer))
+
+        long nativeMilliseconds=-1;
+        if(NativeUpdateTimers.Remove(doc,out var timer))
         {
-            nativeTimer.Stop();
-            System.Diagnostics.Trace.WriteLine("REV22.49.3 NATIVE_PLANTORTHOUPDATE_MS="+
-                nativeTimer.ElapsedMilliseconds);
+            timer.Stop();
+            nativeMilliseconds=timer.ElapsedMilliseconds;
         }
-        // AutoCAD raises CommandEnded once native Ortho processing is done.
-        // Do not write from the event itself; schedule document-context work.
-        if(!Pending.Contains(doc))Pending.Enqueue(doc);
+        // Coalesce repeated native updates for this one document. The
+        // most recent command end restarts the quiet window, so SPTC
+        // never starts a costly paper refresh between consecutive
+        // PLANTORTHOUPDATE calls. This event only records timestamps.
+        int coalesced=Pending.TryGetValue(doc,out var prior)?
+            prior.NativeCommandsCoalesced+1:1;
+        Pending[doc]=new PendingRefresh(
+            Stopwatch.GetTimestamp(),nativeMilliseconds,coalesced);
         EnsureIdle();
     }
 
     private static void EnsureIdle()
     {
         if(idleHooked||running||Pending.Count==0)return;
+        var active=AcadApp.DocumentManager.MdiActiveDocument;
+        if(active==null||!Pending.ContainsKey(active))return;
         idleHooked=true;
         AcadApp.Idle+=OnIdle;
     }
@@ -133,36 +167,54 @@ internal static class SupportOrthoDimensionRefresh49
         AcadApp.Idle-=OnIdle;
         idleHooked=false;
         if(running||Pending.Count==0)return;
-        Document doc=Pending.Dequeue();
-        if(!Watching.Contains(doc)) {EnsureIdle();return;}
-        if(!ReferenceEquals(AcadApp.DocumentManager.MdiActiveDocument,doc))
+
+        // A background DWG is never refreshed against the active
+        // editor. DocumentActivated will resume its own pending work.
+        Document? doc=AcadApp.DocumentManager.MdiActiveDocument;
+        if(doc==null||!Watching.Contains(doc)||
+           !Pending.TryGetValue(doc,out var pending))return;
+        long now=Stopwatch.GetTimestamp();
+        if(!SupportOrthoUpdatePerformancePolicy.Ready(
+            pending.CompletedAtTicks,now,
+            NativeUpdateTimers.ContainsKey(doc),
+            true))
         {
-            // A pending update belongs to another drawing; process it only
-            // when that document is active, never against Current View.
-            Pending.Enqueue(doc);
-            // DocumentActivated would normally fire when it is restored.
+            // The model command can have ended while AutoCAD is still
+            // settling paper-space graphics. Reconsider on later idle.
+            if(!NativeUpdateTimers.ContainsKey(doc))EnsureIdle();
             return;
         }
+        Pending.Remove(doc);
         running=true;
         var pluginTimer=Stopwatch.StartNew();
+        var timings=new RefreshTimings();
         try
         {
             await AcadApp.DocumentManager.ExecuteInCommandContextAsync(_=>
             {
-                Refresh(doc);
+                Refresh(doc,timings);
                 return Task.CompletedTask;
             },null);
         }
         catch(System.Exception ex)
         {
-            Message(doc,"REV22.49 dimension update preserved original: "+
-                ex.GetType().Name+": "+ex.Message);
+            timings.Mode="FAILED_PRESERVED_ORIGINAL";
+            Message(doc,"ORTHO_REFRESH_FAILED="+ex.GetType().Name+
+                ": "+ex.Message);
         }
         finally
         {
             pluginTimer.Stop();
-            System.Diagnostics.Trace.WriteLine("REV22.49.3 SPTC_POST_UPDATE_MS="+
-                pluginTimer.ElapsedMilliseconds);
+            string summary="ORTHO_PERF_NATIVE_MS="+
+                pending.NativeMilliseconds+
+                " POST_REFRESH_MS="+pluginTimer.ElapsedMilliseconds+
+                " COALESCED_NATIVE_COMMANDS="+
+                pending.NativeCommandsCoalesced+" "+
+                timings.Summary();
+            System.Diagnostics.Trace.WriteLine(summary);
+            // One short result line, not hundreds of individual
+            // Trace writes or filesystem I/O in AutoCAD events.
+            if(Watching.Contains(doc))Message(doc,summary);
             running=false;
             EnsureIdle();
         }
