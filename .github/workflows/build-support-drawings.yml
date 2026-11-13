@@ -328,7 +328,7 @@ jobs:
           foreach($token in @('Preserves(originalPlan,checkedPlan)',
               'PriorityOverallDimensions',
               'UnintendedAcceptedWitnessIntersections',
-              'SafePaperLayout(candidate,cameras,titles',
+              'PaperLayoutRejectionReason(',
               'MissingView(activePlan,view)',
               'REV22_60_OPTIONAL_PROFILE_NO_COMPATIBLE_LAYOUT')) {
             if(-not $coordinate64.Contains($token)) {
