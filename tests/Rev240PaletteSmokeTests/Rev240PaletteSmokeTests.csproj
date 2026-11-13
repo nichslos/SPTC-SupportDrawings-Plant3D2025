@@ -7,6 +7,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingUiPreferences.cs"
+             Link="SupportDrawingUiPreferences.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingManagerForm35.cs"
              Link="SupportDrawingManagerForm35.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingPaperScale39.cs"

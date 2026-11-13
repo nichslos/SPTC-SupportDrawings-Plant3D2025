@@ -111,6 +111,7 @@ public sealed class SupportOrthoTenViewGenerator
                     ed.WriteMessage("\nSPTC batch: no support block references were selected.");
                     return;
                 }
+                progress.SetWorkload(ids.Count);
                 progress.Show();
                 int passed=0,failed=0;
                 var report=new StringBuilder();
@@ -119,12 +120,14 @@ public sealed class SupportOrthoTenViewGenerator
                 report.AppendLine("SUPPORT_COUNT="+ids.Count);
                 foreach(ObjectId id in ids)
                 {
+                    bool supportSucceeded=false;
                     try
                     {
                         AcadApp.DocumentManager.MdiActiveDocument=sourceDoc;
                         progress.Report("Starting support handle "+id.Handle);
                         bool ok=await GenerateOne(sourceDoc,new[]{id},options,progress);
                         if(ok)passed++; else failed++;
+                        supportSucceeded=ok;
                         report.AppendLine("HANDLE="+id.Handle+" STATUS="+(ok?"PASS":"FAIL"));
                         progress.Report("Support "+id.Handle+": "+(ok?"PASS":"FAIL"));
                     }
@@ -133,6 +136,13 @@ public sealed class SupportOrthoTenViewGenerator
                         failed++;
                         report.AppendLine("HANDLE="+id.Handle+" STATUS=FAIL ERROR="+ex.Message);
                         progress.Report("Support "+id.Handle+" FAILED: "+ex.Message);
+                    }
+                    finally
+                    {
+                        // A completed item advances the batch progress
+                        // even when its own generation fails. Progress is
+                        // not a count of successful drawings.
+                        progress.AdvanceWorkload(supportSucceeded);
                     }
                 }
                 report.AppendLine("PASS="+passed+" FAIL="+failed);
@@ -152,7 +162,12 @@ public sealed class SupportOrthoTenViewGenerator
             }
             else
             {
+                progress.SetWorkload(1);
+                // Show the existing non-modal progress window during
+                // a single run as well as sequential batch runs.
+                progress.Show();
                 bool ok=await GenerateOne(sourceDoc,null,options,progress);
+                progress.AdvanceWorkload(ok);
                 progress.Report("Single Ortho result: "+(ok?"PASS":"FAIL / SEE TXT"));
             }
         }
