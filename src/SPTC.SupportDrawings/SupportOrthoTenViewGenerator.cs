@@ -779,6 +779,8 @@ public sealed class SupportOrthoTenViewGenerator
         {
             Log("SPTC_SUPPORT_ORTHO_GENERATION");
             Log("PRODUCTION_PACKAGE_CONFIG="+packageConfigStatus);
+            Log("PRODUCTION_PACKAGE_ENABLED="+packageSettings.Enabled);
+            Log("PRODUCTION_PDF_ENABLED="+packageSettings.PublishPdf);
             Log("SPTC_BUILD_ID="+SupportBuildIdentity.Id);
             Log("SPTC_BUILD_ASSEMBLY="+SupportBuildIdentity.AssemblyName);
             Log("PROJECT=" + part.ProjectRoot);
