@@ -38,7 +38,9 @@ public static class SupportOrthoReferenceDimPlan47
         int CoordinatedCandidateComparisons=0,
         int CompactLocalWidthDimensionsRecovered=0,
         int IntermediateChainLaneGroupsRecovered=0,
-        int AdaptiveLocalWidthDimensionsRecovered=0);
+        int AdaptiveLocalWidthDimensionsRecovered=0,
+        int VerifiedAxisStationCandidatesTested=0,
+        int VerifiedAxisStationDimensionsRecovered=0);
 
     // Revision-independent paper-space search policy. Rank indices
     // reorder existing candidate lanes; they never prescribe geometry,
@@ -108,6 +110,7 @@ public static class SupportOrthoReferenceDimPlan47
             coordinatedOmitted=0,coordinatedComparisons=0,
             compactLocalRecovered=0,intermediateChainRecovered=0,
             adaptiveLocalRecovered=0,
+            verifiedStationTested=0,verifiedStationRecovered=0,
             rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
@@ -348,7 +351,7 @@ public static class SupportOrthoReferenceDimPlan47
             var profileOptions=new Dictionary<int,(
                 SupportOrthoDimLinearPlan41.Dimension D,
                 Placed P,bool Exact,bool NativeAxis,
-                bool Compact,bool Adaptive)>();
+                bool Compact,bool Adaptive,bool AxisStation)>();
             int optionId=0;
             foreach(bool horizontal in new[]{true,false})
             {
@@ -722,7 +725,7 @@ public static class SupportOrthoReferenceDimPlan47
                                 int id=optionId++;
                                 profileOptions.Add(id,(candidate.Value.D,
                                     candidate.Value.P,physical!=null,
-                                    verifiedMidpoint,false,false));
+                                    verifiedMidpoint,false,false,false));
                                 double paperCost=Math.Min(90,
                                     offset*.65+tier*.16);
                                 alternatives.Add(new(
@@ -801,7 +804,7 @@ public static class SupportOrthoReferenceDimPlan47
                                     profileOptions.Add(id,(
                                         candidate.Value.D,candidate.Value.P,
                                         physical!=null,verifiedMidpoint,true,
-                                        false));
+                                        false,false));
                                     double cost=Math.Min(90,
                                         offset*.65+tier*.12+2.5);
                                     alternatives.Add(new(id,cost));
@@ -887,13 +890,127 @@ public static class SupportOrthoReferenceDimPlan47
                                     int id=optionId++;
                                     profileOptions.Add(id,(candidate.Value.D,
                                         candidate.Value.P,physical!=null,
-                                        verifiedMidpoint,true,true));
+                                        verifiedMidpoint,true,true,false));
                                     // Prefer shorter labels and the
                                     // original drafting side when clear.
                                     double paperCost=offset*.65+
                                         tier*.20+4.0+
                                         (sign!=preferred?15:0);
                                     alternatives.Add(new(id,paperCost));
+                                }
+                            }
+                        }
+                    }
+                    // Last-resort geometry-derived profile station.
+                    // A midpoint is not the only available projected
+                    // section along an explicitly verified straight
+                    // native Start/End axis. Move BOTH local witness
+                    // starts to a different interpolated axis station;
+                    // keep the same measured native profile extent.
+                    // Never do this for unsupported, XREF, unverified
+                    // or exact-edge geometry; approximate envelope
+                    // provenance is retained, never promoted to exact.
+                    if(alternatives.Count==0&&verifiedMidpoint&&
+                       physical==null)
+                    {
+                        var transverseStations=
+                            SupportOrthoProfileStationPlan.AlongVerifiedAxis(
+                                true,witness,
+                                horizontal?axis.Dy:axis.Dx,
+                                horizontal?member.Bounds.B:member.Bounds.L,
+                                horizontal?member.Bounds.T:member.Bounds.R);
+                        if(transverseStations.Count>0)
+                        {
+                            var stationBlocks=FixedZones(
+                                camera,cameras,callouts,titles,
+                                compactTitleKeepout:true);
+                            if(additionalKeepouts!=null)
+                                stationBlocks.AddRange(additionalKeepouts
+                                    .Where(x=>x.IsFinite).Select(x=>
+                                        new Obstacle(x,"RESERVED_PAPER_AREA")));
+                            double firstSide=SupportOrthoReferenceLayout51
+                                .PreferredSide(camera.Name,horizontal);
+                            foreach(double transverse in transverseStations)
+                            {
+                                if(alternatives.Count>=16)break;
+                                var stationReq=localReq with {
+                                    MidpointWitness=transverse,
+                                    CompactLocalLabel=true,
+                                    AdaptiveShortLocalLabel=true
+                                };
+                                foreach(double sign in
+                                    new[]{firstSide,-firstSide})
+                                {
+                                    if(alternatives.Count>=16)break;
+                                    var request=stationReq with {
+                                        OutwardLocalLabel=sign!=firstSide
+                                    };
+                                    foreach(double offset in
+                                        SupportOrthoReferenceLayout51
+                                            .AdaptiveLocalMemberLaneOffsets())
+                                    {
+                                        if(alternatives.Count>=16)break;
+                                        for(int tier=0;tier<12;tier++)
+                                        {
+                                            if(alternatives.Count>=16)break;
+                                            verifiedStationTested++;
+                                            var candidate=Candidate(camera,
+                                                assembly,projected,
+                                                verifiedWitnessPoints,request,
+                                                sign,offset,tier);
+                                            if(candidate==null)
+                                            {
+                                                LocalReject(
+                                                    "AXIS_STATION_WITNESS_UNRESOLVED");
+                                                continue;
+                                            }
+                                            if(!InnerThanReservedOverall(
+                                                candidate.Value.P))
+                                            {
+                                                hierarchyRejected++;
+                                                LocalReject(
+                                                    "AXIS_STATION_OVERALL_HIERARCHY");
+                                                continue;
+                                            }
+                                            string? collision=RejectionReason(
+                                                candidate.Value.P,
+                                                stationBlocks,paper,placed,
+                                                projected);
+                                            if(collision!=null)
+                                            {
+                                                rejected++;
+                                                LocalReject(
+                                                    "AXIS_STATION_"+collision);
+                                                continue;
+                                            }
+                                            if(projected.Any(b=>
+                                                    b!=member.Bounds&&
+                                                    candidate.Value.P.Line
+                                                        .Intersects(b,.20))||
+                                               placed.Any(prior=>
+                                                    prior.Horizontal==
+                                                        horizontal&&
+                                                    candidate.Value.P.Line
+                                                        .Intersects(
+                                                            prior.Line,.35)))
+                                            {
+                                                rejected++;
+                                                LocalReject(
+                                                    "AXIS_STATION_NATIVE_OR_DIM_LINE");
+                                                continue;
+                                            }
+                                            int id=optionId++;
+                                            profileOptions.Add(id,(
+                                                candidate.Value.D,
+                                                candidate.Value.P,
+                                                false,true,true,true,true));
+                                            alternatives.Add(new(id,
+                                                offset*.65+tier*.20+8.0+
+                                                (sign!=firstSide?15:0)+
+                                                Math.Abs(transverse-witness)
+                                                    *.08));
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -947,6 +1064,7 @@ public static class SupportOrthoReferenceDimPlan47
                     else approxProfiles++;
                     if(picked.Compact)compactLocalRecovered++;
                     if(picked.Adaptive)adaptiveLocalRecovered++;
+                    if(picked.AxisStation)verifiedStationRecovered++;
                     if(picked.NativeAxis)midpointNative++;
                     else midpointBounds++;
                 }
@@ -974,7 +1092,8 @@ public static class SupportOrthoReferenceDimPlan47
             coordinatedGroups,coordinatedPlaced,coordinatedOmitted,
             coordinatedComparisons,compactLocalRecovered,
             intermediateChainRecovered,
-            adaptiveLocalRecovered);
+            adaptiveLocalRecovered,
+            verifiedStationTested,verifiedStationRecovered);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
