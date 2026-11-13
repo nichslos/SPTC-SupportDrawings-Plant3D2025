@@ -453,6 +453,23 @@ internal static class SupportOrthoDimensionRefresh49
                 string.Join("; ",restoreNotes));
             return;
         }
+        // If native Ortho kept 25 physical dimensions but stripped
+        // ownership XData from two, blindly recreating all 25 would
+        // duplicate the two untagged entities. Leave the sheet intact
+        // until the ambiguous dimensions are inspected.
+        if(fastState.UnownedDimensionsOnAutoLayer>0&&
+           original.LastOwnedDimensionCount>fastState.OwnedDimensions&&
+           original.SourceWriteUtcTicks==sourceWriteTicks&&
+           original.SourceFileLength==sourceLength&&
+           string.Equals(original.LastViewPoseSignature,
+               fastState.PoseSignature,StringComparison.Ordinal))
+        {
+            timings.Mode="COUNT_AMBIGUOUS_UNOWNED_PRESERVED";
+            Message(target,"DIM_INTEGRITY_REPAIR=BLOCKED_UNOWNED_ON_AUTO_LAYER "+
+                " COUNT="+fastState.UnownedDimensionsOnAutoLayer+
+                "; possible lost XData or manual dimensions; original retained.");
+            return;
+        }
         System.Diagnostics.Trace.WriteLine(
             "ORTHO_PERF_FULL_REBUILD_REQUIRED=TRUE");
         phase=Stopwatch.GetTimestamp();
