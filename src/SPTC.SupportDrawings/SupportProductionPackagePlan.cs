@@ -193,7 +193,7 @@ internal static class SupportProductionPackagePlan
         var stamp=new FileInfo(sourceDwg);
         var qa=ParseReport(reportText);
         bool complete=qa.Pass&&(!valid.RequireFullDimensionCoverage||
-            qa.OptionalOmissions.GetValueOrDefault()>0==false);
+            (qa.OptionalOmissions.HasValue&&qa.OptionalOmissions.Value==0));
         string why=!qa.Pass?"NATIVE_DRAWING_QA_NOT_VERIFIED":
             valid.RequireFullDimensionCoverage&&
             qa.OptionalOmissions.GetValueOrDefault()>0?
@@ -219,6 +219,30 @@ internal static class SupportProductionPackagePlan
             qa.OptionalOmissions,qa.WitnessIntersections,
             titleBlockStatus,Path.GetFullPath(reportPath),
             why,DateTimeOffset.UtcNow.ToString("O",CultureInfo.InvariantCulture));
+    }
+
+    internal static Entry FailedEntry(Settings config,string sourceDwg,
+        IEnumerable<string> handles,string issueNote)
+    {
+        var valid=Validate(config);
+        if(!valid.Enabled)throw new ArgumentException("Package is disabled.");
+        string[] selected=handles.Where(x=>!string.IsNullOrWhiteSpace(x))
+            .Select(x=>x.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.Ordinal).OrderBy(x=>x,StringComparer.Ordinal)
+            .ToArray();
+        var info=new FileInfo(sourceDwg);
+        return new Entry(
+            "SPTC-PRODUCTION-DRAWING-1",
+            DrawingNumber(valid,sourceDwg,selected),
+            Fingerprint(sourceDwg,selected),Path.GetFullPath(sourceDwg),
+            selected,info.Exists?info.LastWriteTimeUtc.Ticks:0,
+            info.Exists?info.Length:0,"",valid.DrawingTitle,
+            valid.ProjectCode,valid.Revision,"",
+            Array.Empty<string>(),"","FAILED","GENERATION_FAILED",
+            "NOT_PUBLISHED",null,null,0,0,null,null,null,null,
+            "NOT_ATTEMPTED","","GENERATION_FAILED:"+issueNote,
+            DateTimeOffset.UtcNow.ToString("O",
+                CultureInfo.InvariantCulture));
     }
 
     internal static string ChangeStatus(Entry previous,Entry latest)
