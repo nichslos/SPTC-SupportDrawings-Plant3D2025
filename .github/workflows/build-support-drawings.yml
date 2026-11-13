@@ -320,6 +320,50 @@ jobs:
                'REV22_62_COMPACT_LOCAL_DIMENSIONS_RECOVERED=')) {
             throw 'REV22.62 source-grounded TOS and local recovery diagnostics missing'
           }
+          # Keep release code revision-neutral. Only a verified native
+          # Start/End axis may authorize optional profile station shifts;
+          # every candidate continues through the original dimension
+          # hierarchy, native intersection and sheet-clearance checks.
+          $sourceStation=Get-Content "$root/SupportOrthoProfileStationPlan.cs" -Raw
+          $reference=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $generator=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          $naming=Get-Content "$root/SupportOrthoViewNaming.cs" -Raw
+          $reflow=Get-Content "$root/SupportOrthoDimensionReflow.cs" -Raw
+          $identity=Get-Content "$root/SupportBuildIdentity.cs" -Raw
+          foreach($token in @('verifiedNativeAxis',
+              'longitudinalDelta',
+              'transverseMin',
+              'transverseMax')) {
+            if(-not $sourceStation.Contains($token)) {
+              throw "Native-axis source validation missing: $token"
+            }
+          }
+          foreach($token in @('AlongVerifiedAxis(',
+              'verifiedMidpoint&&',
+              'physical==null',
+              'InnerThanReservedOverall(',
+              'RejectionReason(',
+              'VerifiedAxisStationDimensionsRecovered')) {
+            if(-not $reference.Contains($token)) {
+              throw "Source-verified local dimension safeguards missing: $token"
+            }
+          }
+          foreach($token in @('DIM_LAYOUT_AXIS_STATION_CANDIDATES_TESTED=',
+              'DIM_LAYOUT_AXIS_STATION_DIMENSIONS_RECOVERED=',
+              'DIM_LAYOUT_PAPER_HIERARCHY=',
+              'SupportOrthoViewNaming.Name(label,stamp)')) {
+            if(-not $generator.Contains($token)) {
+              throw "Dynamic dimension or view-name diagnostic missing: $token"
+            }
+          }
+          if($generator.Contains('string viewName="SPTC_"+label+"_R22_"') -or
+             -not $naming.Contains('return "SPTC_"+nativeType.ToUpperInvariant()') -or
+             -not $identity.Contains('NormalizeVersion(') -or
+             -not $reflow.Contains('HierarchyLinePositions(') -or
+             -not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw).Contains(
+                 'VerifiedStationAndViewNamingTests.Run();')) {
+            throw 'Revision-free view names / source-station tests missing'
+          }
           # Stable build identity + source-grounded dynamic dimensions.
           # Revision-numbered legacy diagnostic keys are retained for
           # compatibility; all NEW features and report filenames use
