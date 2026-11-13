@@ -9,6 +9,8 @@
   <ItemGroup>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingUiPreferences.cs"
              Link="SupportDrawingUiPreferences.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPdfPolicy.cs"
+             Link="SupportProductionPdfPolicy.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPackagePlan.cs"
              Link="SupportProductionPackagePlan.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPackageSettingsStore.cs"
