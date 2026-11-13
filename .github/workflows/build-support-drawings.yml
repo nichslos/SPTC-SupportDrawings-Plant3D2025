@@ -320,6 +320,38 @@ jobs:
                'REV22_62_COMPACT_LOCAL_DIMENSIONS_RECOVERED=')) {
             throw 'REV22.62 source-grounded TOS and local recovery diagnostics missing'
           }
+          # Stable build identity + source-grounded dynamic dimensions.
+          # Revision-numbered legacy diagnostic keys are retained for
+          # compatibility; all NEW features and report filenames use
+          # stable names and the real Git commit as their build ID.
+          $reflow=Get-Content "$root/SupportOrthoDimensionReflow.cs" -Raw
+          $dim=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $gen=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          $identity=Get-Content "$root/SupportBuildIdentity.cs" -Raw
+          foreach($token in @('PreservesSourceGeometry(baseline,candidate)',
+              'HierarchyErrors(candidate)',
+              'UnintendedAcceptedWitnessIntersections!=0',
+              'MatchesDiagnostic',
+              'SOURCE_OR_MEASUREMENT_CHANGED',
+              'ESSENTIAL_DIMENSION_MISSING')) {
+            if(-not $reflow.Contains($token)) {
+              throw "Stable dimension reflow protection missing: $token"
+            }
+          }
+          if(-not $dim.Contains('PreferLaneRank(') -or
+             -not $dim.Contains('lanePreferences=') -or
+             -not $gen.Contains('DIM_LAYOUT_SOURCE_WITNESSES_PROTECTED=True') -or
+             -not $gen.Contains('DIM_LAYOUT_HIERARCHY_ERRORS=') -or
+             -not $gen.Contains('SPTC_BUILD_ID=') -or
+             -not $identity.Contains('AssemblyInformationalVersionAttribute') -or
+             -not $gen.Contains('"_RESULT.txt"') -or
+             $gen.Contains('"_REV22_29_RESULT.txt"')) {
+            throw 'Stable build identity or new revision-independent reports missing'
+          }
+          if(-not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw).Contains(
+              'DimensionReflowTests.Run();')) {
+            throw 'Stable dimension reflow regression not registered'
+          }
           # REV22.65: the real TEST5 1.8-mm label row gap MUST
           # pass preflight; genuine overlapping labels must still fail.
           # Count proposals separately from dimension replans so a
@@ -968,7 +1000,7 @@ jobs:
       - name: Test REV22.41 safe horizontal/vertical native and XREF DIMLINEAR plan
         run: dotnet run --project tests/Rev241DimLinearSmokeTests/Rev241DimLinearSmokeTests.csproj -c Release
       - name: Compile production DLL
-        run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release
+        run: dotnet build src/SPTC.SupportDrawings/SPTC.SupportDrawings.csproj -c Release -p:InformationalVersion=${{ github.sha }}
       - name: Verify compiled DLL
         shell: pwsh
         run: |
@@ -976,11 +1008,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.65 verified callout clearance and layout rejection diagnostics DLL bytes: $size"
+          Write-Host "Verified source-identified SupportDrawings DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_65-LABEL-CLEARANCE-DIAGNOSTICS
+          name: SPTC-SupportDrawings-Plant3D2025-Compiled-DLL
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
