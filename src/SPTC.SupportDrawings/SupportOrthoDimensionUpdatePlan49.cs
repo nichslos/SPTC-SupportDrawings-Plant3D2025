@@ -170,7 +170,8 @@ public static class SupportOrthoDimensionUpdatePlan49
     /// </summary>
     public static bool CanRepairVerifiedDimensions(
         Manifest saved,long sourceWriteUtcTicks,long sourceLength,
-        string currentPose,int currentOwned)
+        string currentPose,int currentOwned,
+        int unownedDimensionsOnAutoLayer=0)
     {
         Validate(saved);
         return HasTrustedVerifiedPlan(saved)&&
@@ -181,6 +182,10 @@ public static class SupportOrthoDimensionUpdatePlan49
             !string.IsNullOrWhiteSpace(saved.LastViewPoseSignature)&&
             string.Equals(saved.LastViewPoseSignature,currentPose,
                 StringComparison.Ordinal)&&
+            // Do not create duplicate labels if AutoCAD retained two
+            // DIMLINEARs but removed their ownership XData (or if the
+            // user added manual dimensions on the SPTC layer).
+            unownedDimensionsOnAutoLayer==0&&
             currentOwned>=0&&currentOwned<
                 saved.LastVerifiedDimensions!.Count;
     }
