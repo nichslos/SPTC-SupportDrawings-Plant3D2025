@@ -344,14 +344,27 @@ internal static class SupportOrthoDimensionRefresh49
         return manifest;
     }
 
-    private static void Refresh(Document target)
+    private static void Refresh(Document target,RefreshTimings timings)
     {
-        if(!File.Exists(target.Database.Filename))return;
+        timings.Mode="CHECKING_MANIFEST";
+        long phase=Stopwatch.GetTimestamp();
+        if(!File.Exists(target.Database.Filename))
+        {
+            timings.Mode="UNSAVED_DRAWING";
+            return;
+        }
         var original=Read(target.Database);
-        if(original==null)return;
+        timings.ManifestMs=SupportOrthoUpdatePerformancePolicy
+            .ElapsedMilliseconds(phase,Stopwatch.GetTimestamp());
+        if(original==null)
+        {
+            timings.Mode="NON_SPTC_DRAWING";
+            return;
+        }
         if(!File.Exists(original.SourcePath))
         {
-            Message(target,"REV22.49 source model missing; existing dimensions kept.");
+            timings.Mode="SOURCE_UNAVAILABLE_PRESERVED";
+            Message(target,"Native dimension source missing; existing dimensions kept.");
             return;
         }
 
@@ -359,21 +372,28 @@ internal static class SupportOrthoDimensionRefresh49
         // structure/support model member or camera. Check the file stamp,
         // actual saved native viewport poses and owned DIMLINEAR count
         // FIRST, without opening the potentially huge/network model DWG.
+        phase=Stopwatch.GetTimestamp();
         var sourceInfo=new FileInfo(original.SourcePath);
         long sourceWriteTicks=sourceInfo.LastWriteTimeUtc.Ticks;
         long sourceLength=sourceInfo.Length;
         var fastState=ReadFastPaperState(target.Database,original);
+        timings.FastPaperMs=SupportOrthoUpdatePerformancePolicy
+            .ElapsedMilliseconds(phase,Stopwatch.GetTimestamp());
         if(SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
             original,sourceWriteTicks,sourceLength,
             fastState.PoseSignature,fastState.OwnedDimensions))
         {
+            timings.Mode="UNCHANGED_FAST_PATH";
             Message(target,
                 "REV22.49.3 DIM_FAST_PATH=SKIPPED_SOURCE_RELOAD; "+
                 "native dimensions already current ("+
                 fastState.OwnedDimensions+").");
             return;
         }
-        System.Diagnostics.Trace.WriteLine("REV22.49.3 DIM_REFRESH_MODEL_RELOAD=REQUIRED");
+        System.Diagnostics.Trace.WriteLine(
+            "ORTHO_PERF_FULL_REBUILD_REQUIRED=TRUE");
+        phase=Stopwatch.GetTimestamp();
+        timings.Mode="VERIFYING_NATIVE_SOURCE";
 
         SupportOrthoAllViewDimPlan44.Member[] native;
         SupportOrthoDimLinearPlan41.Segment[] segments;
@@ -486,8 +506,14 @@ internal static class SupportOrthoDimensionRefresh49
                     "existing dimensions preserved.");
         }
 
+        timings.SourceMs=SupportOrthoUpdatePerformancePolicy
+            .ElapsedMilliseconds(phase,Stopwatch.GetTimestamp());
+        phase=Stopwatch.GetTimestamp();
+        timings.Mode="REBUILDING_PAPER_DIMENSIONS";
+
         var cameras=new List<SupportOrthoMemberCalloutPlan17.Camera>();
         var keepouts=new List<SupportOrthoSmartDimPlan46.Rect>();
+        int ownedDuringPaperScan=0;
         double paperW=original.PaperWidth,paperH=original.PaperHeight;
         using(var tr=target.Database.TransactionManager.StartTransaction())
         {
@@ -521,6 +547,13 @@ internal static class SupportOrthoDimensionRefresh49
                     allCandidates.Add(new(
                         handle,vp.CenterPoint.X,vp.CenterPoint.Y,
                         vp.Width,vp.Height));
+                }
+                if(entity is RotatedDimension ownedDimension&&
+                   ownedDimension.Layer==SupportOrthoDimLinearPlan41.Layer)
+                {
+                    using var owner=ownedDimension.GetXDataForApplication(
+                        SupportOrthoDimensionUpdatePlan49.OwnerApp);
+                    if(owner!=null)ownedDuringPaperScan++;
                 }
                 if(entity==null||entity is Viewport)continue;
                 bool keep=entity.Layer==
@@ -601,8 +634,14 @@ internal static class SupportOrthoDimensionRefresh49
             throw new InvalidOperationException(
                 "No safe regenerated dimensions; old dimensions kept.");
         string next=SupportOrthoDimensionUpdatePlan49.Signature(dimensions);
-        int owned=SupportOrthoDimensionOwnedCount49(
-            target.Database,original.LayoutName);
+        timings.LayoutMs=SupportOrthoUpdatePerformancePolicy
+            .ElapsedMilliseconds(phase,Stopwatch.GetTimestamp());
+        // Reuse the owned DIMLINEAR count from the same authoritative
+        // paper-space scan used to collect viewports and keepouts.
+        // A second full transaction/entity scan is unnecessary.
+        int owned=ownedDuringPaperScan;
+        phase=Stopwatch.GetTimestamp();
+        timings.Mode="UPDATING_DIMENSION_MANIFEST";
         if(!SupportOrthoDimensionUpdatePlan49.NeedsReplace(
             original.LastSignature,next,owned,dimensions.Count))
         {
@@ -621,8 +660,11 @@ internal static class SupportOrthoDimensionRefresh49
                 NativeEndpointSnapshot=native.Length<=128?segments:null,
                 NativeEdgeSnapshot=native.Length<=128&&edges.Length<=512?
                     edges:null});
-            Message(target,"REV22.49.3 native dimensions already current ("+
-                owned+"); no duplicates; fast cache updated.");
+            timings.WriteMs=SupportOrthoUpdatePerformancePolicy
+                .ElapsedMilliseconds(phase,Stopwatch.GetTimestamp());
+            timings.Mode="UNCHANGED_PLAN_CACHE_UPDATED";
+            Message(target,"Native dimensions already current ("+
+                owned+"); no duplicates; verified cache updated.");
             return;
         }
         int created=SupportOrthoDimLinearWriter41.Write(
@@ -649,7 +691,10 @@ internal static class SupportOrthoDimensionRefresh49
             NativeEndpointSnapshot=native.Length<=128?segments:null,
             NativeEdgeSnapshot=native.Length<=128&&edges.Length<=512?
                 edges:null});
-        Message(target,"REV22.49 native DIMLINEAR refresh="+created+
+        timings.WriteMs=SupportOrthoUpdatePerformancePolicy
+            .ElapsedMilliseconds(phase,Stopwatch.GetTimestamp());
+        timings.Mode="REPLACED_PLUGIN_OWNED_DIMENSIONS";
+        Message(target,"Native DIMLINEAR refresh="+created+
             " old owned dims replaced; XREF dimensions=0; "+
             string.Join("; ",diagnostics));
     }
@@ -723,29 +768,6 @@ internal static class SupportOrthoDimensionRefresh49
         return new FastPaperState(
             SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
                 cameras,width,height),owned);
-    }
-
-    private static int SupportOrthoDimensionOwnedCount49(Database db,
-        string layoutName)
-    {
-        using var tr=db.TransactionManager.StartTransaction();
-        var dict=(DBDictionary)tr.GetObject(
-            db.LayoutDictionaryId,OpenMode.ForRead);
-        var layout=(Layout)tr.GetObject(
-            dict.GetAt(layoutName),OpenMode.ForRead);
-        var paper=(BlockTableRecord)tr.GetObject(
-            layout.BlockTableRecordId,OpenMode.ForRead);
-        int count=0;
-        foreach(ObjectId id in paper)
-        {
-            if(tr.GetObject(id,OpenMode.ForRead,false)
-                is not RotatedDimension dim)continue;
-            using var data=dim.GetXDataForApplication(
-                SupportOrthoDimensionUpdatePlan49.OwnerApp);
-            if(data!=null&&dim.Layer==SupportOrthoDimLinearPlan41.Layer)
-                count++;
-        }
-        return count;
     }
 
     private static void Message(Document doc,string value)
