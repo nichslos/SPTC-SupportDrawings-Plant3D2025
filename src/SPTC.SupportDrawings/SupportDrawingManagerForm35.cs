@@ -406,7 +406,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         scale.SelectedItem=v.ScaleSelection;
         customScale.Value=v.CustomScale;
         prefix.Text=v.DrawingPrefix;
-        SetViewPreset(v.Views);
+        for(int i=0;i<views.Items.Count;i++)
+            views.SetItemChecked(i,v.Views.Contains(
+                views.Items[i]?.ToString()??"",
+                StringComparer.OrdinalIgnoreCase));
         line.Checked=v.LineNumber;
         bop.Checked=v.Bop;
         tos.Checked=v.Tos;
