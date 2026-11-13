@@ -136,6 +136,13 @@ internal static class ProductionPdfSmokeTests
                 diagnosticCsv.Contains("STAGE=DWG_SAVE")&&
                 diagnosticCsv.Contains("eFileSharingViolation"),
                 "CSV register preserves exact failure stage and native exception message");
+            SupportProductionPackagePlan.SaveEntry(failureWithCause);
+            string diagnosticJson=System.IO.File.ReadAllText(
+                System.IO.Path.ChangeExtension(
+                    entry.ReportPath,".production.json"));
+            Need(diagnosticJson.Contains("STAGE=DWG_SAVE")&&
+                diagnosticJson.Contains("eFileSharingViolation"),
+                "atomic JSON sidecar persists the same actionable publish stage");
             var register=SupportProductionPackagePlan.RegisterCsv(new[]{
                 plotted,failed});
             Need(register.Contains("PDF_PUBLISHED_VERIFIED")&&
