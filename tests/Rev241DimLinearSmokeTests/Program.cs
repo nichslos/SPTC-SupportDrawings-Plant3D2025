@@ -171,6 +171,7 @@ Rev262TosAndLocalRecoveryTests.Run();
 Rev263AdaptiveLocalDimensionTests.Run();
 Rev264LeaderDimensionCoordinationTests.Run();
 Rev265LabelClearanceTests.Run();
+DimensionReflowTests.Run();
 Console.WriteLine("REV22.43 vertical overall-height fallback and cross-axis compact safety PASS");
 
 Console.WriteLine("REV22.42 compact DIMLINEAR across six views PASS");
