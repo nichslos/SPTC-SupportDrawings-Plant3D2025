@@ -29,7 +29,9 @@ internal static class SupportProductionPackagePlan
         bool RequirePdfForIssue=true,
         bool RequireFullDimensionCoverage=false,
         bool SkipVerifiedExisting=false,
-        string SupportTagAttribute="");
+        string SupportTagAttribute="",
+        bool PublishPdf=false,
+        string PdfPlotDevice="DWG To PDF.pc3");
 
     internal static Settings Defaults=>new(false,"","","",
         "PIPE SUPPORT DRAWING","",new Dictionary<string,string>());
@@ -59,7 +61,9 @@ internal static class SupportProductionPackagePlan
         int NativeViews,int DimensionsCreated,int? ExpectedOverallDimensions,
         int? PresentOverallDimensions,int? OptionalOmissions,
         int? WitnessIntersections,string? TitleBlockStatus,
-        string ReportPath,string? IssueNote,string CreatedUtc);
+        string ReportPath,string? IssueNote,string CreatedUtc,
+        bool SavedDwgVerified=false,long SavedDwgLength=0,
+        long VerifiedPdfBytes=0,string? PdfDeviceUsed=null);
 
     internal static Settings Validate(Settings input)
     {
@@ -87,6 +91,10 @@ internal static class SupportProductionPackagePlan
                 "Exact title block name is required before mapping attributes.");
         if(!string.IsNullOrWhiteSpace(input.SupportTagAttribute))
             CheckCode(input.SupportTagAttribute,"support tag source attribute",64);
+        if(input.PublishPdf && !SupportProductionPdfPolicy.AllowedDevice(
+            input.PdfPlotDevice))
+            throw new ArgumentException(
+                "PDF publishing requires a supported AutoCAD PDF PC3 device.");
         return input with {
             ProjectCode=input.ProjectCode.Trim(),
             DrawingSeries=input.DrawingSeries.Trim(),
@@ -286,7 +294,8 @@ internal static class SupportProductionPackagePlan
             "OutputDWG","Revision","Scale","Views","QA","IssueStatus",
             "PDFStatus","PDFPath","Dimensions","ExpectedOveralls",
             "PresentOveralls","OptionalOmissions","ReportPath","MaterialRegister",
-            "CreatedUTC"};
+            "CreatedUTC","SavedDWGVerified","SavedDWGBytes",
+            "VerifiedPDFBytes","PDFDevice"};
         var sb=new StringBuilder().AppendLine(string.Join(",",columns));
         foreach(var e in entries)
         {
@@ -301,7 +310,11 @@ internal static class SupportProductionPackagePlan
                 e.PresentOverallDimensions?.ToString(
                     CultureInfo.InvariantCulture)??"",
                 e.OptionalOmissions?.ToString(CultureInfo.InvariantCulture)??"",
-                e.ReportPath,e.MaterialRegister??"",e.CreatedUtc
+                e.ReportPath,e.MaterialRegister??"",e.CreatedUtc,
+                e.SavedDwgVerified.ToString(),
+                e.SavedDwgLength.ToString(CultureInfo.InvariantCulture),
+                e.VerifiedPdfBytes.ToString(CultureInfo.InvariantCulture),
+                e.PdfDeviceUsed??""
             };
             sb.AppendLine(string.Join(",",fields.Select(Csv)));
         }
