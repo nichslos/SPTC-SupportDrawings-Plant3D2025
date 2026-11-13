@@ -112,7 +112,7 @@ public static class SupportOrthoReferenceLayout51
         double gap=OverallSeparation(textHeight);
         yield return first;
         for(int i=1;i<=6;i++)
-            yield return first+gap*i/9.0;
+            yield return first+gap*i/16.0;
     }
 
     // REV22.62: the FIRST chain lane is unchanged, so verified
