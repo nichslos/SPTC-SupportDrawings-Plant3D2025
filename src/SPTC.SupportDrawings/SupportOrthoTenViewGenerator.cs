@@ -147,7 +147,7 @@ public sealed class SupportOrthoTenViewGenerator
                             var entry=productionEntries[^1];
                             if(packageForRun.Enabled&&packageForRun.PublishPdf)
                             {
-                                var published=SupportProductionNativePdfPublisher.Publish(
+                                var published=await SupportProductionNativePdfPublisher.PublishAsync(
                                     sourceDoc,packageForRun,entry,progress.Report);
                                 productionEntries[^1]=published;
                                 pdfOk=published.PdfStatus=="PDF_PUBLISHED_VERIFIED";
@@ -258,7 +258,7 @@ public sealed class SupportOrthoTenViewGenerator
                 if(productionEntries.Count>0&&packageForRun.Enabled&&
                    packageForRun.PublishPdf)
                 {
-                    var published=SupportProductionNativePdfPublisher.Publish(
+                    var published=await SupportProductionNativePdfPublisher.PublishAsync(
                         sourceDoc,packageForRun,productionEntries[0],progress.Report);
                     productionEntries[0]=published;
                     pdfOk=published.PdfStatus=="PDF_PUBLISHED_VERIFIED";
