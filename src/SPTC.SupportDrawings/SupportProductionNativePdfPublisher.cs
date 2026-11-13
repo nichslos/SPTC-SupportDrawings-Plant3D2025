@@ -276,7 +276,7 @@ internal static class SupportProductionNativePdfPublisher
                     probe,plotDevice,null!),log);
             MediaStep("PROBE_REFRESH_PDF_MEDIA",
                 ()=>validator.RefreshLists(probe),log);
-            var available=MediaStep("PROBE_GET_MEDIA_NAMES",
+            var available=MediaValue("PROBE_GET_MEDIA_NAMES",
                 ()=>validator.GetCanonicalMediaNameList(probe),log);
             int rejected=0;
             foreach(string? candidate in available)
@@ -412,7 +412,7 @@ internal static class SupportProductionNativePdfPublisher
         }
     }
 
-    private static T MediaStep<T>(string step,Func<T> action,
+    private static T MediaValue<T>(string step,Func<T> action,
         Action<string> log)
     {
         log("SPTC_PDF_MEDIA_STEP="+step);
