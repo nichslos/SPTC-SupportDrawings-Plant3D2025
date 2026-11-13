@@ -55,6 +55,10 @@ internal static class VerifiedDimensionIntegrityTests
             stamped,stamped.SourceWriteUtcTicks,stamped.SourceFileLength,
             "POSE",23),
             "fast path must not incorrectly accept only 23 of 25 owned dims");
+        Need(!SupportOrthoDimensionUpdatePlan49.CanRepairVerifiedDimensions(
+            stamped,stamped.SourceWriteUtcTicks,stamped.SourceFileLength,
+            "POSE",23,2),
+            "two unowned DIMLINEARs on auto layer prohibit duplicate repair");
         Need(SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
             stamped,stamped.SourceWriteUtcTicks,stamped.SourceFileLength,
             "POSE",25),
