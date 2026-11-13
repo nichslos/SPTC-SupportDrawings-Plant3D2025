@@ -47,6 +47,22 @@ internal static class ProductionPdfSmokeTests
                 "PDF_REQUIRED_NOT_PUBLISHED",null,null,10,25,
                 12,12,2,0,"MAPPED_ATTRIBUTES_VERIFIED_IN_MEMORY",
                 Path.Combine(folder,"result.txt"),"REVIEW","2026-11-13T00:00:00Z");
+            var prior=new FileInfo(dwg);
+            long oldSize=prior.Length;
+            DateTime oldUtc=prior.LastWriteTimeUtc;
+            Need(!SupportProductionPdfPolicy.VerifyNewDwgSave(
+                    dwg,oldSize,oldUtc,out _),
+                "existing seed clone alone does not prove QSAVE");
+            File.WriteAllBytes(dwg,new byte[3500]);
+            File.SetLastWriteTimeUtc(dwg,oldUtc.AddSeconds(5));
+            Need(SupportProductionPdfPolicy.VerifyNewDwgSave(
+                    dwg,oldSize,oldUtc,out long savedBytes)&&
+                savedBytes==3500,
+                "native QSAVE evidence requires real saved DWG write");
+            Need(!SupportProductionPdfPolicy.VerifyNewDwgSave(
+                    Path.Combine(folder,"missing.dwg"),0,DateTime.MinValue,
+                    out _),
+                "missing generated DWG cannot be published");
             var ready=SupportProductionPdfPolicy.Preflight(settings,entry);
             Need(ready.Allowed&&ready.Status=="PDF_PREFLIGHT_PASS"&&
                 ready.ExpectedPdfPath==pdf,"valid ten-view QA reaches plot gate");
