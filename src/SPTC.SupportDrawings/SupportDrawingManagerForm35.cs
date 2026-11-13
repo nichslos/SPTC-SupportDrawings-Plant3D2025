@@ -209,14 +209,22 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         foreach(string name in SupportDrawingUiOptions.AllViews)
             views.Items.Add(name, true);
         orthoTab.Controls.Add(views);
+        // Presets are UI-only: the native camera selection contract
+        // remains the unchanged 10-element checked list. Individual
+        // checkboxes remain editable after choosing any preset.
         Button all = new() {Text = "All 10", Location = new Point(18, 392),
             Size = new Size(83, 29)};
-        Button none = new() {Text = "Clear", Location = new Point(110, 392),
+        Button six = new() {Text = "Ortho 6", Location = new Point(110, 392),
+            Size = new Size(87, 29)};
+        Button four = new() {Text = "ISO 4", Location = new Point(206, 392),
             Size = new Size(83, 29)};
-        all.Click += (_,_) => SetAllViews(true);
-        none.Click += (_,_) => SetAllViews(false);
-        orthoTab.Controls.Add(all);
-        orthoTab.Controls.Add(none);
+        Button none = new() {Text = "Clear", Location = new Point(299, 392),
+            Size = new Size(83, 29)};
+        all.Click += (_,_) => SetViewPreset("All");
+        six.Click += (_,_) => SetViewPreset("Orthographic");
+        four.Click += (_,_) => SetViewPreset("Isometric");
+        none.Click += (_,_) => SetViewPreset("None");
+        orthoTab.Controls.AddRange(new Control[] {all,six,four,none});
         // REV22.41: dimensions are generated only from verified native
         // StructureMember / Plant Support Start/End source geometry.
         autoDimLinear.SetBounds(18, 425, 355, 27);
@@ -257,6 +265,35 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         notice.ForeColor = Color.DarkGoldenrod;
         orthoTab.Controls.Add(notice);
 
+        // Explicit local, per-project preferences: safe from accidental
+        // project-switch propagation and no write occurs on Run.
+        Label settingsCaption = L(
+            "Project settings (local to this Windows user)",18,496,535);
+        settingsCaption.Font = new Font("Segoe UI",9f,FontStyle.Bold);
+        orthoTab.Controls.Add(settingsCaption);
+        Button saveSettings = new() {
+            Text="Save settings",Location=new Point(18,525),
+            Size=new Size(130,30)};
+        Button loadSettings = new() {
+            Text="Load saved",Location=new Point(158,525),
+            Size=new Size(120,30)};
+        Button resetSettings = new() {
+            Text="Defaults",Location=new Point(289,525),
+            Size=new Size(108,30)};
+        saveSettings.Click+=(_,_)=>SaveProjectPreferences();
+        loadSettings.Click+=(_,_)=>LoadProjectPreferences(showFeedback:true);
+        resetSettings.Click+=(_,_)=>{
+            ApplyPreferences(SupportDrawingUiPreferences.Defaults);
+            SetStatus("Default drawing settings restored (not saved).");
+        };
+        orthoTab.Controls.AddRange(new Control[]{
+            saveSettings,loadSettings,resetSettings});
+        Label privacy = L(
+            "Manual Ortho seed paths are never saved. Existing export dialogs are unchanged.",
+            18,563,690);
+        privacy.ForeColor=Color.DimGray;
+        orthoTab.Controls.Add(privacy);
+
         Label previewLabel = L("Preflight / configuration summary", 22, 630, 420);
         previewLabel.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
         Controls.Add(previewLabel);
@@ -282,6 +319,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         runButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         runButton.Click += (_,_) => RunSelected();
         Controls.Add(runButton);
+        // A newly opened palette restores only settings explicitly
+        // saved for this Plant 3D project. No persisted queued command
+        // or source geometry can be replayed.
+        LoadProjectPreferences(showFeedback:false);
     }
 
     // Never clear user options on another drawing run. Refresh source context
@@ -295,14 +336,15 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         orthoFolder=folder;
         sourceLabel.Text="Source: "+Path.GetFileName(sourceDwg)+
             "     |     Project: "+Path.GetFileName(root.TrimEnd('\\','/'));
-        if(differentProject && !autoSeed.Checked)
+        if(differentProject)
         {
-            // Never carry a manual seed from a different Plant project.
-            autoSeed.Checked=true;
-            seed.Text="";
+            // An existing modeless palette must never reuse another
+            // project's prefix, manual seed or batch selection.
+            ApplyPreferences(SupportDrawingUiPreferences.Defaults);
+            LoadProjectPreferences(showFeedback:false);
         }
         SetStatus("Source: "+Path.GetFileName(sourceDwg)+
-            " | Ready (persistent palette; options retained).");
+            " | Ready (persistent palette; project settings retained).");
     }
 
     internal void SetRunning(bool running)
@@ -345,10 +387,88 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         return tab;
     }
 
-    private void SetAllViews(bool check)
+    private void SetViewPreset(string preset)
     {
+        var chosen=SupportDrawingUiPreferences.ViewPreset(preset);
         for(int i=0;i<views.Items.Count;i++)
-            views.SetItemChecked(i,check);
+            views.SetItemChecked(i,chosen.Contains(
+                views.Items[i]?.ToString()??"",
+                StringComparer.OrdinalIgnoreCase));
+        SetStatus("View preset: "+preset+" ("+chosen.Length+
+            " selected). Individual views remain editable.");
+    }
+
+    private void ApplyPreferences(SupportDrawingUiPreferences.Values saved)
+    {
+        var v=SupportDrawingUiPreferences.Validate(saved);
+        tabs.SelectedIndex=0;
+        cubeMode.SelectedIndex=v.SupportFocus?0:1;
+        scale.SelectedItem=v.ScaleSelection;
+        customScale.Value=v.CustomScale;
+        prefix.Text=v.DrawingPrefix;
+        SetViewPreset(v.Views);
+        line.Checked=v.LineNumber;
+        bop.Checked=v.Bop;
+        tos.Checked=v.Tos;
+        description.Checked=v.Description;
+        xrefNames.Checked=v.XrefMemberNames;
+        autoDimLinear.Checked=v.AutoDimLinear;
+        referenceDimensions.Checked=v.ReferenceDetailDimensions;
+        batch.Checked=v.BatchOrtho;
+        // Never persist manual DWG/seed paths.
+        autoSeed.Checked=true;
+        seed.Text="";
+    }
+
+    private SupportDrawingUiPreferences.Values CapturePreferences()
+    {
+        var chosen=views.CheckedItems.Cast<object>().Select(v=>
+            v?.ToString()??"").ToArray();
+        return SupportDrawingUiPreferences.Validate(new(
+            scale.Text,(int)customScale.Value,prefix.Text.Trim(),
+            cubeMode.SelectedIndex==0,chosen,line.Checked,bop.Checked,
+            tos.Checked,description.Checked,xrefNames.Checked,
+            autoDimLinear.Checked,referenceDimensions.Checked,
+            batch.Checked));
+    }
+
+    private void SaveProjectPreferences()
+    {
+        try
+        {
+            SupportDrawingUiPreferences.Save(
+                projectRoot,CapturePreferences());
+            SetStatus("Project settings saved locally. "+
+                "Manual seed path and commands were not saved.");
+        }
+        catch(System.Exception ex) when (ex is ArgumentException or
+            IOException or UnauthorizedAccessException or
+            System.Security.SecurityException)
+        {
+            MessageBox.Show(this,ex.Message,"Cannot save UI settings",
+                MessageBoxButtons.OK,MessageBoxIcon.Warning);
+        }
+    }
+
+    private void LoadProjectPreferences(bool showFeedback)
+    {
+        try
+        {
+            bool found=SupportDrawingUiPreferences.TryLoad(
+                projectRoot,out var saved);
+            ApplyPreferences(found?saved:
+                SupportDrawingUiPreferences.Defaults);
+            if(showFeedback)
+                SetStatus(found?"Project settings loaded.":
+                    "No valid saved settings for this project. Defaults restored.");
+        }
+        catch(System.Exception ex)
+        {
+            // Malformed files or environment restrictions may never
+            // prevent native Ortho generation.
+            ApplyPreferences(SupportDrawingUiPreferences.Defaults);
+            if(showFeedback)SetStatus("UI defaults restored: "+ex.Message);
+        }
     }
 
     private void ShowPreflight()
@@ -366,13 +486,19 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             Path.GetFileName(source) + "\r\n" +
             "Project Ortho folder: " + orthoFolder + "\r\n" +
             "Seed: " + (autoSeed.Checked ? "Auto (registered / empty)" : seed.Text) +
-            "   |   Views: " + string.Join(",",chosen) +
+            "   |   Views ("+chosen.Length+"): " + string.Join(",",chosen) +
             "   |   Scale: " + SupportDrawingPaperScale39.Display(
                 SupportDrawingPaperScale39.Resolve(scale.Text,(int)customScale.Value)) +
             "   |   XREF member names: " + (xrefNames.Checked?"On":"Off") +
             "   |   Auto DIMLINEAR: " + (autoDimLinear.Checked?"On":"Off") +
             "   |   Detail style: " +
-            (referenceDimensions.Checked?"Chain + overall":"All member H/V");
+            (referenceDimensions.Checked?"Chain + overall":"All member H/V")+
+            "   |   Batch Ortho: "+(batch.Checked?"Sequential":"Off")+
+            "   |   Annotations: Line="+line.Checked+
+            " BOP="+bop.Checked+" TOS="+tos.Checked+
+            " Description="+description.Checked+
+            "   |   Prefix: "+(prefix.Text.Length==0?
+                "Automatic unique name":prefix.Text);
     }
 
     private void RunSelected()
