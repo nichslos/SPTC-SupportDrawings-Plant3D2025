@@ -20,6 +20,18 @@ internal static class SupportProductionPdfPolicy
     internal sealed record Decision(
         bool Allowed,string Status,string ExpectedPdfPath);
 
+    internal static string FailureCode(string stage)=>stage switch
+    {
+        "TARGET_DOCUMENT_CHECK" or "READ_SHEET_LAYOUT" =>
+            "PDF_FAILED_PREPARE",
+        "DWG_SAVE" => "PDF_FAILED_DWG_SAVE",
+        "DWG_VERIFY" => "PDF_FAILED_DWG_VERIFY",
+        "PLOT_SETUP" => "PDF_FAILED_PLOT_SETUP",
+        "NATIVE_PLOT_ENGINE" => "PDF_FAILED_NATIVE_PLOT",
+        "PDF_FILE_VERIFY" => "PDF_FAILED_FILE_VALIDATION",
+        _ => "PDF_FAILED_UNKNOWN_STAGE"
+    };
+
     internal static bool AllowedDevice(string? device)=>
         device!=null&&ApprovedPdfDevices.Contains(
             device,StringComparer.OrdinalIgnoreCase);
