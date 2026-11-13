@@ -216,7 +216,7 @@ jobs:
               'PlotFactory.ProcessPlotState',
               'PlotFactory.CreatePublishEngine()',
               'MatchingPolicy.MatchDisabled',
-              'SetPlotConfigurationName(sheet,plotDevice,media)',
+              'SetPlotConfigurationName(sheet,plotDevice,null!)',
               'SetPlotType(sheet,',
               'BACKGROUNDPLOT',
               'ReportLine(')) {
@@ -243,6 +243,35 @@ jobs:
              -not (Get-Content 'tests/Rev241DimLinearSmokeTests/ProductionPdfSmokeTests.cs' -Raw
                   ).Contains('existing seed clone alone does not prove QSAVE')) {
             throw 'Missing annotated-DWG save evidence regression'
+          }
+          # PDF media names are PC3-specific. Native TEST5 uses A1
+          # 594 x 841 mm, while the PDF plotter may use a different
+          # canonical name. Do not pass the old media name directly.
+          $pdfMedia=Get-Content "$root/SupportProductionPdfMediaMatcher.cs" -Raw
+          $pdfSmoke=Get-Content 'tests/Rev241DimLinearSmokeTests/ProductionPdfSmokeTests.cs' -Raw
+          foreach($token in @('GetCanonicalMediaNameList(sheet)',
+              'SetCanonicalMediaName(sheet,candidate)',
+              'SupportProductionPdfMediaMatcher.Select(',
+              'SPTC_PDF_MEDIA_MATCH=PASS','SetPlotRotation(sheet,rotation)')) {
+            if(-not $pdfNative.Contains($token)) {
+              throw "PDF A1 physical media matching integration missing: $token"
+            }
+          }
+          if($pdfNative.Contains('SetPlotConfigurationName(sheet,plotDevice,media)')) {
+            throw 'Original seed canonical media cannot be applied blindly to PDF PC3'
+          }
+          foreach($token in @('ToleranceMm=1.0','x.Rotate',
+              'IsPhysical(')) {
+            if(-not $pdfMedia.Contains($token)) {
+              throw "PDF device paper-size safety policy missing: $token"
+            }
+          }
+          foreach($token in @('native A1 matches physical PDF A1',
+              'never silently scale or crop A1 onto wrong media',
+              'matching orientation takes precedence')) {
+            if(-not $pdfSmoke.Contains($token)) {
+              throw "A1 plot-media regression missing: $token"
+            }
           }
           # Native PDF phase failures must disclose SaveAs versus
           # PlotEngine versus validation, not just a generic native error.
