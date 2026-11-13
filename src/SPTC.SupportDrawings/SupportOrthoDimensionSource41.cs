@@ -52,9 +52,14 @@ internal static class SupportOrthoDimensionSource41
             TryRead(id,Matrix3d.Identity,"NATIVE:"+id.Handle,
                 expectedKind??"",unitsToMm,segments,diagnostics);
         }
-        foreach(var member in xref)
-            TryRead(member.Id,member.ToHost,member.Key,member.Kind,
-                unitsToMm,segments,diagnostics);
+        // REV22.48: XREF dimensions are prohibited in ALL modes.
+        // Keep the XREF input parameter for API compatibility with
+        // older callers, but never extract external Start/End or height
+        // dimensions. XREF label discovery remains a separate subsystem.
+        int externalCount=xref?.Count()??0;
+        if(externalCount>0)
+            diagnostics.Add("DIM48_XREF_SOURCE_SEGMENTS_EXCLUDED="+
+                externalCount);
 
         return new Result(segments,diagnostics);
     }
