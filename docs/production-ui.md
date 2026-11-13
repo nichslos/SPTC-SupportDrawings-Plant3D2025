@@ -35,3 +35,12 @@ After loading the compiled DLL in AutoCAD Plant 3D 2025:
 5. For batch testing, use a **copied Plant 3D project** and selected support BLOCK references. Confirm process counts, success/failure details and the batch TXT summary. Native AutoCAD Ortho calls cannot safely be cancelled in the middle of generation.
 
 This UI-only improvement does not resolve the two previously deferred LEFT/RIGHT local dimension omissions. They remain subject to the existing native collision checks.
+
+
+## Docking and Windows display scaling
+
+The manager retains its full existing 805-by-765 reference layout inside a DPI-aware scrollable canvas. A narrow docked AutoCAD palette (or display scaling of 125%/150%) can therefore scroll horizontally and vertically rather than hiding preflight, view selection, or Run buttons. The native view selection and generation settings are unchanged. The Ortho settings tab also scrolls vertically to reveal project preference buttons.
+
+The batch progress dialog scales with Windows DPI and keeps its progress bar and processed/passed/failed counters anchored when resized.
+
+Windows Forms regression tests simulate 100%, 125%, and 150% control scaling and narrow host widths, checking that all four operation tabs, Run/Preflight buttons, saved settings panel, and progress accounting remain available. **These tests are not screenshots of the actual Plant 3D application**. Before deployment, check the palette with your monitor scaling and docking configuration and confirm no label is cut off. If necessary, use the scrollbars rather than changing native generation settings.
