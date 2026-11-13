@@ -34,7 +34,8 @@ public static class SupportOrthoDimensionUpdatePlan49
         int LastOwnedDimensionCount=-1,
         IReadOnlyList<SupportOrthoAllViewDimPlan44.Member>? NativeExtentSnapshot=null,
         IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? NativeEndpointSnapshot=null,
-        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? NativeEdgeSnapshot=null);
+        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? NativeEdgeSnapshot=null,
+        IReadOnlyList<SupportOrthoDimLinearPlan41.Dimension>? LastVerifiedDimensions=null);
 
     public sealed record Candidate(string Handle,
         double X,double Y,double W,double H);
@@ -123,6 +124,68 @@ public static class SupportOrthoDimensionUpdatePlan49
     }
 
     /// <summary>
+    /// A saved plan is usable for fast repair only if it is a complete,
+    /// independently signed record of the verified source dimensions.
+    /// Legacy manifests without such a record continue through the
+    /// original authoritative source/viewport verification path.
+    /// </summary>
+    public static bool HasTrustedVerifiedPlan(Manifest saved)
+    {
+        if(saved.LastVerifiedDimensions==null||
+           saved.LastVerifiedDimensions.Count==0||
+           saved.LastVerifiedDimensions.Count>512||
+           saved.LastOwnedDimensionCount!=
+               saved.LastVerifiedDimensions.Count||
+           string.IsNullOrWhiteSpace(saved.LastSignature)||
+           !string.Equals(saved.LastSignature,
+               Signature(saved.LastVerifiedDimensions),
+               StringComparison.Ordinal))
+            return false;
+        var viewNames=new HashSet<string>(
+            saved.Views.Select(x=>x.Name),StringComparer.OrdinalIgnoreCase);
+        return saved.LastVerifiedDimensions.All(d=>
+            !string.IsNullOrWhiteSpace(d.View)&&
+            viewNames.Contains(d.View)&&
+            !string.IsNullOrWhiteSpace(d.Source)&&
+            !d.Source.Contains("XREF",StringComparison.OrdinalIgnoreCase)&&
+            !string.IsNullOrWhiteSpace(d.Measurement)&&
+            !string.IsNullOrWhiteSpace(d.Provenance)&&
+            new[]{d.Ax,d.Ay,d.Bx,d.By,d.LineX,d.LineY}
+                .All(double.IsFinite)&&
+            (!d.PaperTextX.HasValue||
+                double.IsFinite(d.PaperTextX.Value))&&
+            (!d.PaperTextY.HasValue||
+                double.IsFinite(d.PaperTextY.Value))&&
+            (!d.PaperToModelMm.HasValue||
+                (double.IsFinite(d.PaperToModelMm.Value)&&
+                 d.PaperToModelMm.Value>0&&
+                 SupportOrthoDynamicDimension492.MatchesDiagnostic(d))));
+    }
+
+    /// <summary>
+    /// An unchanged verified source DWG and identical native viewport
+    /// poses authorize restoring missing SPTC-owned dimensions from
+    /// the previously validated plan. A model/pan/scale change or a
+    /// plan without trusted provenance must use full regeneration.
+    /// </summary>
+    public static bool CanRepairVerifiedDimensions(
+        Manifest saved,long sourceWriteUtcTicks,long sourceLength,
+        string currentPose,int currentOwned)
+    {
+        Validate(saved);
+        return HasTrustedVerifiedPlan(saved)&&
+            saved.SourceWriteUtcTicks>0&&
+            saved.SourceWriteUtcTicks==sourceWriteUtcTicks&&
+            saved.SourceFileLength>=0&&
+            saved.SourceFileLength==sourceLength&&
+            !string.IsNullOrWhiteSpace(saved.LastViewPoseSignature)&&
+            string.Equals(saved.LastViewPoseSignature,currentPose,
+                StringComparison.Ordinal)&&
+            currentOwned>=0&&currentOwned<
+                saved.LastVerifiedDimensions!.Count;
+    }
+
+    /// <summary>
     /// Reuse the original native viewport handle first; Plant 3D may
     /// replace the viewport during Update View, so permit an unambiguous
     /// near-position fallback. No name-only or Current View fallback.
@@ -201,6 +264,8 @@ public static class SupportOrthoDimensionUpdatePlan49
         return saved.SourceWriteUtcTicks>0&&
             saved.SourceFileLength>=0&&
             saved.LastOwnedDimensionCount>=0&&
+            (saved.LastVerifiedDimensions==null||
+                HasTrustedVerifiedPlan(saved))&&
             !string.IsNullOrWhiteSpace(saved.LastViewPoseSignature)&&
             saved.SourceWriteUtcTicks==currentSourceWriteUtcTicks&&
             saved.SourceFileLength==currentSourceFileLength&&
