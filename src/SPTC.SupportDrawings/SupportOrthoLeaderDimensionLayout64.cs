@@ -23,7 +23,9 @@ public static class SupportOrthoLeaderDimensionLayout64
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout> Callouts,
         int Attempts,int ShiftedViews,int OriginalLocalOmissions,
         int RemainingLocalOmissions,int AddedDimensions,
-        IReadOnlyList<string> Diagnostics);
+        IReadOnlyList<string> Diagnostics,
+        int ProposedLayouts=0,
+        IReadOnlyList<string>? LayoutRejections=null);
 
     private static readonly HashSet<string> Ortho=new(
         new[]{"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK"},
@@ -62,10 +64,19 @@ public static class SupportOrthoLeaderDimensionLayout64
         int originalMissing=LocalMissing(originalPlan);
         if(originalMissing==0||originalPlan.PriorityOverallDimensions==0)
             return new Result(current,0,0,originalMissing,
-                originalMissing,0,Array.Empty<string>());
+                originalMissing,0,Array.Empty<string>(),
+                0,Array.Empty<string>());
 
-        int attempts=0,shiftedViews=0;
+        int attempts=0,shiftedViews=0,proposedLayouts=0;
         var messages=new List<string>();
+        var rejected=new SortedDictionary<string,int>(
+            StringComparer.Ordinal);
+        void Reject(string view,string cause)
+        {
+            string key=view+":"+cause;
+            rejected[key]=rejected.TryGetValue(key,out int count)?
+                count+1:1;
+        }
         foreach(var view in cameras.Select(c=>c.Name)
                     .Where(n=>Ortho.Contains(n)).Distinct(
                         StringComparer.OrdinalIgnoreCase))
@@ -74,7 +85,11 @@ public static class SupportOrthoLeaderDimensionLayout64
             var viewNotes=current.Where(n=>
                 n.View.Equals(view,StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-            if(viewNotes.Length==0)continue;
+            if(viewNotes.Length==0)
+            {
+                Reject(view,"NO_ANNOTATION_LEADERS");
+                continue;
+            }
 
             var best=activePlan;
             IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? bestNotes=null;
@@ -85,22 +100,41 @@ public static class SupportOrthoLeaderDimensionLayout64
                     note.View.Equals(view,StringComparison.OrdinalIgnoreCase)?
                         note with {LabelTop=note.LabelTop+trial.Y,
                             LaneX=note.LaneX+trial.Lane}:note).ToArray();
-                if(!SafePaperLayout(candidate,cameras,titles,
-                    paperWidth,paperHeight))
+                proposedLayouts++;
+                string? issue=PaperLayoutRejectionReason(
+                    candidate,cameras,titles,paperWidth,paperHeight);
+                if(issue!=null)
+                {
+                    Reject(view,issue);
                     continue;
+                }
                 attempts++;
                 var checkedPlan=replan(candidate);
                 // Absolutely preserve the entire accepted baseline
                 // geometry and dynamic measurements; no new detail may
-                // steal a successful 828.28/928.28 overall or chain.
-                if(checkedPlan.UnintendedAcceptedWitnessIntersections!=0||
-                   !Preserves(originalPlan,checkedPlan)||
-                   checkedPlan.PriorityOverallDimensions!=
-                       originalPlan.PriorityOverallDimensions)
+                // steal a successful overall, chain or local dimension.
+                if(checkedPlan.UnintendedAcceptedWitnessIntersections!=0)
+                {
+                    Reject(view,"WITNESS_INTERSECTION");
                     continue;
+                }
+                if(checkedPlan.PriorityOverallDimensions!=
+                    originalPlan.PriorityOverallDimensions)
+                {
+                    Reject(view,"ESSENTIAL_OVERALL_COUNT_CHANGED");
+                    continue;
+                }
+                if(!Preserves(originalPlan,checkedPlan))
+                {
+                    Reject(view,"PREVIOUS_DIMENSION_CHANGED");
+                    continue;
+                }
                 if(checkedPlan.Dimensions.Count<=best.Dimensions.Count||
                    LocalMissing(checkedPlan)>=LocalMissing(best))
+                {
+                    Reject(view,"NO_ADDITIONAL_LOCAL_DIMENSION");
                     continue;
+                }
                 double motion=Math.Abs(trial.Y)+trial.Lane*.6;
                 if(checkedPlan.Dimensions.Count>best.Dimensions.Count||
                    motion<bestMotion)
@@ -121,7 +155,9 @@ public static class SupportOrthoLeaderDimensionLayout64
         return new Result(current,attempts,shiftedViews,
             originalMissing,LocalMissing(activePlan),
             Math.Max(0,activePlan.Dimensions.Count-
-                originalPlan.Dimensions.Count),messages);
+                originalPlan.Dimensions.Count),messages,
+            proposedLayouts,rejected.Select(x=>
+                x.Key+"="+x.Value).ToArray());
     }
 
     private static bool MissingView(SupportOrthoReferenceDimPlan47.Result plan,
@@ -174,7 +210,17 @@ public static class SupportOrthoLeaderDimensionLayout64
         double.IsFinite(a)&&double.IsFinite(b)&&
         Math.Abs(a-b)<1e-6;
 
-    private static bool SafePaperLayout(
+    // REV22.65: Return the exact preflight reason, rather than silently
+    // discarding every proposed layout. The member-callout planner places
+    // label rows with 1.8 mm between their reserved bounding rectangles;
+    // REV22.64 incorrectly inflated both rectangles by 1 mm, then added
+    // another .2 mm collision gap (2.2 mm total), rejecting EVERY
+    // legitimate adjacent row on TEST5. Here, 0.35 mm on each side
+    // plus 0.20 mm mutual gap requires 0.90 mm total clearance, which
+    // preserves the source 1.8 mm row spacing without hiding real
+    // overlaps. Only annotation keepouts change; witness/geometry
+    // and DIMLINEAR safety thresholds remain untouched.
+    private static string? PaperLayoutRejectionReason(
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout> notes,
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles,
@@ -189,21 +235,26 @@ public static class SupportOrthoLeaderDimensionLayout64
                note.LabelWidth<=0||note.LabelHeight<=0||
                note.LaneX<=note.AnchorX||
                note.LaneX>=note.LabelX-1.5)
-                return false;
+                return "INVALID_SOURCE_ANCHOR_OR_LEADER_LANE";
+            const double textInsetSafety=.35;
             var text=new SupportOrthoSmartDimPlan46.Rect(
-                note.LabelX-1,note.LabelTop-note.LabelHeight-1,
-                note.LabelX+note.LabelWidth+1,note.LabelTop+1);
+                note.LabelX-textInsetSafety,
+                note.LabelTop-note.LabelHeight-textInsetSafety,
+                note.LabelX+note.LabelWidth+textInsetSafety,
+                note.LabelTop+textInsetSafety);
             if(text.L<2||text.R>paperW*.78-1||
                text.B<paperH*.12+1||text.T>paperH*.94-1)
-                return false;
-            if(boxes.Any(b=>b.Intersects(text,.20)))return false;
+                return "LABEL_OUTSIDE_SHEET";
+            if(boxes.Any(b=>b.Intersects(text,.20)))
+                return "LABEL_TO_LABEL_OVERLAP";
             boxes.Add(text);
             foreach(var view in cameras)
             {
                 var frame=new SupportOrthoSmartDimPlan46.Rect(
                     view.X-view.W*.5,view.Y-view.H*.5,
                     view.X+view.W*.5,view.Y+view.H*.5);
-                if(text.Intersects(frame,.20))return false;
+                if(text.Intersects(frame,.20))
+                    return "LABEL_OVER_NATIVE_VIEWPORT";
                 if(!view.Name.Equals(note.View,
                     StringComparison.OrdinalIgnoreCase))
                 {
@@ -216,7 +267,8 @@ public static class SupportOrthoLeaderDimensionLayout64
                         note.LaneX+.45,
                         Math.Max(note.AnchorY,note.LabelTop-
                             SupportOrthoMemberCalloutPlan27.TextLineHeightMm*.5)+.45);
-                    if(dogleg.Intersects(frame,.2))return false;
+                    if(dogleg.Intersects(frame,.2))
+                        return "LEADER_OVER_NEIGHBOR_VIEWPORT";
                 }
             }
             foreach(var title in titles)
@@ -227,16 +279,16 @@ public static class SupportOrthoLeaderDimensionLayout64
                     title.CenterX+title.Width*.5+1,
                     title.TopY+1);
                 if(text.Intersects(titleArea,.20))
-                    return false;
+                    return "LABEL_OVER_VIEW_TITLE";
                 var landing=note.LabelTop-
                     SupportOrthoMemberCalloutPlan27.TextLineHeightMm*.5;
                 var dogleg=new SupportOrthoSmartDimPlan46.Rect(
                     note.LaneX-.35,Math.Min(note.AnchorY,landing)-.35,
                     note.LaneX+.35,Math.Max(note.AnchorY,landing)+.35);
                 if(dogleg.Intersects(titleArea,.20))
-                    return false;
+                    return "LEADER_OVER_VIEW_TITLE";
             }
         }
-        return true;
+        return null;
     }
 }
