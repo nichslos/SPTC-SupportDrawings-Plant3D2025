@@ -314,6 +314,21 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         privacy.ForeColor=Color.DimGray;
         orthoTab.Controls.Add(privacy);
 
+        // Issue package setup is explicitly opt-in, project-isolated,
+        // and independent of the existing drawing generation command.
+        // Native view geometry/dimensions remain unchanged.
+        Button productionSettings=new() {
+            Text="Production package...",
+            Location=new Point(409,525),Size=new Size(220,30)};
+        productionSettings.Click+=(_,_)=>{
+            if(IsRunning)return;
+            using var editor=new SupportProductionPackageDialog(projectRoot);
+            if(editor.ShowDialog(this)==DialogResult.OK)
+                SetStatus("Production package settings saved for this project. "+
+                    "Draft metadata/register will accompany the next run.");
+        };
+        orthoTab.Controls.Add(productionSettings);
+
         Label previewLabel = L("Preflight / configuration summary", 22, 630, 420);
         previewLabel.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
         layoutSurface.Controls.Add(previewLabel);

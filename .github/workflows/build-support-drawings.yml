@@ -159,6 +159,44 @@ jobs:
              -not $ui.Contains('Nearby XREF members: label source DWG')) {
             throw 'REV22.37 XREF filename checkbox or default missing'
           }
+          # Optional production package: strictly draft until DWG saved,
+          # explicit title block tags and native issue QA are verified.
+          $productionPlan=Get-Content "$root/SupportProductionPackagePlan.cs" -Raw
+          $productionWriter=Get-Content "$root/SupportProductionTitleBlockWriter.cs" -Raw
+          $productionGenerator=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          $productionForm=Get-Content "$root/SupportDrawingManagerForm35.cs" -Raw
+          foreach($token in @('DRAFT_NEEDS_SAVED_DWG_AND_QA',
+              'PDF_REQUIRED_NOT_PUBLISHED', 'RegisterCsv(',
+              'SourceWriteUtcTicks','CanSkipVerifiedExisting(',
+              'ChangeStatus(', 'SOURCE_STAMP_CHANGED_REVIEW',
+              'SavedAndVerified')) {
+            if($token -ne 'SavedAndVerified' -and
+                -not $productionPlan.Contains($token)) {
+              throw "Safe production package invariant missing: $token"
+            }
+          }
+          foreach($token in @('ExactBlockName',
+              'OverwriteExistingAttributes','TITLEBLOCK_NOT_FOUND',
+              'AMBIGUOUS_TITLEBLOCK_BLOCKS')) {
+            if($token -ne 'ExactBlockName' -and
+                -not $productionWriter.Contains($token)) {
+              throw "Safe title block attribute mapping invariant missing: $token"
+            }
+          }
+          foreach($token in @('SupportProductionPackageSettingsStore.TryLoad(',
+              'SupportProductionTitleBlockWriter.Apply(',
+              'SupportProductionPackagePlan.BuildEntry(',
+              'SupportProductionPackagePlan.SaveEntry(',
+              'PRODUCTION_PDF_STATUS=NOT_PUBLISHED')) {
+            if(-not $productionGenerator.Contains($token)) {
+              throw "Native Ortho opt-in package integration missing: $token"
+            }
+          }
+          if(-not $productionForm.Contains('Production package...') -or
+              -not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw).Contains(
+                  'ProductionPackageSmokeTests.Run();')) {
+            throw 'Production package palette/regression integration missing'
+          }
           # Palette DPI/resize regression is independent of geometry
           # and native PLANTORTHOUPDATE. Never solve clipping by removing
           # a command, option or the modeless palette.
