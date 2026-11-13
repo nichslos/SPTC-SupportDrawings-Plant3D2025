@@ -140,7 +140,7 @@ public static class SupportOrthoReferenceLayout51
         if(tier<0)throw new ArgumentOutOfRangeException(nameof(tier));
         int pair=tier/2;
         return pair<4?pair*textHeight*.375:
-            textHeight*(1.125+(pair-3)*.9);
+            textHeight*(1.125+(pair-3)*.8);
     }
 
     // REV22.62: the FIRST chain lane is unchanged, so verified
