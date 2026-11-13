@@ -1491,6 +1491,61 @@ public sealed class SupportOrthoTenViewGenerator
                         HasTos=options.Description&&includeSecond&&lines.Length>1};
                 }).Where(note=>note!=null)
                     .Cast<SupportOrthoMemberCalloutPlan27.Callout>().ToArray();
+                // REV22.64: before committing leader entities, jointly
+                // evaluate the approved dimension plan and conservative
+                // alternative paper-space callout rows / dogleg lanes.
+                // Only accept a layout that ADDS native local detail
+                // without relocating/removing ANY previously approved
+                // overall, chain or local DIMLINEAR; otherwise preserve
+                // REV22.63's exact annotations and dimension layout.
+                if(options.AutoDimLinear&&options.ReferenceDetailDimensions)
+                {
+                    try
+                    {
+                        var layoutNativeMembers=everyViewMembers.Members
+                            .Where(SupportOrthoNativeDimensionPolicy48
+                                .AcceptMember).ToArray();
+                        var layoutNativeSegments=dimSource.Segments
+                            .Where(x=>SupportOrthoNativeDimensionPolicy48
+                                .IsNativeKey(x.Key))
+                            .Select(x=>new SupportOrthoDimLinearPlan41.Segment(
+                                x.Key,x.Kind,x.Ax,x.Ay,x.Az,x.Bx,x.By,x.Bz,
+                                x.SourceLength,x.Millimeters,x.Provenance))
+                            .ToArray();
+                        SupportOrthoReferenceDimPlan47.Result PlanFor(
+                            IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>
+                                proposed) =>
+                            SupportOrthoReferenceDimPlan47.Build(
+                                memberCameras,layoutNativeMembers,
+                                paperWidth,paperHeight,units,
+                                layoutNativeSegments,proposed,titles,
+                                nativeEdges:nativeEdges59.Edges);
+                        var coordinated64=
+                            SupportOrthoLeaderDimensionLayout64.Coordinate(
+                                memberCameras,titles,visibleCallouts,
+                                paperWidth,paperHeight,PlanFor);
+                        visibleCallouts=coordinated64.Callouts.ToArray();
+                        Log("REV22_64_LAYOUT_ALTERNATIVES_TESTED="+
+                            coordinated64.Attempts);
+                        Log("REV22_64_LEADER_STACKS_REPOSITIONED="+
+                            coordinated64.ShiftedViews);
+                        Log("REV22_64_EXTRA_NATIVE_LOCAL_DIMENSIONS="+
+                            coordinated64.AddedDimensions);
+                        Log("REV22_64_LOCAL_OMISSIONS="+
+                            coordinated64.OriginalLocalOmissions+"/"+
+                            coordinated64.RemainingLocalOmissions);
+                        Log("REV22_64_PREVIOUS_DIMENSIONS_PROTECTED=True");
+                        foreach(string diagnostic in coordinated64.Diagnostics)
+                            Log("REV22_64_LAYOUT="+diagnostic);
+                    }
+                    catch(System.Exception ex)
+                    {
+                        // A failed OPTIONAL optimization never prevents
+                        // native view or annotation generation.
+                        Log("REV22_64_OPTIMIZATION_SKIPPED="+
+                            ex.GetType().Name+":"+ex.Message);
+                    }
+                }
                 dimensionCollisionCallouts=visibleCallouts;
                 Log("REV22_38_PIPE_LABEL_FORMAT=BARE_LINE_TAG_AND_BOP");
                 annotated=CreateNativePaperMemberLeaders27(
