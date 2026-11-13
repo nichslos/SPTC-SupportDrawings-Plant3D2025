@@ -1664,6 +1664,14 @@ public sealed class SupportOrthoTenViewGenerator
                             paperWidth,paperHeight,units,verifiedSegments,
                             dimensionCollisionCallouts,titles,
                             nativeEdges:nativeEdges59.Edges);
+                        Log("REV22_62_COMPACT_LOCAL_DIMENSIONS_RECOVERED="+
+                            detailPlan.CompactLocalWidthDimensionsRecovered);
+                        Log("REV22_62_CHAIN_GROUPS_SAVED_BY_INTERMEDIATE_LANES="+
+                            detailPlan.IntermediateChainLaneGroupsRecovered);
+                        Log("REV22_62_REMAINING_LOCAL_NO_CLEAR_LANES="+
+                            detailPlan.Skipped.Count(x=>
+                                x.Contains("_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE",
+                                    StringComparison.Ordinal)));
                         Log("REV22_60_COORDINATED_PROFILE_GROUPS="+
                             detailPlan.CoordinatedProfileGroups);
                         Log("REV22_60_COORDINATED_PROFILE_DIMENSIONS="+
