@@ -320,6 +320,38 @@ jobs:
                'REV22_62_COMPACT_LOCAL_DIMENSIONS_RECOVERED=')) {
             throw 'REV22.62 source-grounded TOS and local recovery diagnostics missing'
           }
+          # Native Ortho timing and safe post-update scheduling:
+          # event hooks may only queue lightweight state, not block the
+          # native PLANTORTHOUPDATE command or reload the source DWG.
+          $perf=Get-Content "$root/SupportOrthoUpdatePerformancePolicy.cs" -Raw
+          $refreshPerf=Get-Content "$root/SupportOrthoDimensionRefresh49.cs" -Raw
+          foreach($token in @('QuietAfterNativeMilliseconds',
+              'nativeUpdateActive','documentIsActive',
+              'Stopwatch.GetElapsedTime(')) {
+            if(-not $perf.Contains($token)) {
+              throw "Native Ortho non-blocking scheduling policy missing: $token"
+            }
+          }
+          foreach($token in @('Pending[doc]=new PendingRefresh(',
+              'SupportOrthoUpdatePerformancePolicy.Ready(',
+              'ExecuteInCommandContextAsync(',
+              'ORTHO_PERF_NATIVE_MS=',
+              'POST_REFRESH_MS=',
+              'FAST_PAPER_MS=',
+              'SOURCE_MS=',
+              'LAYOUT_MS=',
+              'WRITE_MS=',
+              'int owned=ownedDuringPaperScan;',
+              'DIM_FAST_PATH=SKIPPED_SOURCE_RELOAD')) {
+            if(-not $refreshPerf.Contains($token)) {
+              throw "Safe post-update performance requirement missing: $token"
+            }
+          }
+          if($refreshPerf.Contains('SupportOrthoDimensionOwnedCount49(') -or
+             -not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw).Contains(
+                  'OrthoUpdatePerformanceTests.Run();')) {
+            throw 'Duplicate paper scan or performance regression test missing'
+          }
           # Keep release code revision-neutral. Only a verified native
           # Start/End axis may authorize optional profile station shifts;
           # every candidate continues through the original dimension
