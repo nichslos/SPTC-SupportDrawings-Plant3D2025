@@ -232,6 +232,31 @@ jobs:
                  ).Contains('ProductionPdfSmokeTests.Run();')) {
             throw 'Phase 2 opt-in PDF UI, batch publishing or regression absent'
           }
+          # Fix: real UI checkboxes must survive Save->JSON->Load.
+          # The producer must not silently return CONFIGURED_DISABLED
+          # after a checked PDF option is saved.
+          $settingsStore=Get-Content "$root/SupportProductionPackageSettingsStore.cs" -Raw
+          $settingsDialog=Get-Content "$root/SupportProductionPackageDialog.cs" -Raw
+          $checkboxTests=Get-Content 'tests/Rev240PaletteSmokeTests/Program.cs' -Raw
+          foreach($token in @('SaveAndVerify(',
+              'actual.Enabled!=expected.Enabled',
+              'actual.PublishPdf!=expected.PublishPdf')) {
+            if(-not $settingsStore.Contains($token)) {
+              throw "Production package saved-checkbox verification missing: $token"
+            }
+          }
+          foreach($token in @('SPTC_PRODUCTION_ENABLED',
+              'SPTC_PUBLISH_PDF_ENABLED',
+              'if(publishPdf.Checked)enabled.Checked=true',
+              'SaveAndVerify(')) {
+            if(-not $settingsDialog.Contains($token)) {
+              throw "Production/PDF checkbox UI protection missing: $token"
+            }
+          }
+          if(-not $checkboxTests.Contains(
+              'TestProductionPackageCheckboxSaveRoundTrip();')) {
+            throw 'Production checkbox save/reopen regression not registered'
+          }
           # Palette DPI/resize regression is independent of geometry
           # and native PLANTORTHOUPDATE. Never solve clipping by removing
           # a command, option or the modeless palette.

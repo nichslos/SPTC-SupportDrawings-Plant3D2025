@@ -28,6 +28,31 @@ internal static class SupportProductionPackageSettingsStore
                 new JsonSerializerOptions {WriteIndented=true}));
     }
 
+    // A successful write is not enough: confirm the exact project-scoped
+    // checkbox values survive a real disk read before closing the dialog.
+    // This detects wrong paths, truncated or stale settings and prevents
+    // silently returning to CONFIGURED_DISABLED after the user checks a box.
+    internal static SupportProductionPackagePlan.Settings SaveAndVerify(
+        string projectRoot,SupportProductionPackagePlan.Settings config)
+    {
+        var expected=SupportProductionPackagePlan.Validate(config);
+        Save(projectRoot,expected);
+        if(!TryLoad(projectRoot,out var actual,out string reason)||
+           actual.Enabled!=expected.Enabled||
+           actual.PublishPdf!=expected.PublishPdf||
+           !string.Equals(actual.PdfPlotDevice,expected.PdfPlotDevice,
+               StringComparison.OrdinalIgnoreCase)||
+           !string.Equals(actual.ProjectCode,expected.ProjectCode,
+               StringComparison.Ordinal)||
+           !string.Equals(actual.DrawingSeries,expected.DrawingSeries,
+               StringComparison.Ordinal)||
+           !string.Equals(actual.Revision,expected.Revision,
+               StringComparison.Ordinal))
+            throw new IOException("Production package settings could not be "+
+                "verified after saving ("+reason+"). No settings were confirmed.");
+        return actual;
+    }
+
     internal static bool TryLoad(string projectRoot,
         out SupportProductionPackagePlan.Settings config,out string diagnostic)
     {

@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
@@ -54,6 +55,7 @@ internal static class Program
 
         TestScrollableDpiLayout();
         TestBatchProgressReporting();
+        TestProductionPackageCheckboxSaveRoundTrip();
         var surface=manager.Controls.Find(
             "SPTC_UI_LAYOUT_SURFACE",false).Single();
         var nativeTabs=surface.Controls.OfType<TabControl>().Single();
@@ -115,6 +117,91 @@ internal static class Program
         }
         Console.WriteLine(
             "Production palette full design area scrolls at simulated 100/125/150% DPI PASS");
+    }
+
+    private static void TestProductionPackageCheckboxSaveRoundTrip()
+    {
+        string root=Path.Combine(Path.GetTempPath(),
+            "SPTC_PRODUCTION_CHECKBOX_"+Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string file=SupportProductionPackageSettingsStore.PathForProject(root);
+        try
+        {
+            using(var dialog=new SupportProductionPackageDialog(root))
+            {
+                var enabled=dialog.Controls.Find(
+                    "SPTC_PRODUCTION_ENABLED",true).OfType<CheckBox>().Single();
+                var pdf=dialog.Controls.Find(
+                    "SPTC_PUBLISH_PDF_ENABLED",true).OfType<CheckBox>().Single();
+                Check(!enabled.Checked&&!pdf.Checked,
+                    "new projects start with both options off");
+                // Reproduce the user's lower checkbox being checked while
+                // the top production switch was previously left off.
+                pdf.Checked=true;
+                Check(pdf.Checked&&enabled.Checked,
+                    "checking PDF automatically enables its production prerequisite");
+                void SetField(string name,string value)
+                {
+                    var field=typeof(SupportProductionPackageDialog).GetField(
+                        name,BindingFlags.Instance|BindingFlags.NonPublic)
+                        ??throw new Exception("Missing settings field "+name);
+                    ((TextBox)(field.GetValue(dialog)??throw new Exception(
+                        "Missing text field "+name))).Text=value;
+                }
+                SetField("projectCode","TB26");
+                SetField("series","SUP");
+                SetField("revision","A");
+                SetField("title","SUPPORT DRAWING");
+                // Invoke the exact dialog Save button handler, not a
+                // synthetic settings-only serializer test.
+                typeof(SupportProductionPackageDialog).GetMethod(
+                    "Save",BindingFlags.Instance|BindingFlags.NonPublic)!
+                    .Invoke(dialog,null);
+                Check(dialog.DialogResult==DialogResult.OK,
+                    "save closes only after exact values are reloaded from disk");
+            }
+            Check(File.Exists(file),
+                "production settings exist at the correct project-scoped path");
+            Check(SupportProductionPackageSettingsStore.TryLoad(root,
+                    out var fromDisk,out string diagnostic)&&
+                diagnostic=="CONFIGURED_ENABLED"&&
+                fromDisk.Enabled&&fromDisk.PublishPdf&&
+                fromDisk.ProjectCode=="TB26",
+                "both enabled checkboxes survive disk save and reload");
+
+            using(var reopened=new SupportProductionPackageDialog(root))
+            {
+                var enabled=reopened.Controls.Find(
+                    "SPTC_PRODUCTION_ENABLED",true).OfType<CheckBox>().Single();
+                var pdf=reopened.Controls.Find(
+                    "SPTC_PUBLISH_PDF_ENABLED",true).OfType<CheckBox>().Single();
+                Check(enabled.Checked&&pdf.Checked,
+                    "reopening dialog restores both checked states");
+                enabled.Checked=false;
+                Check(!pdf.Checked,
+                    "explicitly disabling production also disables PDF");
+                enabled.Checked=true;
+                pdf.Checked=true;
+                typeof(SupportProductionPackageDialog).GetMethod(
+                    "Save",BindingFlags.Instance|BindingFlags.NonPublic)!
+                    .Invoke(reopened,null);
+            }
+            using(var third=new SupportProductionPackageDialog(root))
+            {
+                Check(third.Controls.Find("SPTC_PRODUCTION_ENABLED",true)
+                    .OfType<CheckBox>().Single().Checked&&
+                  third.Controls.Find("SPTC_PUBLISH_PDF_ENABLED",true)
+                    .OfType<CheckBox>().Single().Checked,
+                    "second Save never resets persisted PDF checkbox");
+            }
+        }
+        finally
+        {
+            if(File.Exists(file))File.Delete(file);
+            Directory.Delete(root,true);
+        }
+        Console.WriteLine(
+            "Production/PDF checkbox real Save-click handler, auto-enable master, disk roundtrip and dialog reopen PASS");
     }
 
     private static void TestBatchProgressReporting()
