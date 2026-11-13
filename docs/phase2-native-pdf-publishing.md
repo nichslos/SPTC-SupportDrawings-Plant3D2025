@@ -133,3 +133,5 @@ orientation, title-block edges, viewports, annotations and all dimensions.
 A passing Windows build tests selection policy and API signatures, not the
 behavior of the locally installed PC3 device. All published outputs remain
 draft until visual engineering review.
+
+The selected PDF PC3 media list may contain null, invalid or device-specific entries; these are skipped without changing the native paper layout. The final PDF remains subject to a live PC3 layout review on TEST5.
