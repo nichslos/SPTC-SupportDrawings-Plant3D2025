@@ -105,18 +105,15 @@ internal static class SupportProductionNativePdfPublisher
                 throw new InvalidOperationException(
                     "Active Ortho drawing changed during QSAVE.");
             stage="DWG_VERIFY";
-            var persisted=new FileInfo(entry.DestinationDwg);
-            persisted.Refresh();
-            if(!persisted.Exists||persisted.Length<1024||
-               (persisted.LastWriteTimeUtc<=beforeTimestamp&&
-                persisted.Length==beforeBytes))
+            if(!SupportProductionPdfPolicy.VerifyNewDwgSave(
+                   entry.DestinationDwg,beforeBytes,beforeTimestamp,
+                   out savedBytes))
                 return SupportProductionPdfPolicy.AfterFailure(
                     entry,"PDF_BLOCKED_DWG_SAVE_NOT_VERIFIED");
-            savedBytes=persisted.Length;
             saved=true;
             log("SPTC_PDF_PUBLISH_DWG_QSAVE_VERIFIED=TRUE BYTES="+
                 savedBytes+" UPDATED_UTC="+
-                persisted.LastWriteTimeUtc.ToString("O"));
+                File.GetLastWriteTimeUtc(entry.DestinationDwg).ToString("O"));
 
             // PDF plotting must be foreground and single-flight. The
             // original environment is restored regardless of outcome.
