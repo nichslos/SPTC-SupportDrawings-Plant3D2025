@@ -383,6 +383,8 @@ internal static class SupportOrthoDimensionRefresh49
         Message(target,"DIM_INTEGRITY_SAVED_EXPECTED="+
             original.LastOwnedDimensionCount+
             " CURRENT_OWNED="+fastState.OwnedDimensions+
+            " AUTO_LAYER_UNOWNED="+
+            fastState.UnownedDimensionsOnAutoLayer+
             " VERIFIED_PLAN="+
             (original.LastVerifiedDimensions?.Count??0));
         if(SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
@@ -404,7 +406,8 @@ internal static class SupportOrthoDimensionRefresh49
         // details. This path never opens the source model DWG.
         if(SupportOrthoDimensionUpdatePlan49.CanRepairVerifiedDimensions(
             original,sourceWriteTicks,sourceLength,
-            fastState.PoseSignature,fastState.OwnedDimensions))
+            fastState.PoseSignature,fastState.OwnedDimensions,
+            fastState.UnownedDimensionsOnAutoLayer))
         {
             var plan=original.LastVerifiedDimensions!.ToArray();
             var verifiedMembers=original.NativeExtentSnapshot;
@@ -783,7 +786,8 @@ internal static class SupportOrthoDimensionRefresh49
 
     private sealed record FastPaperState(
         string PoseSignature,int OwnedDimensions,
-        IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> Cameras);
+        IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> Cameras,
+        int UnownedDimensionsOnAutoLayer);
 
     private static SupportOrthoMemberCalloutPlan17.Camera CameraFromViewport(
         string name,Viewport vp) =>
@@ -814,7 +818,7 @@ internal static class SupportOrthoDimensionRefresh49
             SupportOrthoDimensionUpdatePlan49.Candidate>();
         var camerasByHandle=new Dictionary<string,Viewport>(
             StringComparer.OrdinalIgnoreCase);
-        int owned=0;
+        int owned=0,unownedOnAutoLayer=0;
         foreach(ObjectId id in paper)
         {
             if(tr.GetObject(id,OpenMode.ForRead,false) is not Entity entity)
@@ -826,12 +830,17 @@ internal static class SupportOrthoDimensionRefresh49
                 candidates.Add(new(handle,vp.CenterPoint.X,vp.CenterPoint.Y,
                     vp.Width,vp.Height));
             }
-            if(entity is RotatedDimension dim&&
-               dim.Layer==SupportOrthoDimLinearPlan41.Layer)
+            if(entity is Dimension dimension&&
+               dimension.Layer==SupportOrthoDimLinearPlan41.Layer)
             {
-                using var marker=dim.GetXDataForApplication(
-                    SupportOrthoDimensionUpdatePlan49.OwnerApp);
-                if(marker!=null)owned++;
+                if(dimension is RotatedDimension dim)
+                {
+                    using var marker=dim.GetXDataForApplication(
+                        SupportOrthoDimensionUpdatePlan49.OwnerApp);
+                    if(marker!=null)owned++;
+                    else unownedOnAutoLayer++;
+                }
+                else unownedOnAutoLayer++;
             }
         }
         var used=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -850,7 +859,8 @@ internal static class SupportOrthoDimensionRefresh49
         }
         return new FastPaperState(
             SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
-                cameras,width,height),owned,cameras);
+                cameras,width,height),owned,cameras,
+            unownedOnAutoLayer);
     }
 
     private static void Message(Document doc,string value)
