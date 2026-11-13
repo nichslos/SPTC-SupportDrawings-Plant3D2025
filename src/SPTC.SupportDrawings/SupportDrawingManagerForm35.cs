@@ -324,8 +324,17 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             if(IsRunning)return;
             using var editor=new SupportProductionPackageDialog(projectRoot);
             if(editor.ShowDialog(this)==DialogResult.OK)
-                SetStatus("Production package settings saved for this project. "+
-                    "Draft metadata/register will accompany the next run.");
+            {
+                if(SupportProductionPackageSettingsStore.TryLoad(
+                    projectRoot,out var confirmed,out string loadState))
+                    SetStatus("Production settings verified: "+
+                        "Package="+(confirmed.Enabled?"ON":"OFF")+
+                        ", Native PDF="+(confirmed.PublishPdf?"ON":"OFF")+
+                        " ("+loadState+").");
+                else
+                    SetStatus("Production settings could not be reloaded: "+
+                        loadState+". Reopen Production package before running.");
+            }
         };
         orthoTab.Controls.Add(productionSettings);
 
