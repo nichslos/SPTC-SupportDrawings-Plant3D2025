@@ -211,8 +211,8 @@ jobs:
               throw "Phase 2 native PDF preflight guard missing: $token"
             }
           }
-          foreach($token in @('targetDoc.Database.SaveAs(',
-              'targetDoc.LockDocument()',
+          foreach($token in @('targetDoc.Editor.CommandAsync("_.QSAVE")',
+              'manager.ExecuteInCommandContextAsync(async _=>',
               'PlotFactory.ProcessPlotState',
               'PlotFactory.CreatePublishEngine()',
               'MatchingPolicy.MatchDisabled',
@@ -227,10 +227,22 @@ jobs:
           }
           if(-not $pdfConfig.Contains('publishPdf.Text=') -or
              -not $productionGenerator.Contains(
-                 'SupportProductionNativePdfPublisher.Publish(') -or
+                 'SupportProductionNativePdfPublisher.PublishAsync(') -or
              -not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw
                  ).Contains('ProductionPdfSmokeTests.Run();')) {
             throw 'Phase 2 opt-in PDF UI, batch publishing or regression absent'
+          }
+          if($pdfNative.Contains('targetDoc.Database.SaveAs(')) {
+            throw 'Regression: active Ortho DWG must use QSAVE, not Database.SaveAs'
+          }
+          if(-not $productionGenerator.Contains(
+              'await SupportProductionNativePdfPublisher.PublishAsync(')) {
+            throw 'Native QSAVE/PDF must be awaited in single and batch workflows'
+          }
+          if(-not $pdfPolicy.Contains('VerifyNewDwgSave(') -or
+             -not (Get-Content 'tests/Rev241DimLinearSmokeTests/ProductionPdfSmokeTests.cs' -Raw
+                  ).Contains('existing seed clone alone does not prove QSAVE')) {
+            throw 'Missing annotated-DWG save evidence regression'
           }
           # Native PDF phase failures must disclose SaveAs versus
           # PlotEngine versus validation, not just a generic native error.
