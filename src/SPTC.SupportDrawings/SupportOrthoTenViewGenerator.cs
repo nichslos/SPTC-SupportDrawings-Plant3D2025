@@ -1108,7 +1108,7 @@ public sealed class SupportOrthoTenViewGenerator
                         if(!(completed.Count==0?
                             before=="EMPTY_REGISTERED_ORTHO":CatalogMatches(before,completed)))
                             throw new InvalidOperationException(label+": unexpected native view catalog: "+before);
-                        string viewName="SPTC_"+label+"_R22_"+stamp;
+                        string viewName=SupportOrthoViewNaming.Name(label,stamp);
                         Log("STEP7_"+label+"_VIEW_NAME="+viewName);
                         Log("STEP7_"+label+"_VIEW_DIRECTION="+
                             Point(item.Slot.Dx,item.Slot.Dy,item.Slot.Dz));
@@ -1763,6 +1763,14 @@ public sealed class SupportOrthoTenViewGenerator
                         foreach(string why in optimized.Rejections)
                             Log("DIM_LAYOUT_REJECTED="+why);
                         Log("DIM_LAYOUT_SOURCE_WITNESSES_PROTECTED=True");
+                        Log("DIM_LAYOUT_AXIS_STATION_CANDIDATES_TESTED="+
+                            detailPlan.VerifiedAxisStationCandidatesTested);
+                        Log("DIM_LAYOUT_AXIS_STATION_DIMENSIONS_RECOVERED="+
+                            detailPlan.VerifiedAxisStationDimensionsRecovered);
+                        foreach(string line in
+                            SupportOrthoDimensionReflow.HierarchyLinePositions(
+                                detailPlan))
+                            Log("DIM_LAYOUT_PAPER_HIERARCHY="+line);
                         // REV22.63: explicitly distinguish compact-only
                         // retries from adaptive title/short-text recovery.
                         // Per-view omitted member causes remain in
