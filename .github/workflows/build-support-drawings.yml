@@ -320,6 +320,32 @@ jobs:
                'REV22_62_COMPACT_LOCAL_DIMENSIONS_RECOVERED=')) {
             throw 'REV22.62 source-grounded TOS and local recovery diagnostics missing'
           }
+          # REV22.63: adaptive recovery must preserve real geometry,
+          # prior overall dimensions and the strict intersection audit.
+          $adaptive63=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $lanes63=Get-Content "$root/SupportOrthoReferenceLayout51.cs" -Raw
+          $generator63=Get-Content "$root/SupportOrthoTenViewGenerator.cs" -Raw
+          foreach($token in @('AdaptiveShortLocalLabel',
+              'AdaptiveLocalWidthDimensionsRecovered',
+              'compactTitleKeepout:true',
+              'InnerThanReservedOverall(',
+              'SupportOrthoDimIntersections58.Conflict(')) {
+            if(-not $adaptive63.Contains($token)) {
+              throw "REV22.63 safe adaptive placement invariant missing: $token"
+            }
+          }
+          foreach($token in @('AdaptiveLocalMemberLaneOffsets(',
+              'AdaptiveLocalLabelAdvance(')) {
+            if(-not $lanes63.Contains($token)) {
+              throw "REV22.63 bounded paper-space schedule missing: $token"
+            }
+          }
+          if(-not $generator63.Contains(
+              'REV22_63_ADAPTIVE_LOCAL_DIMENSIONS_RECOVERED=') -or
+             -not (Get-Content 'tests/Rev241DimLinearSmokeTests/Program.cs' -Raw).Contains(
+              'Rev263AdaptiveLocalDimensionTests.Run();')) {
+            throw 'REV22.63 report and executable regression missing'
+          }
           # REV22.61: independently QA all selected native dimensions
           # against actual viewport-projected member extents, physical
           # witness and model DIMLFAC. Required H/V overall omissions
@@ -896,11 +922,11 @@ jobs:
           if(-not (Test-Path $dll)) {throw 'DLL not generated'}
           $size=(Get-Item $dll).Length
           if($size -lt 100000) {throw "DLL unexpectedly small: $size"}
-          Write-Host "REV22.62 verified TOS and native local dimension recovery DLL bytes: $size"
+          Write-Host "REV22.63 verified adaptive dimension-clearance DLL bytes: $size"
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: SPTC-SupportDrawings-Plant3D2025-REV22_62-TOS-AND-LOCAL-DIMENSION-FIX
+          name: SPTC-SupportDrawings-Plant3D2025-REV22_63-ADAPTIVE-LOCAL-DIMENSION-CLEARANCE
           path: src/SPTC.SupportDrawings/bin/Release/net8.0-windows/SPTC.SupportDrawings.dll
           retention-days: 30
           if-no-files-found: error
