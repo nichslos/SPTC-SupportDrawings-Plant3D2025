@@ -1525,6 +1525,14 @@ public sealed class SupportOrthoTenViewGenerator
                                 memberCameras,titles,visibleCallouts,
                                 paperWidth,paperHeight,PlanFor);
                         visibleCallouts=coordinated64.Callouts.ToArray();
+                        Log("REV22_65_LAYOUTS_PROPOSED="+
+                            coordinated64.ProposedLayouts);
+                        Log("REV22_65_PREFLIGHT_VALID_LAYOUTS="+
+                            coordinated64.Attempts);
+                        foreach(string rejection in
+                            coordinated64.LayoutRejections ??
+                            Array.Empty<string>())
+                            Log("REV22_65_LAYOUT_REJECTION="+rejection);
                         Log("REV22_64_LAYOUT_ALTERNATIVES_TESTED="+
                             coordinated64.Attempts);
                         Log("REV22_64_LEADER_STACKS_REPOSITIONED="+
