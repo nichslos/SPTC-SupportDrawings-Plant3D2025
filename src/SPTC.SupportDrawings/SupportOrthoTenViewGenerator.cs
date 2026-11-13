@@ -1664,6 +1664,17 @@ public sealed class SupportOrthoTenViewGenerator
                             paperWidth,paperHeight,units,verifiedSegments,
                             dimensionCollisionCallouts,titles,
                             nativeEdges:nativeEdges59.Edges);
+                        // REV22.63: explicitly distinguish compact-only
+                        // retries from adaptive title/short-text recovery.
+                        // Per-view omitted member causes remain in
+                        // REV22_47_DIMENSION_SKIP for manual QA.
+                        Log("REV22_63_ADAPTIVE_LOCAL_DIMENSIONS_RECOVERED="+
+                            detailPlan.AdaptiveLocalWidthDimensionsRecovered);
+                        Log("REV22_63_NATIVE_DIMENSION_COMPLETENESS="+
+                            (detailPlan.Skipped.Any(x=>
+                                x.Contains("_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE",
+                                    StringComparison.Ordinal))?
+                                "PARTIAL_OPTIONAL_DETAILS":"OVERALL_AND_LOCAL_PASS"));
                         Log("REV22_62_COMPACT_LOCAL_DIMENSIONS_RECOVERED="+
                             detailPlan.CompactLocalWidthDimensionsRecovered);
                         Log("REV22_62_CHAIN_GROUPS_SAVED_BY_INTERMEDIATE_LANES="+
