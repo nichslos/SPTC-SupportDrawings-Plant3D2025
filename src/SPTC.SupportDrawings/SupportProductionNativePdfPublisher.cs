@@ -236,26 +236,103 @@ internal static class SupportProductionNativePdfPublisher
             throw new InvalidOperationException(
                 "Selected PDF PC3 device is not installed: "+plotDevice);
 
-        string media=layout.CanonicalMediaName??"";
-        if(media.Length==0||media.StartsWith("none",StringComparison.OrdinalIgnoreCase))
+        // Canonical media names belong to the configured PC3 printer.
+        // The original Plant Ortho seed may use a different printer's
+        // canonical A1 name. Passing that unsupported string directly to
+        // SetPlotConfigurationName raised eNoMatchingMedia in live TEST5.
+        // Instead discover and physically measure the requested device's
+        // own media list, without editing the source native page setup.
+        string previousMedia=layout.CanonicalMediaName??"";
+        var originalUnits=layout.PlotPaperUnits;
+        if(originalUnits==PlotPaperUnit.Pixels)
             throw new InvalidOperationException(
-                "Ortho layout has no verified plot media.");
+                "Raster/pixel sheet media is unsupported for native PDF.");
+        double originalFactor=originalUnits==PlotPaperUnit.Inches?25.4:1.0;
+        double originalWidth=layout.PlotPaperSize.X*originalFactor;
+        double originalHeight=layout.PlotPaperSize.Y*originalFactor;
+        if(!SupportProductionPdfMediaMatcher.IsPhysical(
+            originalWidth,originalHeight))
+            throw new InvalidOperationException(
+                "Native paper layout physical size unavailable or invalid.");
 
-        // Copy the native layout's page size, plot orientation, margins,
-        // style and lineweight settings; never modify the actual layout.
         using var sheet=new PlotSettings(layout.ModelType);
         sheet.CopyFrom(layout);
-        log("SPTC_PDF_PUBLISH_STAGE=PLOT_CONFIG_EXACT_MEDIA MEDIA="+media);
-        validator.SetPlotConfigurationName(sheet,plotDevice,media);
+        // Null asks AutoCAD to choose a valid default for this PC3.
+        // Do not pass the original device's unsupported media name.
+        log("SPTC_PDF_PUBLISH_STAGE=PLOT_CONFIG_ENUMERATE_MEDIA "+
+            "DEVICE="+plotDevice+" ORIGINAL="+previousMedia+
+            " ORIGINAL_MM="+originalWidth.ToString("0.###",
+                System.Globalization.CultureInfo.InvariantCulture)+"x"+
+            originalHeight.ToString("0.###",
+                System.Globalization.CultureInfo.InvariantCulture));
+        validator.SetPlotConfigurationName(sheet,plotDevice,null!);
         validator.RefreshLists(sheet);
         var available=validator.GetCanonicalMediaNameList(sheet);
-        if(!available.Cast<string>().Contains(media,
-            StringComparer.OrdinalIgnoreCase))
+        var choices=new List<SupportProductionPdfMediaMatcher.Candidate>();
+        foreach(string candidate in available)
+        {
+            if(string.IsNullOrWhiteSpace(candidate))continue;
+            try
+            {
+                validator.SetCanonicalMediaName(sheet,candidate);
+                if(sheet.PlotPaperUnits==PlotPaperUnit.Pixels)continue;
+                double units=sheet.PlotPaperUnits==PlotPaperUnit.Inches?
+                    25.4:1.0;
+                var size=sheet.PlotPaperSize;
+                choices.Add(new SupportProductionPdfMediaMatcher.Candidate(
+                    candidate,size.X*units,size.Y*units));
+            }
+            catch(Autodesk.AutoCAD.Runtime.Exception)
+            {
+                // Some PC3 devices list unsupported/no-device entries.
+                // A failed candidate must not alter the real layout.
+                continue;
+            }
+        }
+        var match=SupportProductionPdfMediaMatcher.Select(
+            originalWidth,originalHeight,choices,previousMedia);
+        if(!match.Found)
+        {
+            log("SPTC_PDF_PUBLISH_NO_MATCHING_MEDIA="+
+                string.Join(";",choices.Select(x=>x.Name+"("+
+                    x.WidthMm.ToString("0.#",
+                        System.Globalization.CultureInfo.InvariantCulture)+
+                    "x"+x.HeightMm.ToString("0.#",
+                        System.Globalization.CultureInfo.InvariantCulture)+
+                    "mm)").Take(40)));
             throw new InvalidOperationException(
-                "PDF plotter cannot reproduce this exact paper media: "+media);
-        validator.SetCanonicalMediaName(sheet,media);
+                "Selected PDF device has no media matching the native "+
+                originalWidth.ToString("0.##",
+                    System.Globalization.CultureInfo.InvariantCulture)+"x"+
+                originalHeight.ToString("0.##",
+                    System.Globalization.CultureInfo.InvariantCulture)+
+                " mm paper layout. No PDF was published.");
+        }
+
+        validator.SetCanonicalMediaName(sheet,match.MediaName!);
+        // The PDF device may expose A1 only as landscape while native
+        // layout is portrait. Compensate 90 degrees in this disposable
+        // plot override, never in the original layout or its viewports.
+        PlotRotation rotation=layout.PlotRotation;
+        if(match.Rotate90)
+        {
+            rotation=rotation switch {
+                PlotRotation.Degrees000=>PlotRotation.Degrees090,
+                PlotRotation.Degrees090=>PlotRotation.Degrees000,
+                PlotRotation.Degrees180=>PlotRotation.Degrees270,
+                PlotRotation.Degrees270=>PlotRotation.Degrees180,
+                _=>throw new InvalidOperationException(
+                    "Unknown plot rotation; cannot preserve orientation")
+            };
+        }
+        validator.SetPlotRotation(sheet,rotation);
         validator.SetPlotType(sheet,
             Autodesk.AutoCAD.DatabaseServices.PlotType.Layout);
+        log("SPTC_PDF_MEDIA_MATCH=PASS DEVICE="+plotDevice+
+            " SELECTED="+match.MediaName+
+            " ROTATE_90="+match.Rotate90+
+            " ERROR_MM="+match.MaxErrorMm.ToString("0.###",
+                System.Globalization.CultureInfo.InvariantCulture));
 
         using var plotInfo=new PlotInfo {
             Layout=layout.ObjectId,OverrideSettings=sheet
