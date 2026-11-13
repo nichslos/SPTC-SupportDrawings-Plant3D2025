@@ -115,7 +115,13 @@ internal static class DimensionReflowTests
                     StringComparison.Ordinal)),
             "local recovery cannot sacrifice an overall dimension");
 
-        var complete=truePlan with {Skipped=Array.Empty<string>()};
+        var complete=truePlan with {
+            Skipped=Array.Empty<string>(),
+            Dimensions=truePlan.Dimensions.Where(d=>
+                !d.Source.Contains("/CHAIN_",StringComparison.Ordinal)&&
+                !d.Source.Contains("/TERMINAL_REMAINDER_",
+                    StringComparison.Ordinal)).ToArray()
+        };
         var unchanged=SupportOrthoDimensionReflow.Improve(
             cameras,complete,_=>throw new Exception(
                 "complete layout must not be replanned"));
