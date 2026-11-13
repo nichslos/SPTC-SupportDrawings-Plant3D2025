@@ -28,6 +28,8 @@
              Link="SupportOrthoDimIntersections58.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoNativeEdgeGeometry59.cs"
              Link="SupportOrthoNativeEdgeGeometry59.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoLeaderDimensionLayout64.cs"
+             Link="SupportOrthoLeaderDimensionLayout64.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoCoordinatedLayout60.cs"
              Link="SupportOrthoCoordinatedLayout60.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDrawingQualityAudit61.cs"
