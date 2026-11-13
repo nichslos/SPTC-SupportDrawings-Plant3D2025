@@ -48,6 +48,8 @@
              Link="SupportOrthoReferenceLayout51.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoNativeDimensionPolicy48.cs"
              Link="SupportOrthoNativeDimensionPolicy48.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoUpdatePerformancePolicy.cs"
+             Link="SupportOrthoUpdatePerformancePolicy.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDimensionUpdatePlan49.cs"
              Link="SupportOrthoDimensionUpdatePlan49.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDynamicDimension492.cs"
