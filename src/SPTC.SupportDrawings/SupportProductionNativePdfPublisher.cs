@@ -14,7 +14,7 @@ namespace SPTC.SupportDrawings;
 /// Opt-in native PlotEngine PDF publication of exactly one already-generated
 /// registered Ortho paper layout. Runs only AFTER the native generator and
 /// dimension integrity checks return to the session command context.
-/// Requires an exact active target document and a successful native SaveAs.
+/// Requires an exact active target document and a verified native QSAVE.
 /// Never changes the source model, viewport, title, DIMLINEAR or page setup.
 /// </summary>
 internal static class SupportProductionNativePdfPublisher
