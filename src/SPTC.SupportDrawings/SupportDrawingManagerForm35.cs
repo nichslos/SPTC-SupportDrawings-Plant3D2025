@@ -593,6 +593,7 @@ internal sealed class SupportDrawingProgressForm35 : WinForms.Form
         Text = "SPTC  /  Ortho generation progress";
         Icon = SupportBranding36.CreateIcon();
         Font = new Font("Segoe UI",9f);
+        AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(630,335);
         FormBorderStyle = FormBorderStyle.SizableToolWindow;
@@ -605,11 +606,16 @@ internal sealed class SupportDrawingProgressForm35 : WinForms.Form
             Font = new Font("Segoe UI", 10f, FontStyle.Bold)
         };
         Controls.Add(title);
+        countLabel.Name="SPTC_PROGRESS_COUNTS";
         countLabel.SetBounds(136,59,467,24);
         countLabel.Text="Preparing support drawings...";
         countLabel.ForeColor=Color.DimGray;
+        countLabel.Anchor=AnchorStyles.Top|AnchorStyles.Left|
+            AnchorStyles.Right;
+        countLabel.AutoEllipsis=true;
         Controls.Add(countLabel);
         bar.SetBounds(14,89,600,17);
+        bar.Anchor=AnchorStyles.Top|AnchorStyles.Left|AnchorStyles.Right;
         bar.Style = ProgressBarStyle.Marquee;
         Controls.Add(bar);
         log.SetBounds(14,115,600,201);
