@@ -93,3 +93,43 @@ The live uploaded `074645_e81b` production JSON recorded `PDF_FAILED_DWG_SAVE ST
 The dependent fix replaces that **specific** call with an awaited `Editor.CommandAsync("_.QSAVE")` executed through `DocumentCollection.ExecuteInCommandContextAsync` against the verified active target document. It does **not** alter the separate seed-clone `Database.SaveAs` used when creating a new drawing. Native save errors are trapped within the command-context callback and propagated as `PDF_FAILED_DWG_SAVE` with exception text. An existing DWG without a physical new save is `PDF_BLOCKED_DWG_SAVE_NOT_VERIFIED` and cannot proceed to plotting.
 
 The plugin must continue to report separate plot failures, as passing a save test does **not** demonstrate that the configured PDF device and page media work on this Plant 3D installation. Validate on a copied TEST5 project, inspect the result JSON `PdfStatus` and `IssueNote`, confirm DWG content persisted and inspect any resulting PDF before using it for fabrication or issue.
+
+## TEST5 2026-11-13 — A1 PDF media negotiation (Phase 2)
+
+On the user's copied TEST5 drawing, native QSAVE was confirmed by
+`SavedDwgVerified=true` and `SavedDwgLength=127142`, but PDF publishing
+returned `PDF_FAILED_PLOT_SETUP STAGE=PLOT_SETUP EXCEPTION=Exception: eNoMatchingMedia`.
+This proves the save issue is resolved in that run; it **does not** prove
+that native PDF plotting has succeeded.
+
+The original Ortho layout is `Title Block`, with physical sheet dimensions
+`594 x 841 mm` (ISO A1). The former publisher copied the layout's canonical
+paper name directly into `SetPlotConfigurationName` for a different PDF PC3
+device. Canonical paper names are **plot-device-specific** and must not
+be assumed interchangeable.
+
+This fix now:
+
+1. Copies the native layout's page setup to a disposable in-memory
+   `PlotSettings` override, leaving native geometry and the original sheet
+   untouched.
+2. Switches to the specifically approved, installed PDF PC3 **without
+   supplying the incompatible seed media name**.
+3. Enumerates that PDF device's canonical media names, selecting each
+   temporarily and measuring `PlotPaperSize` in millimeters.
+4. Selects only a sheet matching the original physical dimensions within
+   1 mm per edge, favoring unchanged physical orientation and, where
+   available, full-bleed variants. If only the opposite physical orientation
+   is available, compensates 90 degrees in the temporary plot override.
+5. Logs the chosen PDF device/media/orientation; fails closed without
+   publishing if no physically matching media exists. It does not silently
+   scale A1 onto A2 or A0.
+6. Preserves the already verified QSAVE, QA gates, batch status, four commands,
+   dimension layout, XREF rules and fast `PLANTORTHOUPDATE`.
+
+**Live acceptance:** Load this dependent DLL into Plant 3D 2025 on a copied
+TEST5 project; inspect generated PDF for full A1 page dimensions, expected
+orientation, title-block edges, viewports, annotations and all dimensions.
+A passing Windows build tests selection policy and API signatures, not the
+behavior of the locally installed PC3 device. All published outputs remain
+draft until visual engineering review.
