@@ -33,7 +33,7 @@ public static class SupportOrthoDimensionReflow
         Func<IReadOnlyDictionary<string,
             SupportOrthoReferenceDimPlan47.PlacementPreference>,
             SupportOrthoReferenceDimPlan47.Result> rebuild,
-        int maxAttemptsPerView=12)
+        int maxAttemptsPerView=48)
     {
         if(cameras==null||baseline==null||rebuild==null||
            maxAttemptsPerView<1||maxAttemptsPerView>48)
@@ -67,10 +67,11 @@ public static class SupportOrthoDimensionReflow
         // length, handle, view coordinate, nominal member section
         // or fabricated dimension. Prioritize wider outer-overall
         // offsets, then progressively varying inner-chain lanes.
-        var trials=Enumerable.Range(1,
-                Math.Min(overallRanks.Length-1,9))
+        var trials=Enumerable.Range(0,
+                Math.Min(overallRanks.Length,10))
             .SelectMany(o=>Enumerable.Range(0,
-                Math.Min(chainRanks.Length,3))
+                Math.Min(chainRanks.Length,6))
+                .Where(c=>o!=0||c!=0)
                 .Select(c=>new SupportOrthoReferenceDimPlan47
                     .PlacementPreference(o,c)))
             .OrderBy(p=>p.ChainLaneRank)
@@ -192,6 +193,40 @@ public static class SupportOrthoDimensionReflow
             }
         }
         return count;
+    }
+
+    /// <summary>
+    /// Actual paper-space line positions for verifiable H/V drafting
+    /// tier order. The witness spans remain real model projections;
+    /// values here are plotted paper coordinates, NOT model sizes.
+    /// </summary>
+    public static IReadOnlyList<string> HierarchyLinePositions(
+        SupportOrthoReferenceDimPlan47.Result plan)
+    {
+        if(plan==null)throw new ArgumentNullException(nameof(plan));
+        var lines=new List<string>();
+        foreach(var overall in plan.Dimensions.Where(d=>
+            d.Source.EndsWith("/OVERALL",StringComparison.Ordinal)))
+        {
+            double outer=overall.Horizontal?overall.LineY:overall.LineX;
+            foreach(var chain in plan.Dimensions.Where(d=>
+                d.View==overall.View&&d.Horizontal==overall.Horizontal&&
+                (d.Source.Contains("/CHAIN_",StringComparison.Ordinal)||
+                 d.Source.Contains("/TERMINAL_REMAINDER_",
+                     StringComparison.Ordinal))))
+            {
+                double inner=chain.Horizontal?chain.LineY:chain.LineX;
+                bool correct=SupportOrthoManualDetailStyle57
+                    .InsideOverall(overall.Horizontal,inner,outer);
+                lines.Add(overall.View+"/"+(overall.Horizontal?"H":"V")+
+                    ":OVERALL_PAPER="+outer.ToString("0.###",
+                        System.Globalization.CultureInfo.InvariantCulture)+
+                    ":CHAIN_PAPER="+inner.ToString("0.###",
+                        System.Globalization.CultureInfo.InvariantCulture)+
+                    ":CHAIN_INNER="+correct);
+            }
+        }
+        return lines;
     }
 
     // Accepted source measurements and true 3D witness projections are
