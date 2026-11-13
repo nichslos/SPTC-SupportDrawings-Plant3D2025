@@ -289,7 +289,8 @@ internal static class SupportOrthoDimensionRefresh49
             sourceFile.LastWriteTimeUtc.Ticks,sourceFile.Length,
             SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
                 viewCameras,paperW,paperH),
-            dimensions.Count,savedGeometry,savedEndpoints,verifiedEdges);
+            dimensions.Count,savedGeometry,savedEndpoints,verifiedEdges,
+            dimensions.Count<=512?dimensions.ToArray():null);
         SupportOrthoDimensionUpdatePlan49.Validate(manifest);
         Store(target,manifest);
     }
@@ -379,6 +380,11 @@ internal static class SupportOrthoDimensionRefresh49
         var fastState=ReadFastPaperState(target.Database,original);
         timings.FastPaperMs=SupportOrthoUpdatePerformancePolicy
             .ElapsedMilliseconds(phase,Stopwatch.GetTimestamp());
+        Message(target,"DIM_INTEGRITY_SAVED_EXPECTED="+
+            original.LastOwnedDimensionCount+
+            " CURRENT_OWNED="+fastState.OwnedDimensions+
+            " VERIFIED_PLAN="+
+            (original.LastVerifiedDimensions?.Count??0));
         if(SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
             original,sourceWriteTicks,sourceLength,
             fastState.PoseSignature,fastState.OwnedDimensions))
@@ -388,6 +394,60 @@ internal static class SupportOrthoDimensionRefresh49
                 "REV22.49.3 DIM_FAST_PATH=SKIPPED_SOURCE_RELOAD; "+
                 "native dimensions already current ("+
                 fastState.OwnedDimensions+").");
+            return;
+        }
+
+        // Model DWG and all saved native view poses are identical.
+        // If AutoCAD's native update removed plugin-owned dimensions,
+        // restore the signed, previously QA-approved paper plan rather
+        // than rerunning a different planner that might accept fewer
+        // details. This path never opens the source model DWG.
+        if(SupportOrthoDimensionUpdatePlan49.CanRepairVerifiedDimensions(
+            original,sourceWriteTicks,sourceLength,
+            fastState.PoseSignature,fastState.OwnedDimensions))
+        {
+            var plan=original.LastVerifiedDimensions!.ToArray();
+            var verifiedMembers=original.NativeExtentSnapshot;
+            if(verifiedMembers==null||
+               verifiedMembers.Count!=original.Members.Count)
+            {
+                Message(target,
+                    "DIM_INTEGRITY_REPAIR=SKIPPED_NO_NATIVE_SNAPSHOT; "+
+                    "original dimensions preserved.");
+                return;
+            }
+            var checkedPlan=SupportOrthoDrawingQualityAudit61.Review(
+                fastState.Cameras,verifiedMembers,plan,
+                Array.Empty<string>(),original.UnitsToMm,
+                original.ReferenceDetailDimensions,
+                nativeEdges:original.NativeEdgeSnapshot);
+            if(checkedPlan.Status!="PASS")
+            {
+                Message(target,
+                    "DIM_INTEGRITY_REPAIR=BLOCKED_QA_"+
+                    checkedPlan.Status+"; original dimensions preserved.");
+                return;
+            }
+            phase=Stopwatch.GetTimestamp();
+            int repaired=SupportOrthoDimLinearWriter41.Write(
+                target.Database,original.LayoutName,plan,
+                out var restoreNotes,replaceGenerated:true);
+            // Atomic writer owns the only user-visible dimension edit.
+            // Persist new count only after ALL verified dimensions
+            // have been successfully recreated.
+            if(repaired!=plan.Length)
+                throw new InvalidOperationException(
+                    "Incomplete verified dimension restoration.");
+            Store(target.Database,original with {
+                LastOwnedDimensionCount=repaired
+            });
+            timings.WriteMs=SupportOrthoUpdatePerformancePolicy
+                .ElapsedMilliseconds(phase,Stopwatch.GetTimestamp());
+            timings.Mode="REPAIRED_SIGNED_DIMENSION_PLAN";
+            Message(target,"DIM_INTEGRITY_REPAIR=RESTORED "+
+                fastState.OwnedDimensions+"/"+repaired+
+                " FROM_VERIFIED_PAPER_PLAN; "+
+                string.Join("; ",restoreNotes));
             return;
         }
         System.Diagnostics.Trace.WriteLine(
@@ -642,6 +702,24 @@ internal static class SupportOrthoDimensionRefresh49
         int owned=ownedDuringPaperScan;
         phase=Stopwatch.GetTimestamp();
         timings.Mode="UPDATING_DIMENSION_MANIFEST";
+        // A legacy manifest has no saved paper-plan snapshot.
+        // If an unchanged model/view would be silently downgraded
+        // from its previously recorded higher dimension count,
+        // leave the existing drawing untouched. A fresh generation
+        // with verified plan snapshot is the safe recovery route.
+        if(original.LastOwnedDimensionCount>dimensions.Count&&
+           original.SourceWriteUtcTicks==sourceWriteTicks&&
+           original.SourceFileLength==sourceLength&&
+           string.Equals(original.LastViewPoseSignature,
+               SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
+                   cameras,paperW,paperH),StringComparison.Ordinal))
+        {
+            timings.Mode="COUNT_REGRESSION_BLOCKED";
+            Message(target,"DIM_INTEGRITY_REPLAN_BLOCKED="+
+                dimensions.Count+"/"+original.LastOwnedDimensionCount+
+                " SAME_MODEL_AND_VIEWS; original dimensions retained.");
+            return;
+        }
         if(!SupportOrthoDimensionUpdatePlan49.NeedsReplace(
             original.LastSignature,next,owned,dimensions.Count))
         {
@@ -659,7 +737,9 @@ internal static class SupportOrthoDimensionRefresh49
                 NativeExtentSnapshot=native.Length<=128?native:null,
                 NativeEndpointSnapshot=native.Length<=128?segments:null,
                 NativeEdgeSnapshot=native.Length<=128&&edges.Length<=512?
-                    edges:null});
+                    edges:null,
+                LastVerifiedDimensions=dimensions.Count<=512?
+                    dimensions.ToArray():null});
             timings.WriteMs=SupportOrthoUpdatePerformancePolicy
                 .ElapsedMilliseconds(phase,Stopwatch.GetTimestamp());
             timings.Mode="UNCHANGED_PLAN_CACHE_UPDATED";
@@ -690,7 +770,9 @@ internal static class SupportOrthoDimensionRefresh49
             NativeExtentSnapshot=native.Length<=128?native:null,
             NativeEndpointSnapshot=native.Length<=128?segments:null,
             NativeEdgeSnapshot=native.Length<=128&&edges.Length<=512?
-                edges:null});
+                edges:null,
+            LastVerifiedDimensions=dimensions.Count<=512?
+                dimensions.ToArray():null});
         timings.WriteMs=SupportOrthoUpdatePerformancePolicy
             .ElapsedMilliseconds(phase,Stopwatch.GetTimestamp());
         timings.Mode="REPLACED_PLUGIN_OWNED_DIMENSIONS";
@@ -700,7 +782,8 @@ internal static class SupportOrthoDimensionRefresh49
     }
 
     private sealed record FastPaperState(
-        string PoseSignature,int OwnedDimensions);
+        string PoseSignature,int OwnedDimensions,
+        IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> Cameras);
 
     private static SupportOrthoMemberCalloutPlan17.Camera CameraFromViewport(
         string name,Viewport vp) =>
@@ -767,7 +850,7 @@ internal static class SupportOrthoDimensionRefresh49
         }
         return new FastPaperState(
             SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
-                cameras,width,height),owned);
+                cameras,width,height),owned,cameras);
     }
 
     private static void Message(Document doc,string value)
