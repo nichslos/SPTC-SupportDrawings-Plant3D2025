@@ -216,7 +216,7 @@ jobs:
               'PlotFactory.ProcessPlotState',
               'PlotFactory.CreatePublishEngine()',
               'MatchingPolicy.MatchDisabled',
-              'SetPlotConfigurationName(sheet,plotDevice,null!)',
+              'PROBE_ASSIGN_PDF_DEVICE',
               'SetPlotType(sheet,',
               'BACKGROUNDPLOT',
               'ReportLine(')) {
@@ -249,8 +249,8 @@ jobs:
           # canonical name. Do not pass the old media name directly.
           $pdfMedia=Get-Content "$root/SupportProductionPdfMediaMatcher.cs" -Raw
           $pdfSmoke=Get-Content 'tests/Rev241DimLinearSmokeTests/ProductionPdfSmokeTests.cs' -Raw
-          foreach($token in @('GetCanonicalMediaNameList(sheet)',
-              'SetCanonicalMediaName(sheet,candidate)',
+          foreach($token in @('GetCanonicalMediaNameList(probe)',
+              'SetCanonicalMediaName(probe,candidate)',
               'SupportProductionPdfMediaMatcher.Select(',
               'SPTC_PDF_MEDIA_MATCH=PASS','SetPlotRotation(sheet,rotation)')) {
             if(-not $pdfNative.Contains($token)) {
@@ -272,6 +272,28 @@ jobs:
             if(-not $pdfSmoke.Contains($token)) {
               throw "A1 plot-media regression missing: $token"
             }
+          }
+          # 08:49 TEST5: despite saved DWG and production QA PASS,
+          # eNoMatchingMedia recurred with no API-specific stage in
+          # the JSON. Probe the PDF plotter independently from the
+          # cloned seed's media/style settings and retain exact failure.
+          foreach($token in @('new PlotSettings(layout.ModelType)',
+              'SetDefaultPlotConfig(probe)',
+              'SetPlotConfigurationName(',
+              'probe,plotDevice,null!)',
+              'GetCanonicalMediaNameList(probe)',
+              'OVERRIDE_ASSIGN_PDF_DEVICE_AND_MEDIA',
+              'PDF_MEDIA_STEP=',
+              'VALIDATE_FINAL_PLOT_INFO',
+              'SPTC_PDF_MEDIA_PROBE_RESULTS=')) {
+            if(-not $pdfNative.Contains($token)) {
+              throw "Native PDF independent media probe/diagnostics missing: $token"
+            }
+          }
+          $probeFirst=$pdfNative.IndexOf('SetDefaultPlotConfig(probe)')
+          $copyLater=$pdfNative.IndexOf('sheet.CopyFrom(layout)')
+          if($probeFirst -lt 0 -or $copyLater -le $probeFirst) {
+            throw 'The original seed plot configuration must not be copied before PC3 media discovery'
           }
           # Native PDF phase failures must disclose SaveAs versus
           # PlotEngine versus validation, not just a generic native error.

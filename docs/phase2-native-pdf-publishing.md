@@ -135,3 +135,48 @@ behavior of the locally installed PC3 device. All published outputs remain
 draft until visual engineering review.
 
 The selected PDF PC3 media list may contain null, invalid or device-specific entries; these are skipped without changing the native paper layout. The final PDF remains subject to a live PC3 layout review on TEST5.
+
+## 2026-11-13 TEST5 08:49 — persistent native `eNoMatchingMedia`
+
+New field-test result `SPTC_TEST5_8A4_ORTHO_R229XREF_20261113_084912_466d`:
+production PDF opt-in enabled; `QaStatus=PASS`; 10 native views;
+25/27 dimensions; 12/12 essential overalls; 0 intersections;
+`SavedDwgVerified=true`, `SavedDwgLength=126784`; PDF path null;
+`PDF_FAILED_PLOT_SETUP STAGE=PLOT_SETUP EXCEPTION=Exception: eNoMatchingMedia`.
+
+The previous media-name selection was not sufficient to complete
+plotting in this installation. The available JSON/CSV lacks the
+specific AutoCAD API call responsible for the exception. **Do not
+assert that the PDF plot engine ran or that a particular media-setting
+API threw the exception based solely on those files.**
+
+This dependent change further isolates media enumeration from the
+existing native layout. It initializes a **fresh plot-device probe**,
+assigns the configured PDF PC3, refreshes and measures only that
+device's media options, and selects a physically matching A1 sheet.
+Only after a match does it copy the original layout to a disposable
+plot override and apply the matched media, orientation and plot style.
+
+The native plotting API actions are individually guarded with
+`PDF_MEDIA_STEP=...` diagnostics in `IssueNote` (and the CSV
+`PDFDiagnostic` column), including `PROBE_INITIALIZE_DEFAULT`,
+`PROBE_ASSIGN_PDF_DEVICE`, `PROBE_REFRESH_PDF_MEDIA`,
+`PROBE_GET_MEDIA_NAMES`, `OVERRIDE_ASSIGN_PDF_DEVICE_AND_MEDIA`,
+`OVERRIDE_REFRESH_MEDIA`, `OVERRIDE_SELECT_MATCHED_MEDIA`,
+`OVERRIDE_SET_ROTATION`, `OVERRIDE_SET_LAYOUT_PLOT_AREA`, and
+`VALIDATE_FINAL_PLOT_INFO`. These mark the exact operation if
+`eNoMatchingMedia` remains.
+
+No source-model, 10-view, dimension, title block, XREF or fast
+`PLANTORTHOUPDATE` logic is modified. Plot device setup still
+depends on the local PC3 driver and media installed on the user's
+computer, so Windows CI compilation does not constitute a real PDF
+publication test.
+
+**Safe manual diagnostic**: In a copied generated Ortho DWG select
+the `Title Block` paper layout, open PLOT, choose the configured
+`DWG To PDF.pc3`, and inspect whether the expected A1 594 × 841 mm
+paper size is listed and previews successfully. If it is absent,
+repair/enable that PC3 media through AutoCAD's Plotter Configuration
+Editor before retesting. The plugin must never silently substitute a
+different physical sheet size.
