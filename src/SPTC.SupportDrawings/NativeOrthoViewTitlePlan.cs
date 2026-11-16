@@ -78,7 +78,7 @@ public static class NativeOrthoViewTitlePlan
 
     public static IReadOnlyList<Title> BuildTitles(
         IReadOnlyList<Frame> actual,double paperWidth,double paperHeight,
-        bool allowSubset=false)
+        bool allowSubset=false,bool bypassTitleBlock=false)
     {
         ValidateFrames(actual,paperWidth,paperHeight,allowSubset);
         // REV66: A0 captions may be slightly WIDER than their slim
@@ -99,8 +99,12 @@ public static class NativeOrthoViewTitlePlan
                 throw new InvalidOperationException(
                     "REV22.13 viewport too narrow for native title "+t.Name);
             if(t.CenterX-t.Width/2 < paperWidth*.03-tol ||
-               t.CenterX+t.Width/2>paperWidth*.75+tol ||
-               t.TopY-t.Height<paperHeight*.12-tol)
+               t.CenterX+t.Width/2>
+                   NativeOrthoTitleBlockBypass69.Right(
+                       paperWidth,bypassTitleBlock)+tol ||
+               t.TopY-t.Height<
+                   NativeOrthoTitleBlockBypass69.Bottom(
+                       paperHeight,bypassTitleBlock)-tol)
                 throw new InvalidOperationException(
                     "REV22.13 "+t.Name+" title encroaches on sheet keepout.");
             foreach(var f in actual)

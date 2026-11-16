@@ -42,7 +42,7 @@ public static class SupportOrthoMemberCalloutPlan27
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles,
         IReadOnlyList<Member> members,double paperW,double paperH,
-        bool allowSubset=false)
+        bool allowSubset=false,bool bypassTitleBlock=false)
     {
         if(cameras==null||cameras.Count<1||cameras.Count>10||members==null||
            titles==null||titles.Count!=cameras.Count||
@@ -90,8 +90,10 @@ public static class SupportOrthoMemberCalloutPlan27
                 .OrderBy(v=>v.X).FirstOrDefault();
             double rightLimit=rightNeighbor!=null?
                 rightNeighbor.X-rightNeighbor.W/2-5:
-                (SupportOrthoPaperTypography66.IsLargePaper(paperW,paperH)?
-                    paperW*.75-3:paperW*.78-3);
+                (bypassTitleBlock?
+                    NativeOrthoTitleBlockBypass69.Right(paperW,true)-3:
+                    SupportOrthoPaperTypography66.IsLargePaper(paperW,paperH)?
+                        paperW*.75-3:paperW*.78-3);
             double width=Math.Min(widthCap,rightLimit-x);
             if(width<54)
             {
@@ -161,7 +163,9 @@ public static class SupportOrthoMemberCalloutPlan27
                 .DefaultIfEmpty(134.56).Min();
             double halfBand=Math.Min(60.0,nextRowGap/2-8);
             double topSafe=Math.Min(camera.Y+halfBand,paperH*.94-2);
-            double bottomSafe=Math.Max(camera.Y-halfBand,paperH*.12+8);
+            double bottomSafe=Math.Max(camera.Y-halfBand,
+                NativeOrthoTitleBlockBypass69.Bottom(
+                    paperH,bypassTitleBlock)+8);
             double total=projected.Sum(t=>t.Height)+
                 Math.Max(0,projected.Count-1)*rowSpacing;
             if(total>topSafe-bottomSafe+1e-6)
@@ -228,9 +232,12 @@ public static class SupportOrthoMemberCalloutPlan27
         {
             double lx=note.LabelX,rx=note.LabelX+note.LabelWidth;
             double bottom=note.LabelTop-note.LabelHeight;
-            if(lx<0||rx>paperW*.78+1e-5||
+            if(lx<0||rx>(bypassTitleBlock?
+                    NativeOrthoTitleBlockBypass69.Right(paperW,true):
+                    paperW*.78)+1e-5||
                 note.LabelTop>paperH*.94+1e-5||
-                bottom<paperH*.12-1e-5)
+                bottom<NativeOrthoTitleBlockBypass69.Bottom(
+                    paperH,bypassTitleBlock)-1e-5)
                 throw new InvalidOperationException(
                     "REV22.27 member label outside native drawing keepout.");
             foreach(var frame in cameras)

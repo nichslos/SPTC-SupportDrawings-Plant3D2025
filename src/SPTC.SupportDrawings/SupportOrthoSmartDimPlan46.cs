@@ -46,7 +46,8 @@ public static class SupportOrthoSmartDimPlan46
         double paperW,double paperH,double unitsToMm,
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts=null,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles=null,
-        IReadOnlyList<Rect>? additionalKeepouts=null)
+        IReadOnlyList<Rect>? additionalKeepouts=null,
+        bool bypassTitleBlock=false)
     {
         if(cameras==null||members==null||
            !double.IsFinite(paperW)||!double.IsFinite(paperH)||
@@ -58,7 +59,11 @@ public static class SupportOrthoSmartDimPlan46
         var skips=new List<string>();
         var placements=new List<Placement>();
         int repositioned=0,rejected=0,viewCount=0;
-        double paperRight=paperW*.78,paperBottom=paperH*.12,
+        double paperRight=bypassTitleBlock?
+                NativeOrthoTitleBlockBypass69.Right(paperW,true):
+                paperW*.78,
+            paperBottom=NativeOrthoTitleBlockBypass69.Bottom(
+                paperH,bypassTitleBlock),
             paperTop=paperH*.94;
         var paper=new Rect(2,paperBottom+1.5,paperRight-2,paperTop-1.5);
 

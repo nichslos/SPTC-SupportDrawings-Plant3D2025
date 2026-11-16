@@ -329,6 +329,46 @@ jobs:
              -not $test68.Contains('A0 supplementary search stays bounded')) {
             throw 'REV68 dimension preservation regression is missing'
           }
+          # REV69: strict first; only explicit All10 A0 can bypass
+          # unused right title-block reserve after normal fit fails.
+          # Actual printed title-block text, title template, SDK scale
+          # and native PDF publisher are never changed. Overprint risk
+          # is flagged in DRAFT for live visual verification.
+          $bypass69=Get-Content "$root/NativeOrthoTitleBlockBypass69.cs" -Raw
+          $exact69=Get-Content "$root/NativeOrthoExactScalePlacement61.cs" -Raw
+          $views69=Get-Content "$root/NativeOrthoViewportPaperGuard.cs" -Raw
+          $callouts69=Get-Content "$root/SupportOrthoMemberCalloutPlan27.cs" -Raw
+          $dims69=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $test69=Get-Content 'tests/SupportSheetSmokeTests/Rev69TitleBlockBypassTests.cs' -Raw
+          foreach($token in @('RightRatio=.97','BottomRatio=.10',
+              'Eligible(', 'EntersOldTitleBlockZone(')) {
+            if(-not $bypass69.Contains($token)) {
+              throw "REV69 A0 physical-page bypass limits missing: $token"
+            }
+          }
+          foreach($token in @('bypassTitleBlock','strict',
+              'NativeOrthoTitleBlockBypass69.Right(')) {
+            if(-not ($exact69.Contains($token) -or
+                     $gen.Contains($token))) {
+              throw "REV69 exact-scale strict-first fallback guard missing: $token"
+            }
+          }
+          foreach($token in @('REV69_TITLE_BLOCK_RESERVED_AREA_BYPASSED=',
+              'REV69_TITLEBLOCK_OVERPRINT_POSSIBLE=',
+              'bypassMedia69','REV69: BYPASS TITLE-BLOCK RESERVATION',
+              'bypassTitleBlock:bypassTitleBlock69')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV69 native generation integration missing: $token"
+            }
+          }
+          if(-not $views69.Contains('bypassTitleBlock') -or
+             -not $callouts69.Contains('bypassTitleBlock') -or
+             -not $dims69.Contains('bypassTitleBlock') -or
+             -not $test69.Contains('strictFailed') -or
+             -not $test69.Contains('EntersOldTitleBlockZone') -or
+             -not $test69.Contains('1:10 TEST5 still passes strict layout')) {
+            throw 'REV69 physical viewport, annotation/dimension or regression coverage missing'
+          }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
               'options.AutoSeed','options.Views.Count',
@@ -501,9 +541,14 @@ jobs:
               throw "REV59 native border/title-block policy missing: $token"
             }
           }
+          # REV69: the original 25% right title-block reservation
+          # REMAINS the strict DEFAULT. Explicit A0 All10 failure may
+          # only trigger the separately tested physical-page bypass.
           if(-not $orthoPlan.Contains('paperWidth*.75') -or
-             -not $titlePlan59.Contains('paperWidth*.75')) {
-            throw 'REV59 view and title planners must reserve 25% title block'
+             -not $titlePlan59.Contains('NativeOrthoTitleBlockBypass69.Right(') -or
+             -not $bypass69.Contains('LegacyRightRatio=.75') -or
+             -not $bypass69.Contains('LegacyBottomRatio=.12')) {
+            throw 'REV59 strict default view/title title-block reservation missing'
           }
           if(-not $rev59Tests.Contains('original off-border TOP view') -or
              -not $rev59Tests.Contains('right-side title-block overlap') -or

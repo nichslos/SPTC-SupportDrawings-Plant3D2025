@@ -53,7 +53,8 @@ public static class SupportOrthoLeaderDimensionLayout64
         double paperWidth,double paperHeight,
         Func<IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>,
              SupportOrthoReferenceDimPlan47.Result> replan,
-        int maxTrialsPerView=12)
+        int maxTrialsPerView=12,
+        bool bypassTitleBlock=false)
     {
         if(cameras==null||titles==null||originals==null||
            replan==null||!double.IsFinite(paperWidth)||
@@ -108,7 +109,8 @@ public static class SupportOrthoLeaderDimensionLayout64
                             LaneX=note.LaneX+trial.Lane}:note).ToArray();
                 proposedLayouts++;
                 string? issue=PaperLayoutRejectionReason(
-                    candidate,cameras,titles,paperWidth,paperHeight);
+                    candidate,cameras,titles,paperWidth,paperHeight,
+                    bypassTitleBlock);
                 if(issue!=null)
                 {
                     Reject(view,issue);
@@ -230,7 +232,7 @@ public static class SupportOrthoLeaderDimensionLayout64
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout> notes,
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles,
-        double paperW,double paperH)
+        double paperW,double paperH,bool bypassTitleBlock=false)
     {
         double nativeLabelLineAdvance=SupportOrthoPaperTypography66.LineAdvance(
             paperW,paperH);
@@ -250,8 +252,11 @@ public static class SupportOrthoLeaderDimensionLayout64
                 note.LabelTop-note.LabelHeight-textInsetSafety,
                 note.LabelX+note.LabelWidth+textInsetSafety,
                 note.LabelTop+textInsetSafety);
-            if(text.L<2||text.R>paperW*NativeOrthoEffectivePaper59.RightTitleBlockStartRatio-1||
-               text.B<paperH*.12+1||text.T>paperH*.94-1)
+            if(text.L<2||text.R>
+                NativeOrthoTitleBlockBypass69.Right(paperW,bypassTitleBlock)-1||
+               text.B<NativeOrthoTitleBlockBypass69.Bottom(
+                   paperH,bypassTitleBlock)+1||
+               text.T>paperH*.94-1)
                 return "LABEL_OUTSIDE_SHEET";
             if(boxes.Any(b=>b.Intersects(text,.20)))
                 return "LABEL_TO_LABEL_OVERLAP";
