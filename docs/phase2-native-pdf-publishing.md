@@ -180,3 +180,35 @@ paper size is listed and previews successfully. If it is absent,
 repair/enable that PC3 media through AutoCAD's Plotter Configuration
 Editor before retesting. The plugin must never silently substitute a
 different physical sheet size.
+
+## TEST5 November 16 — PlotInfoValidator eNoMatchingMedia
+
+Field test `SPTC_TEST5_8A4_ORTHO_R229XREF_20261116_001522_b171`
+reports `QaStatus=PASS`, 10 native views, 25/27 dimensions,
+12/12 essential overalls, no intersections,
+`SavedDwgVerified=true`, 126055 bytes. PDF publication is
+`PDF_FAILED_PLOT_SETUP`, specifically:
+`PDF_MEDIA_STEP=VALIDATE_FINAL_PLOT_INFO Exception: eNoMatchingMedia`.
+
+The independent PDF device probe, selected physical media and transient
+layout override reached the final `PlotInfoValidator.Validate` call.
+The previous `MatchingPolicy.MatchDisabled` prohibits media
+name reconciliation between the original native layout and the PDF
+override, which is a likely explanation for the error.
+
+This change uses AutoCAD's documented `MatchingPolicy.MatchEnabled`.
+**It does not create custom PC3/PMP paper media.** Because matching
+may choose a different canonical medium, the plugin now inspects
+`PlotInfo.ValidatedSettings` before creating a PlotEngine, and
+strictly requires the approved PDF PC3, the original physical A1
+594×841 mm sheet (1 mm rounding tolerance), and the requested
+orientation and plot rotation. An A2/A0/other-device substitution is
+blocked and no PDF is recorded or issued.
+
+The original document's layout, geometry, drawing dimensions, XREF
+handling, native QSAVE, batch status and `PLANTORTHOUPDATE` have not
+been modified. The resulting PDF remains a draft requiring a
+real-world check of page size, lineweights, viewports and title
+block. Windows CI can verify matching policy compilation and
+postvalidation tests, **not** actual PlotEngine behavior on the
+user's PC3 installation.
