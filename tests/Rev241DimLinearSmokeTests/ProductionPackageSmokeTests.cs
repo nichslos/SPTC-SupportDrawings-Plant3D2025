@@ -51,6 +51,30 @@ internal static class ProductionPackageSmokeTests
                 read.ExpectedOveralls==12&&read.PresentOveralls==12&&
                 read.OptionalOmissions==2,
                 "verified TEST5 25/27 and 12/12 metadata parsed");
+            // REV62: a genuine ISO-only native sheet has no H/V axes.
+            // Zero required dimensions is not a failure when QA PASS
+            // and all four native ISO preset views were registered.
+            string isoLog=string.Join("\n",new[]{
+                "STEP10_SELECTED_NATIVE_VIEWS_REGISTERED=4",
+                "REV22_61_EXPECTED_HV_OVERALLS=0",
+                "REV22_61_PRESENT_HV_OVERALLS=0",
+                "REV22_61_QA_OPTIONAL_OMISSIONS=0",
+                "REV22_61_QA_WITNESS_INTERSECTIONS=0",
+                "REV22_41_DIMENSIONS_CREATED=0",
+                "REV22_61_QA_STATUS=PASS",
+                "FINAL_STATUS=TEN_NATIVE_VIEWS_AND_TITLES_MEMBER_LEADERS_PASS"});
+            var isoEvidence=SupportProductionPackagePlan.ParseReport(isoLog);
+            Need(isoEvidence.Pass&&isoEvidence.NativeViews==4&&
+                isoEvidence.ExpectedOveralls==0&&
+                isoEvidence.PresentOveralls==0,
+                "ISO-only 4/4 native views with 0/0 H/V QA stays PASS");
+            var isoEntry=SupportProductionPackagePlan.BuildEntry(
+                settings,model,handles,output,report,isoLog,
+                new[]{"NW","NE","SW","SE"},"1:10","TEST_SHA");
+            Need(isoEntry.QaStatus=="PASS"&&isoEntry.NativeViews==4&&
+                isoEntry.DimensionsCreated==0&&
+                isoEntry.IssueStatus=="DRAFT_NEEDS_SAVED_DWG_AND_QA",
+                "ISO-only 1:10 remains draft but not generation failed");
             Need(SupportProductionPackagePlan.Fingerprint(model,handles)==
                 SupportProductionPackagePlan.Fingerprint(
                     model,new[]{"8A3","8A4","8A3"}),

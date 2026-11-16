@@ -2240,6 +2240,15 @@ public sealed class SupportOrthoTenViewGenerator
                         dimensionPlan.Dimensions,dimensionPlan.Skipped,
                         units,options.ReferenceDetailDimensions,
                         nativeEdges:nativeEdges59.Edges);
+                    // REV62: four ISO camera presets are geometrically valid
+                    // but have no independent H/V DIMLINEAR obligations.
+                    // Audit still requires native member evidence, valid
+                    // cameras and zero unsupported dimensions.
+                    bool isoOnly62=options.Views.Count>0&&
+                        options.Views.All(NativeOrthoIsoViewType.IsIsometric);
+                    Log("REV62_DIMENSION_QA_MODE="+
+                        (isoOnly62?"ISO_ONLY_NO_HV_AXES":
+                            "ORTHOGRAPHIC_HV_REQUIRED"));
                     Log("REV22_61_QA_PREWRITE="+qaBefore.Status);
                     Log("REV22_61_EXPECTED_HV_OVERALLS="+
                         qaBefore.ExpectedOverallAxes);

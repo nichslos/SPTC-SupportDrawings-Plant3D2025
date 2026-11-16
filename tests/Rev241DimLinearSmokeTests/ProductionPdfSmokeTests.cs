@@ -167,6 +167,32 @@ internal static class ProductionPdfSmokeTests
             var ready=SupportProductionPdfPolicy.Preflight(settings,entry);
             Need(ready.Allowed&&ready.Status=="PDF_PREFLIGHT_PASS"&&
                 ready.ExpectedPdfPath==pdf,"valid ten-view QA reaches plot gate");
+            // REV62: 1:10 ISO4 has zero required orthographic axes.
+            // An independently validated, four-view ISO-only drawing
+            // may reach the SAME save/plot checks; no bypass of QA or
+            // other required PDF safety predicates.
+            var isoSettings=settings with {
+                AttributeTags=new Dictionary<string,string>()};
+            var isoEntry=entry with {
+                Views=new[]{"NW","NE","SW","SE"},NativeViews=4,
+                DimensionsCreated=0,ExpectedOverallDimensions=0,
+                PresentOverallDimensions=0,OptionalOmissions=0,
+                TitleBlockStatus="NOT_CONFIGURED"};
+            Need(SupportProductionPdfPolicy.Preflight(
+                isoSettings,isoEntry).Allowed,
+                "ISO-only 4 views, QA PASS and 0/0 dimensions may publish");
+            Need(SupportProductionPdfPolicy.Preflight(
+                isoSettings,isoEntry with {QaStatus="REVIEW"}).Status==
+                    "PDF_BLOCKED_QA",
+                "ISO-only QA REVIEW must still block PDF publishing");
+            Need(SupportProductionPdfPolicy.Preflight(
+                isoSettings,isoEntry with {NativeViews=3}).Status==
+                    "PDF_BLOCKED_QA",
+                "ISO-only missing native view cannot publish");
+            Need(SupportProductionPdfPolicy.Preflight(
+                isoSettings,isoEntry with {WitnessIntersections=1}).Status==
+                    "PDF_BLOCKED_QA",
+                "ISO-only cannot bypass dimension intersection safety");
             Need(!SupportProductionPdfPolicy.Preflight(
                 settings with {PublishPdf=false},entry).Allowed,
                 "PDF never publishes when explicitly disabled");

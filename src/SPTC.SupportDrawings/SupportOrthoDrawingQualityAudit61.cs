@@ -18,6 +18,11 @@ public static class SupportOrthoDrawingQualityAudit61
     private static readonly HashSet<string> Ortho=new(
         new[]{"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK"},
         StringComparer.OrdinalIgnoreCase);
+    // ISO projections do not require horizontal/vertical DIMLINEAR.
+    // A valid ISO-only native sheet still undergoes source/writer
+    // integrity checks, but has zero required orthographic axes.
+    private static readonly HashSet<string> Iso=new(
+        new[]{"NW","NE","SW","SE"},StringComparer.OrdinalIgnoreCase);
 
     public sealed record Issue(string Code,string View,string Description);
     public sealed record Result(
@@ -58,7 +63,20 @@ public static class SupportOrthoDrawingQualityAudit61
             double.IsFinite(c.W)&&double.IsFinite(c.H)&&
             c.W>0&&c.H>0).ToArray();
 
-        if(validCameras.Length==0)
+        bool validIsoOnly=cameras.Count>0 &&
+            cameras.Select(c=>c.Name).Distinct(
+                StringComparer.OrdinalIgnoreCase).Count()==cameras.Count &&
+            cameras.All(c=>Iso.Contains(c.Name)&&
+                double.IsFinite(c.X)&&double.IsFinite(c.Y)&&
+                double.IsFinite(c.W)&&double.IsFinite(c.H)&&
+                double.IsFinite(c.Scale)&&c.W>0&&c.H>0&&c.Scale>0&&
+                double.IsFinite(c.ViewCenterX)&&
+                double.IsFinite(c.ViewCenterY)&&
+                double.IsFinite(c.TwistRadians)&&
+                double.IsFinite(c.DirX)&&double.IsFinite(c.DirY)&&
+                double.IsFinite(c.DirZ)&&
+                c.DirX*c.DirX+c.DirY*c.DirY+c.DirZ*c.DirZ>1e-10);
+        if(validCameras.Length==0&&!validIsoOnly)
             Flag("NO_VALID_ORTHOGRAPHIC_VIEWS","SHEET",
                 "No valid native orthographic camera to audit.");
         if(eligible.Length==0)
