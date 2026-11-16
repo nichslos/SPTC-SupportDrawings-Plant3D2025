@@ -162,7 +162,7 @@ jobs:
           }
           foreach($token in @('AppendFitting(',
               'NativeOrthoExactScalePlacement61.Build(',
-              'single','DrawingNumberSuffix')) {
+              'SINGLE','DrawingNumberSuffix')) {
             if(-not $multi63.Contains($token)) {
               throw "REV63 independent page layout/identity missing: $token"
             }
