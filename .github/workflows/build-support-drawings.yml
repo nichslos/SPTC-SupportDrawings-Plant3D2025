@@ -161,7 +161,7 @@ jobs:
           }
           foreach($token in @('bool ok=await GenerateOne(sourceDoc,singleSourceIds',
               'NativeOrthoSingleSheet64.SmallestFitting(',
-              'REV64: ONE SHEET REQUIRED',
+              'REV65: ONE SHEET REQUIRED',
               'REV64_ONE_NATIVE_SHEET_REQUIRED=',
               'REV64_SELECTED_REGISTERED_SEED=',
               'exactTenOnOneSheet64')) {
@@ -182,6 +182,36 @@ jobs:
              -not $singleTest64.Contains('A0_NOT_REGISTERED') -or
              -not $singleTest64.Contains('ONE SHEET')) {
             throw 'REV64 one sheet, nonfitting A1 and registered A0 regression absent'
+          }
+          # REV65 extends the exact-scale fit search without relaxing
+          # existing title, annotation, viewport or single-sheet safety.
+          $diagnostics65=Get-Content "$root/NativeOrthoSeedDiagnostics65.cs" -Raw
+          $layout65=Get-Content "$root/NativeOrthoExactScalePlacement61.cs" -Raw
+          $tests65=Get-Content 'tests/SupportSheetSmokeTests/Rev65IntelligentSheetTests.cs' -Raw
+          foreach($token in @('REV65_SEED_CANDIDATE',
+              'REV65_REGISTERED_EMPTY_SEEDS_CHECKED',
+              'MEDIA=','REASON=')) {
+            if(-not $diagnostics65.Contains($token)) {
+              throw "REV65 registered Ortho seed diagnostic missing: $token"
+            }
+          }
+          foreach($token in @('HEIGHT_DESC','WIDTH_DESC',
+              'AREA_DESC','uniqueOrders','original.OrderBy',
+              'REV65 closest layout:', 'RequireInsideUsableArea(',
+              'BuildTitles(')) {
+            if(-not $layout65.Contains($token)) {
+              throw "REV65 bounded safe view reflow missing: $token"
+            }
+          }
+          if(-not $gen.Contains('NativeOrthoSeedDiagnostics65.Format(') -or
+             -not $gen.Contains('NativeOrthoSingleSheet64.SmallestFitting(') -or
+             -not $gen.Contains('REV65: ONE SHEET REQUIRED')) {
+            throw 'REV65 source does not report and honor smallest safe registered seed'
+          }
+          if(-not $tests65.Contains('A1 1:10 all 10 rejected') -or
+             -not $tests65.Contains('height-aware layout fits') -or
+             -not $tests65.Contains('command diagnostic names')) {
+            throw 'REV65 quantitative A1, layout and per-seed tests missing'
           }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
