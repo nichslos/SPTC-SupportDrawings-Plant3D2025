@@ -18,6 +18,9 @@ internal static class NativeOrthoTitleBlockBypass69
     internal const double BottomRatio=.10;
     internal const double TopRatio=.94;
     internal const double LeftRatio=.03;
+    internal const double LegacyRightRatio=.75;
+    internal const double LegacyBottomRatio=.12;
+    internal const double LegacyTopRatio=.94;
 
     internal static bool Eligible(double paperW,double paperH,
         int denominator,int count) =>
@@ -26,22 +29,18 @@ internal static class NativeOrthoTitleBlockBypass69
         paperW>=1100&&paperH>=800;
 
     internal static double Right(double paperW,bool bypass) =>
-        paperW*(bypass?RightRatio:
-            NativeOrthoEffectivePaper59.RightTitleBlockStartRatio);
+        paperW*(bypass?RightRatio:LegacyRightRatio);
     internal static double Bottom(double paperH,bool bypass) =>
-        paperH*(bypass?BottomRatio:
-            NativeOrthoEffectivePaper59.BottomMarginRatio);
+        paperH*(bypass?BottomRatio:LegacyBottomRatio);
     internal static double Top(double paperH,bool bypass) =>
-        paperH*(bypass?TopRatio:
-            NativeOrthoEffectivePaper59.TopMarginRatio);
+        paperH*(bypass?TopRatio:LegacyTopRatio);
     internal static bool EntersOldTitleBlockZone(
-        IReadOnlyList<NativeOrthoTenViewPlan.Placement> placements,
-        IReadOnlyList<NativeOrthoViewTitlePlan.Title> captions,
-        double paperW)
+        IEnumerable<double> rightmostEdgesMm,double paperW)
     {
-        double oldLimit=paperW*
-            NativeOrthoEffectivePaper59.RightTitleBlockStartRatio;
-        return placements.Any(v=>v.CenterX+v.PaperFrameWidth/2>oldLimit)||
-            captions.Any(t=>t.CenterX+t.Width/2>oldLimit);
+        if(rightmostEdgesMm==null)
+            throw new ArgumentNullException(nameof(rightmostEdgesMm));
+        double oldLimit=paperW*LegacyRightRatio;
+        return rightmostEdgesMm.Any(edge=>
+            double.IsFinite(edge)&&edge>oldLimit);
     }
 }
