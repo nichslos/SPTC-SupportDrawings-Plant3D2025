@@ -17,6 +17,7 @@
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoTenViewPlan.cs" Link="NativeOrthoTenViewPlan.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoTenViewAutoPlacement26.cs" Link="NativeOrthoTenViewAutoPlacement26.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoEffectivePaper59.cs" Link="NativeOrthoEffectivePaper59.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoTitleBlockBypass69.cs" Link="NativeOrthoTitleBlockBypass69.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoExactScalePlacement61.cs" Link="NativeOrthoExactScalePlacement61.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoSingleSheet64.cs" Link="NativeOrthoSingleSheet64.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoSeedDiagnostics65.cs" Link="NativeOrthoSeedDiagnostics65.cs" />
