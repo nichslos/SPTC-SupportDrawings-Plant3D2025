@@ -162,6 +162,14 @@ internal static class SupportProductionNativePdfPublisher
                 " EOF="+pdfEvidence.EofOffset+
                 " NOTE="+pdfEvidence.Note);
             log("REV67_EXTERNAL_PDF_READER_CHECK_REQUIRED=TRUE");
+            bool appended=SupportProductionPdfStructure67.
+                TryAppendToExistingResult(entry.ReportPath,pdfEvidence,
+                    out string reportStatus);
+            log("REV68_PDF_AUDIT_PERSISTED_TO_RESULT="+appended+
+                " STATUS="+reportStatus);
+            // The report append is best effort. A failed log write
+            // cannot weaken the independent native PDF byte, save,
+            // plot or structural integrity checks already completed.
             return SupportProductionPdfPolicy.AfterPublication(
                 entry,pdf,pdfBytes,savedBytes,config.PdfPlotDevice);
         }
