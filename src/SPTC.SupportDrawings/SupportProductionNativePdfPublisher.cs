@@ -366,11 +366,52 @@ internal static class SupportProductionNativePdfPublisher
         using var plotInfo=new PlotInfo {
             Layout=layout.ObjectId,OverrideSettings=sheet
         };
+        // TEST5 2026-11-16 reached this step after every media
+        // setup operation succeeded, then MatchDisabled raised
+        // eNoMatchingMedia. Autodesk's validator needs media-matching
+        // enabled to reconcile the original Ortho layout with a
+        // different PDF PC3. Never allow custom media creation.
         using var validate=new PlotInfoValidator {
-            MediaMatchingPolicy=MatchingPolicy.MatchDisabled
+            MediaMatchingPolicy=MatchingPolicy.MatchEnabled
         };
         MediaStep("VALIDATE_FINAL_PLOT_INFO",
             ()=>validate.Validate(plotInfo),log);
+
+        // MatchEnabled may change the resolved canonical media to a
+        // different device-supported name. Fail closed unless the
+        // VALIDATED result still has the requested PDF device and
+        // physical ISO A1 sheet dimensions/orientation. Never trust
+        // only the requested override or proceed with an A2/A0 sheet.
+        MediaStep("VERIFY_VALIDATED_PDF_DEVICE_AND_A1_MEDIA",()=>{
+            if(!plotInfo.IsValidated||plotInfo.ValidatedSettings==null)
+                throw new InvalidOperationException(
+                    "AutoCAD did not return validated plot settings.");
+            var checkedSheet=plotInfo.ValidatedSettings;
+            if(checkedSheet.PlotPaperUnits==PlotPaperUnit.Pixels)
+                throw new InvalidOperationException(
+                    "Validated PDF media switched to pixel units.");
+            double factor=checkedSheet.PlotPaperUnits==
+                PlotPaperUnit.Inches?25.4:1.0;
+            var size=checkedSheet.PlotPaperSize;
+            if(!SupportProductionPdfMediaMatcher.ConfirmValidated(
+                plotDevice,checkedSheet.PlotConfigurationName,
+                originalWidth,originalHeight,match.Rotate90,
+                checkedSheet.CanonicalMediaName,
+                size.X*factor,size.Y*factor))
+                throw new InvalidOperationException(
+                    "AutoCAD selected a different PDF device or physical "+
+                    "sheet size/orientation; publication blocked.");
+            if(checkedSheet.PlotRotation!=rotation)
+                throw new InvalidOperationException(
+                    "Validated PDF rotation changed from requested layout.");
+            log("SPTC_PDF_VALIDATED_MEDIA=PASS DEVICE="+
+                checkedSheet.PlotConfigurationName+
+                " MEDIA="+checkedSheet.CanonicalMediaName+
+                " PHYSICAL_MM="+(size.X*factor).ToString("0.###",
+                    System.Globalization.CultureInfo.InvariantCulture)+"x"+
+                (size.Y*factor).ToString("0.###",
+                    System.Globalization.CultureInfo.InvariantCulture));
+        },log);
 
         log("SPTC_PDF_PUBLISH_STAGE=PLOT_ENGINE_CREATE");
         using var engine=PlotFactory.CreatePublishEngine();

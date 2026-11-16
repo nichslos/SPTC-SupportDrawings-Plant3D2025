@@ -215,7 +215,7 @@ jobs:
               'manager.ExecuteInCommandContextAsync(async _=>',
               'PlotFactory.ProcessPlotState',
               'PlotFactory.CreatePublishEngine()',
-              'MatchingPolicy.MatchDisabled',
+              'MatchingPolicy.MatchEnabled',
               'PROBE_ASSIGN_PDF_DEVICE',
               'SetPlotType(sheet,',
               'BACKGROUNDPLOT',
@@ -294,6 +294,30 @@ jobs:
           $copyLater=$pdfNative.IndexOf('sheet.CopyFrom(layout)')
           if($probeFirst -lt 0 -or $copyLater -le $probeFirst) {
             throw 'The original seed plot configuration must not be copied before PC3 media discovery'
+          }
+          # TEST5 2026-11-16 reaches VALIDATE_FINAL_PLOT_INFO and
+          # raises eNoMatchingMedia despite a physically matched A1 PDF
+          # PC3. Enabled media matching is allowed only with a strict
+          # postvalidation check of actual device, paper and rotation.
+          foreach($token in @('MediaMatchingPolicy=MatchingPolicy.MatchEnabled',
+              'VERIFY_VALIDATED_PDF_DEVICE_AND_A1_MEDIA',
+              'plotInfo.ValidatedSettings',
+              'plotInfo.IsValidated',
+              'SupportProductionPdfMediaMatcher.ConfirmValidated(',
+              'SPTC_PDF_VALIDATED_MEDIA=PASS')) {
+            if(-not $pdfNative.Contains($token)) {
+              throw "Validated ISO A1 PDF guard missing: $token"
+            }
+          }
+          if($pdfNative.Contains('MatchEnabledTemporaryCustom') -or
+             $pdfNative.Contains('MatchEnabledCustom')) {
+            throw 'No automatic PDF custom paper creation is permitted'
+          }
+          if(-not $pdfMedia.Contains('ConfirmValidated(') -or
+             -not $pdfSmoke.Contains('AutoCAD must not substitute A2') -or
+             -not $pdfSmoke.Contains('AutoCAD must not substitute A0') -or
+             -not $pdfSmoke.Contains('unexpected validated output device always blocked')) {
+            throw 'Strict resolved PDF device and physical A1 regression absent'
           }
           # Native PDF phase failures must disclose SaveAs versus
           # PlotEngine versus validation, not just a generic native error.

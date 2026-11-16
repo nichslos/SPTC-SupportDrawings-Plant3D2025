@@ -64,6 +64,34 @@ internal static class SupportProductionPdfMediaMatcher
             new(candidates.Name,candidates.Rotate,candidates.Error);
     }
 
+    /// <summary>
+    /// Check what AutoCAD actually validated, not just the requested PDF
+    /// configuration. With MatchEnabled the validator is allowed to remap
+    /// canonical media. A1 must remain A1, never A2, A0 or 8.5x11.
+    /// The rotation flag must agree with the originally chosen A1 medium.
+    /// </summary>
+    internal static bool ConfirmValidated(
+        string expectedDevice,string? validatedDevice,
+        double originalWidthMm,double originalHeightMm,
+        bool expectedRotate90,string? validatedMediaName,
+        double validatedWidthMm,double validatedHeightMm)
+    {
+        if(string.IsNullOrWhiteSpace(expectedDevice)||
+           string.IsNullOrWhiteSpace(validatedDevice)||
+           string.IsNullOrWhiteSpace(validatedMediaName))
+            return false;
+        string name=validatedDevice.Replace('\\','/');
+        name=name[(name.LastIndexOf('/')+1)..];
+        if(!string.Equals(name,expectedDevice,
+            StringComparison.OrdinalIgnoreCase))
+            return false;
+        var candidate=new Candidate(validatedMediaName,
+            validatedWidthMm,validatedHeightMm);
+        var match=Select(originalWidthMm,originalHeightMm,
+            new[]{candidate});
+        return match.Found&&match.Rotate90==expectedRotate90;
+    }
+
     internal static bool IsPhysical(double width,double height)=>
         double.IsFinite(width)&&double.IsFinite(height)&&
         width>=25&&height>=25&&width<=5000&&height<=5000;
