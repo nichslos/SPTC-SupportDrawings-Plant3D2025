@@ -957,7 +957,8 @@ public static class SupportOrthoReferenceDimPlan47
                                         new Obstacle(x,"RESERVED_PAPER_AREA")));
                             double firstSide=SupportOrthoReferenceLayout51
                                 .PreferredSide(camera.Name,horizontal);
-                            int supplementaryAttemptsForMember=0;
+                            int supplementaryStationAttempts=0;
+                            int supplementaryOffsetAttempts=0;
                             foreach(double transverse in transverseStations)
                             {
                                 if(alternatives.Count>=16)break;
@@ -976,23 +977,36 @@ public static class SupportOrthoReferenceDimPlan47
                                     foreach(double offset in additionalLanes)
                                     {
                                         if(alternatives.Count>=16)break;
-                                        bool supplemental=
-                                            enableRev68&&(
-                                                !originalStations.Any(x=>
-                                                    Math.Abs(x-transverse)<1e-7)||
-                                                !establishedLanes.Any(x=>
-                                                    Math.Abs(x-offset)<1e-7));
+                                        bool additionalStation=enableRev68&&
+                                            !originalStations.Any(x=>
+                                                Math.Abs(x-transverse)<1e-7);
+                                        bool additionalOffset=enableRev68&&
+                                            !establishedLanes.Any(x=>
+                                                Math.Abs(x-offset)<1e-7);
+                                        bool supplemental=additionalStation||
+                                            additionalOffset;
+                                        // Independent bounded budgets prevent
+                                        // new line offsets at the first
+                                        // original station from exhausting
+                                        // every source-verified new station.
+                                        int budget=additionalStation?400:240;
                                         if(supplemental&&
-                                           supplementaryAttemptsForMember>=640)
+                                           (additionalStation?
+                                               supplementaryStationAttempts:
+                                               supplementaryOffsetAttempts)>=budget)
                                             continue;
                                         for(int tier=0;tier<12;tier++)
                                         {
                                             if(alternatives.Count>=16)break;
                                             if(supplemental)
                                             {
-                                                if(supplementaryAttemptsForMember>=640)
-                                                    break;
-                                                supplementaryAttemptsForMember++;
+                                                int prior=additionalStation?
+                                                    supplementaryStationAttempts:
+                                                    supplementaryOffsetAttempts;
+                                                if(prior>=budget)break;
+                                                if(additionalStation)
+                                                    supplementaryStationAttempts++;
+                                                else supplementaryOffsetAttempts++;
                                                 supplementaryGeometryTested++;
                                             }
                                             verifiedStationTested++;
