@@ -70,6 +70,18 @@ internal static class SupportProductionPdfMediaMatcher
     /// canonical media. A1 must remain A1, never A2, A0 or 8.5x11.
     /// The rotation flag must agree with the originally chosen A1 medium.
     /// </summary>
+    /// <summary>
+    /// Output Ortho paper-space positions are planned in the physical
+    /// sheet's native X/Y orientation. Reusing a seed drawing's
+    /// PlotRotation (often 270 degrees) made 594x841 A1 render as
+    /// landscape 841x594 and clipped TOP/BOTTOM and LEFT/RIGHT.
+    /// A direct PC3 paper match must use unrotated PDF plotting;
+    /// opposite-orientation paper requires exactly one quarter turn.
+    /// Never inherit 180/270-degree seed rotation into the PDF plot.
+    /// </summary>
+    internal static int TargetPlotRotationDegrees(bool mediaSwapped)=>
+        mediaSwapped?90:0;
+
     internal static bool ConfirmValidated(
         string expectedDevice,string? validatedDevice,
         double originalWidthMm,double originalHeightMm,

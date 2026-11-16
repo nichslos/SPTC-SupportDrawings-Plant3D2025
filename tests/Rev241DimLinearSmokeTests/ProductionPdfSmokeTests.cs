@@ -101,6 +101,37 @@ internal static class ProductionPdfSmokeTests
                 0,841,candidates).Found,
                 "invalid native paper dimensions fail closed");
 
+            // REV58 live PDF visual regression: native A1 594x841
+            // paper was displayed 841x594 because seed rotation 270 was
+            // copied into PDF override; this clipped TOP/BOTTOM and cut
+            // LEFT/RIGHT despite 10/10 registered views. The intended
+            // PDF orientation must derive from actual physical PC3 media,
+            // NEVER from the seed's plot rotation.
+            Need(SupportProductionPdfMediaMatcher
+                    .TargetPlotRotationDegrees(false)==0,
+                "portrait 594x841 direct media must plot 0 degrees, not 270");
+            Need(SupportProductionPdfMediaMatcher
+                    .TargetPlotRotationDegrees(true)==90,
+                "swapped A1 media uses exact quarter-turn for paper-space fit");
+            // Fixture from the uploaded REV57 PDF and its corresponding
+            // native report: TOP/BOTTOM centers have Y=723.26 mm.
+            // These are valid portrait A1 positions but impossible in a
+            // displayed landscape page of only 594 mm tall.
+            const double topRowY=723.26,portraitHeight=841.0,
+                landscapeHeight=594.0;
+            Need(topRowY<portraitHeight&&topRowY>landscapeHeight,
+                "REV58 cropped TOP/BOTTOM regression: portrait planning cannot plot landscape");
+            var tenViewPortrait=SupportProductionPdfMediaMatcher.Select(
+                594,841,new[]{
+                    new SupportProductionPdfMediaMatcher.Candidate(
+                        "PDF_A1_PORTRAIT",594,841),
+                    new SupportProductionPdfMediaMatcher.Candidate(
+                        "PDF_A1_LANDSCAPE",841,594)
+                });
+            Need(tenViewPortrait.Found&&!tenViewPortrait.Rotate90&&
+                SupportProductionPdfMediaMatcher.TargetPlotRotationDegrees(
+                    tenViewPortrait.Rotate90)==0,
+                "ten native view rows use portrait A1; do not rotate to landscape");
             // TEST5 2026-11-16: SetPlotConfigurationName and A1 media
             // discovery succeeded, but PlotInfoValidator with MatchDisabled
             // rejected final layout/device merging. MatchEnabled is safe
