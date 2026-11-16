@@ -1801,7 +1801,11 @@ public sealed class SupportOrthoTenViewGenerator
             Log("REV59_ACTUAL_NATIVE_TITLES_IN_SAFE_SHEET=PASS");
             Log("STEP10_TITLE_LAYER="+NativeOrthoViewTitlePlan.TitleLayer);
             var titleHandles=CreateNativePaperTitles(
-                targetDoc.Database,paperLayout,titles);
+                targetDoc.Database,paperLayout,titles,
+                paperWidth,paperHeight);
+            Log("REV66_VIEW_TITLE_A0_WIDE_BANDS="+
+                SupportOrthoPaperTypography66.IsLargePaper(
+                    paperWidth,paperHeight));
             Log("STEP10_VIEW_TITLE_COUNT="+titleHandles.Count);
             if(titleHandles.Count!=options.Views.Count)
                 throw new InvalidOperationException(
@@ -1904,13 +1908,16 @@ public sealed class SupportOrthoTenViewGenerator
                                 paperWidth,paperHeight,units,
                                 layoutNativeSegments,proposed,titles,
                                 nativeEdges:nativeEdges59.Edges);
+                        int trialBudget=SupportOrthoPaperTypography66.
+                            ExtraDimTrials(paperWidth,paperHeight);
                         var coordinated64=
                             SupportOrthoLeaderDimensionLayout64.Coordinate(
                                 memberCameras,titles,visibleCallouts,
                                 paperWidth,paperHeight,PlanFor,
-                                maxTrialsPerView:14);
+                                maxTrialsPerView:trialBudget);
                         visibleCallouts=coordinated64.Callouts.ToArray();
-                        Log("REV60_SAFE_LEADER_TRIAL_BUDGET=14");
+                        Log("REV66_SAFE_LEADER_TRIAL_BUDGET="+trialBudget);
+                        Log("REV60_SAFE_LEADER_TRIAL_BUDGET="+trialBudget);
                         Log("REV60_OPTIONAL_DIMENSION_RECOVERY_POLICY="+
                             "ADD_ONLY_PRESERVE_ALL_ACCEPTED");
                         Log("REV22_65_LAYOUTS_PROPOSED="+
@@ -1946,8 +1953,19 @@ public sealed class SupportOrthoTenViewGenerator
                 Log("REV22_38_PIPE_LABEL_FORMAT=BARE_LINE_TAG_AND_BOP");
                 annotated=CreateNativePaperMemberLeaders27(
                     targetDoc.Database,paperLayout,visibleCallouts,
+                    paperWidth,paperHeight,
                     out var nativeTextWarnings,out double smallestRenderedTextMm,
                     out int shrunkAnnotationLabels);
+                Log("REV66_A0_LABEL_PREFERRED_TEXT_MM="+
+                    SupportOrthoPaperTypography66.TextHeight(
+                        paperWidth,paperHeight).ToString("0.###",
+                            CultureInfo.InvariantCulture));
+                Log("REV66_A0_LABEL_WIDTH_CAP_MM="+
+                    SupportOrthoPaperTypography66.WidthCap(
+                        paperWidth,paperHeight).ToString("0.###",
+                            CultureInfo.InvariantCulture));
+                Log("REV66_LABELS_BELOW_2MM_REVIEW_REQUIRED="+
+                    (smallestRenderedTextMm<2.0));
                 Log("REV60_ANNOTATION_MIN_RENDERED_TEXT_MM="+
                     smallestRenderedTextMm.ToString("0.###",
                         CultureInfo.InvariantCulture));
@@ -1959,7 +1977,8 @@ public sealed class SupportOrthoTenViewGenerator
                     nativeTextWarnings.Count);
                 Log("REV22_29_TEXT_MODE=SEPARATE_NON_WRAPPING_DBTEXT");
                 Log("REV22_29_TEXT_HEIGHT_MAX="+
-                    SupportOrthoMemberCalloutPlan27.TextHeightMm);
+                    SupportOrthoPaperTypography66.TextHeight(
+                        paperWidth,paperHeight));
                 Log("STEP10_INDIVIDUAL_MEMBER_LAYER="+
                     SupportOrthoMemberCalloutPlan27.Layer);
                 Log("STEP10_INDIVIDUAL_SOURCE_MEMBER_COUNT="+
@@ -2908,12 +2927,17 @@ public sealed class SupportOrthoTenViewGenerator
     private static int CreateNativePaperMemberLeaders27(
         Database db,string paperLayout,
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout> callouts,
+        double paperW,double paperH,
         out List<string> skipped,out double minimumRenderedTextMm,
         out int shrunkAnnotationLabels)
     {
         skipped=new List<string>();
         minimumRenderedTextMm=0;
         shrunkAnnotationLabels=0;
+        double preferredHeight=SupportOrthoPaperTypography66.TextHeight(
+            paperW,paperH);
+        double minimumHeight=SupportOrthoPaperTypography66.
+            MinimumRenderedText(paperW,paperH);
         using Transaction tr=db.TransactionManager.StartTransaction();
         var layouts=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,OpenMode.ForRead);
         if(!layouts.Contains(paperLayout))
@@ -2948,7 +2972,7 @@ public sealed class SupportOrthoTenViewGenerator
             using var name=new DBText
             {
                 TextString=SupportOrthoMemberMetadata.Clean(lines[0]),
-                Height=SupportOrthoMemberCalloutPlan27.TextHeightMm,
+                Height=preferredHeight,
                 Position=new Point3d(item.LabelX,item.LabelTop-2.1,0),
                 LayerId=layerId,
                 TextStyleId=db.Textstyle,
@@ -2964,10 +2988,10 @@ public sealed class SupportOrthoTenViewGenerator
                     tos=new DBText
                     {
                         TextString=SupportOrthoMemberMetadata.Clean(lines[1]),
-                        Height=SupportOrthoMemberCalloutPlan27.TextHeightMm,
+                        Height=preferredHeight,
                         Position=new Point3d(item.LabelX,
                             item.LabelTop-
-                            SupportOrthoMemberCalloutPlan27.TextLineHeightMm-2.1,0),
+                            item.LabelHeight/lines.Length-2.1,0),
                         LayerId=layerId,
                         TextStyleId=db.Textstyle,
                         WidthFactor=1.0
@@ -2976,8 +3000,9 @@ public sealed class SupportOrthoTenViewGenerator
                     tr.AddNewlyCreatedDBObject(tos,true);
                 }
 
-                const double minimumReadableTextMm=1.05;
-                double fontHeight=SupportOrthoMemberCalloutPlan27.TextHeightMm;
+                double minimumReadableTextMm=minimumHeight;
+                double fontHeight=preferredHeight;
+                double lineAdvance=item.LabelHeight/lines.Length;
                 bool fit=false;
                 string problem="NATIVE_TEXT_TOO_WIDE";
                 for(int pass=0;pass<10;pass++)
@@ -2990,8 +3015,7 @@ public sealed class SupportOrthoTenViewGenerator
                         tos.Height=fontHeight;
                         tos.Position=new Point3d(item.LabelX,
                             item.LabelTop-
-                                SupportOrthoMemberCalloutPlan27.TextLineHeightMm-
-                                fontHeight*1.18,0);
+                                lineAdvance-fontHeight*1.18,0);
                     }
                     try
                     {
@@ -3050,8 +3074,7 @@ public sealed class SupportOrthoTenViewGenerator
                     continue;
                 }
 
-                double landingY=item.LabelTop-
-                    SupportOrthoMemberCalloutPlan27.TextLineHeightMm*.5;
+                double landingY=item.LabelTop-lineAdvance*.5;
                 var routes=new (Point3d Start,Point3d End)[]
                 {
                     (new Point3d(item.AnchorX,item.AnchorY,0),
@@ -3071,7 +3094,7 @@ public sealed class SupportOrthoTenViewGenerator
                 }
                 minimumRenderedTextMm=count==0?fontHeight:
                     Math.Min(minimumRenderedTextMm,fontHeight);
-                if(fontHeight<SupportOrthoMemberCalloutPlan27.TextHeightMm-.01)
+                if(fontHeight<preferredHeight-.01)
                     shrunkAnnotationLabels++;
                 count++;
             }
@@ -3167,7 +3190,8 @@ public sealed class SupportOrthoTenViewGenerator
     // not part of the model source, native OrthoCube or viewport regeneration.
     private static IReadOnlyList<string> CreateNativePaperTitles(
         Database db,string paperLayout,
-        IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles)
+        IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles,
+        double paperW,double paperH)
     {
         if(titles==null||titles.Count<1||titles.Count>10)
             throw new ArgumentException("SPTC selected native view title count invalid.");
@@ -3212,6 +3236,33 @@ public sealed class SupportOrthoTenViewGenerator
             if(textId.IsNull||!textId.IsValid)
                 throw new InvalidOperationException(
                     "REV22.29 failed to append paper title "+title.Name);
+            if(SupportOrthoPaperTypography66.IsLargePaper(paperW,paperH))
+            {
+                // REV66: MText wrapping turns a reserved 6mm caption
+                // into two lines. Read its REAL AutoCAD layout height
+                // and shrink the title *only when necessary*, never
+                // change the native viewport frame or its scale.
+                // Fail closed if the approved 3mm floor cannot fit.
+                bool oneLine=false;
+                for(int trial=0;trial<7;trial++)
+                {
+                    double measured=label.ActualHeight;
+                    if(double.IsFinite(measured)&&
+                       measured<=title.Height+.15)
+                    {
+                        oneLine=true;
+                        break;
+                    }
+                    label.TextHeight=Math.Max(3.0,
+                        label.TextHeight-.18);
+                    if(trial==6)break;
+                }
+                if(!oneLine)
+                    throw new InvalidOperationException(
+                        "REV66 A0 view caption cannot fit the reserved "+
+                        "single-line band: "+title.Name+
+                        ". No wrapped or overlapping title accepted.");
+            }
             handles.Add(label.Handle.ToString());
         }
         tr.Commit();
