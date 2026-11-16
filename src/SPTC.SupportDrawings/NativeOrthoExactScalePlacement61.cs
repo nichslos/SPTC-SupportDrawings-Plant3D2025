@@ -35,7 +35,8 @@ internal static class NativeOrthoExactScalePlacement61
     internal static NativeOrthoTenViewAutoPlacement26.Result Build(
         NativeOrthoTenViewPlan.Plan plan,
         IReadOnlyList<string> selectedViews,
-        double paperWidth,double paperHeight)
+        double paperWidth,double paperHeight,
+        bool bypassTitleBlockReserve=false)
     {
         if(plan==null||plan.Views==null||plan.Views.Count!=10||
            !double.IsFinite(plan.Scale)||plan.Scale<=0||
@@ -66,7 +67,8 @@ internal static class NativeOrthoExactScalePlacement61
         double left=paperWidth*
             NativeOrthoEffectivePaper59.LeftMarginRatio;
         double right=paperWidth*
-            NativeOrthoEffectivePaper59.RightTitleBlockStartRatio;
+            NativeOrthoTitleBlockBypass69.RightBoundaryRatio(
+                bypassTitleBlockReserve);
         double bottom=paperHeight*
             NativeOrthoEffectivePaper59.BottomMarginRatio;
         double top=paperHeight*
@@ -74,7 +76,8 @@ internal static class NativeOrthoExactScalePlacement61
         double availableWidth=right-left;
         double availableHeight=top-bottom;
         const double columnGap=6;
-        const double rowGap=5;
+        double rowGap=NativeOrthoTitleBlockBypass69.RowGapMm(
+            bypassTitleBlockReserve);
         // REV65 extends, but DOES NOT relax, the REV61 physical fit
         // check. Preserve the original order as the FIRST candidate,
         // then try bounded, deterministic groups of similar heights
@@ -182,7 +185,8 @@ internal static class NativeOrthoExactScalePlacement61
                         v.Name,v.CenterX,v.CenterY,
                         v.PaperFrameWidth,v.PaperFrameHeight)).ToArray(),
                     paperWidth,paperHeight,
-                    allowSubset:views.Length!=10);
+                    allowSubset:views.Length!=10,
+                    bypassTitleBlockReserve:bypassTitleBlockReserve);
                 var paper=NativeOrthoEffectivePaper59.FromMedia(
                     paperWidth,paperHeight,0);
                 NativeOrthoEffectivePaper59.RequireInsideUsableArea(
@@ -193,7 +197,8 @@ internal static class NativeOrthoExactScalePlacement61
                     titles.Select(t=>
                         new NativeOrthoEffectivePaper59.CaptionFrame(
                             t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
-                    requireTen:views.Length==10);
+                    requireTen:views.Length==10,
+                    bypassTitleBlockReserve:bypassTitleBlockReserve);
                 bool overlap=false;
                 for(int i=0;i<frames.Length;i++)
                     for(int j=i+1;j<frames.Length;j++)
@@ -227,7 +232,10 @@ internal static class NativeOrthoExactScalePlacement61
         throw new DoesNotFitException(
             "Requested 1:"+plan.Denominator+" cannot fit "+
             views.Length+" selected native view(s) on this paper sheet "+
-            "with the title block and annotation clearances. "+
+            (bypassTitleBlockReserve?
+                "within printable paper margins and annotation clearances "+
+                "(title-block heuristic bypassed). ":
+                "with the title block and annotation clearances. ")+
             "Choose fewer views or a larger registered empty Ortho seed "+
             "with suitable plot media. The plugin never changes 1:"+
             plan.Denominator+" into a different scale or draws off-sheet. "+
