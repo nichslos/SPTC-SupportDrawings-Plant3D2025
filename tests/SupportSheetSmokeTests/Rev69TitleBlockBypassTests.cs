@@ -58,8 +58,8 @@ internal static class Rev69TitleBlockBypassTests
         Need(safe.Views.Count==10&&safe.Titles.Count==10&&
             safe.Views.Select(x=>x.Name).SequenceEqual(names),
             "ALL 10 native presets preserved at same exact scale");
-        Need(safe.Views.All(v=>v.PaperFrameWidth==194.25&&
-            v.PaperFrameHeight==152.25),
+        Need(safe.Views.All(v=>Math.Abs(v.PaperFrameWidth-194.25)<1e-6&&
+            Math.Abs(v.PaperFrameHeight-152.25)<1e-6),
             "native viewport projected geometry and 1:10 remain unchanged");
         var page=NativeOrthoEffectivePaper59.FromMedia(1189,841,0);
         var frames=safe.Views.Select(v=>
