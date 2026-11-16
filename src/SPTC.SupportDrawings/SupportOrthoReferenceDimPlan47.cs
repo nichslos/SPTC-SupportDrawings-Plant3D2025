@@ -94,7 +94,8 @@ public static class SupportOrthoReferenceDimPlan47
         IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles=null,
         IReadOnlyList<SupportOrthoSmartDimPlan46.Rect>? additionalKeepouts=null,
         IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeEdges=null,
-        IReadOnlyDictionary<string,PlacementPreference>? lanePreferences=null)
+        IReadOnlyDictionary<string,PlacementPreference>? lanePreferences=null,
+        bool bypassTitleBlockReserve=false)
     {
         if(cameras==null||members==null||!double.IsFinite(paperW)||
            !double.IsFinite(paperH)||!double.IsFinite(unitsToMm)||
@@ -116,7 +117,10 @@ public static class SupportOrthoReferenceDimPlan47
             supplementaryGeometryTested=0,supplementaryGeometryRecovered=0,
             rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
-            2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
+            2,paperH*.12+2,
+            paperW*(bypassTitleBlockReserve?
+                NativeOrthoTitleBlockBypass69.RightBorderRatio:.78)-2,
+            paperH*.94-2);
 
         foreach(var camera in cameras)
         {
