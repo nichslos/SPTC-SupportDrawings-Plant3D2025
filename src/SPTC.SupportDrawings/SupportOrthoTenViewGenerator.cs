@@ -655,6 +655,12 @@ public sealed class SupportOrthoTenViewGenerator
         string seed="";
         bool exactTenOnOneSheet64=options.ScaleDenominator>0&&
             options.Views.Count==10;
+        // REV69: strict registered A0 sheet behavior always wins.
+        // Only when an explicit All10 1:N cannot fit ANY original
+        // title-block-reserved layout, retry with usable physical paper.
+        // The title-block BLOCK/TEXT/PDF seed remains unchanged and
+        // may be visibly overprinted; this is DRAFT-only mode.
+        bool bypassTitleBlock69=false;
         if(options.AutoSeed)
         {
             try
@@ -674,6 +680,7 @@ public sealed class SupportOrthoTenViewGenerator
                 if(exactTenOnOneSheet64)
                 {
                     var validMedia=new List<NativeOrthoSingleSheet64.Seed>();
+                    var bypassMedia69=new List<NativeOrthoSingleSheet64.Seed>();
                     var reviews=new List<NativeOrthoSeedDiagnostics65.Result>();
                     int checkedEmpty=0;
                     foreach(string path in candidates)
@@ -704,14 +711,32 @@ public sealed class SupportOrthoTenViewGenerator
                                 layout,options.Views,options.ScaleDenominator,
                                 previewSheet.WidthMm,previewSheet.HeightMm,
                                 out string reason);
+                            bool relaxed69=false;
+                            string bypassReason="";
+                            if(!fits&&NativeOrthoTitleBlockBypass69.Eligible(
+                                previewSheet.WidthMm,previewSheet.HeightMm,
+                                options.ScaleDenominator,options.Views.Count))
+                                relaxed69=NativeOrthoSingleSheet64.TryExactTenFit(
+                                    layout,options.Views,options.ScaleDenominator,
+                                    previewSheet.WidthMm,previewSheet.HeightMm,
+                                    out bypassReason,bypassTitleBlock:true);
                             reviews.Add(new NativeOrthoSeedDiagnostics65.Result(
-                                name,fits?"PASS":"NO_FIT",
+                                name,fits?"PASS":relaxed69?"REV69_BYPASS_FIT":"NO_FIT",
                                 previewSheet.WidthMm,previewSheet.HeightMm,
                                 fits?"Ten native frames, captions and right "+
                                     "title-block clearance verified at exact 1:"+
-                                    options.ScaleDenominator:reason));
+                                    options.ScaleDenominator:
+                                relaxed69?"Physical page A0 bypass fits exact 1:"+
+                                    options.ScaleDenominator+
+                                    "; EXISTING PRINTED TITLE BLOCK MAY OVERLAP":
+                                    reason+(bypassReason.Length>0?
+                                        "; REV69 bypass reason: "+bypassReason:"")));
                             if(fits)
                                 validMedia.Add(new NativeOrthoSingleSheet64.Seed(
+                                    Path.GetFullPath(path),
+                                    previewSheet.WidthMm,previewSheet.HeightMm,true));
+                            else if(relaxed69)
+                                bypassMedia69.Add(new NativeOrthoSingleSheet64.Seed(
                                     Path.GetFullPath(path),
                                     previewSheet.WidthMm,previewSheet.HeightMm,true));
                         }
@@ -729,17 +754,31 @@ public sealed class SupportOrthoTenViewGenerator
                         ed.WriteMessage("\nSPTC "+line);
                     var winner=NativeOrthoSingleSheet64.SmallestFitting(
                         layout,options.Views,options.ScaleDenominator,validMedia);
+                    if(winner==null&&bypassMedia69.Count>0)
+                    {
+                        winner=NativeOrthoSingleSheet64.SmallestFitting(
+                            layout,options.Views,options.ScaleDenominator,
+                            bypassMedia69,bypassTitleBlock:true);
+                        bypassTitleBlock69=winner!=null;
+                    }
                     if(winner!=null)
                     {
                         seed=winner.Path;
-                        ed.WriteMessage("\nSPTC REV65: SMALLEST SAFE SHEET / 1:"+
+                        ed.WriteMessage("\nSPTC "+
+                            (bypassTitleBlock69?
+                                "REV69: BYPASS TITLE-BLOCK RESERVATION":
+                                "REV65: SMALLEST SAFE SHEET")+
+                            " / 1:"+
                             options.ScaleDenominator+" / all 10 views. "+
                             "Registered empty Ortho seed: "+Path.GetFileName(seed)+
                             "; paper "+
                             winner.WidthMm.ToString("0.###",CultureInfo.InvariantCulture)+
                             " x "+
                             winner.HeightMm.ToString("0.###",CultureInfo.InvariantCulture)+
-                            " mm. No multi-sheet output.");
+                            " mm. No multi-sheet output."+
+                            (bypassTitleBlock69?
+                                " WARNING: printed title-block graphics may "+
+                                "overlap the ten views. DRAFT / REVIEW REQUIRED.":""));
                     }
                     else
                     {
@@ -850,6 +889,24 @@ public sealed class SupportOrthoTenViewGenerator
                     {
                         proof=NativeOrthoExactScalePlacement61.Build(
                             fit,options.Views,w,h);
+                        // The strict planner passed, so all older
+                        // successful A0/A1 drawings remain identical.
+                        bypassTitleBlock69=false;
+                    }
+                    catch(NativeOrthoExactScalePlacement61.DoesNotFitException)
+                        when(exactTenOnOneSheet64&&
+                            NativeOrthoTitleBlockBypass69.Eligible(
+                                w,h,options.ScaleDenominator,
+                                options.Views.Count))
+                    {
+                        proof=NativeOrthoExactScalePlacement61.Build(
+                            fit,options.Views,w,h,bypassTitleBlock:true);
+                        bypassTitleBlock69=true;
+                        ed.WriteMessage("\nSPTC REV69: Existing A0 title-block "+
+                            "reservation bypassed for exact 1:"+
+                            options.ScaleDenominator+
+                            ". Printed title block is unchanged and may "+
+                            "OVERLAP generated views. Inspect PDF before issue.");
                     }
                     catch(NativeOrthoExactScalePlacement61.DoesNotFitException)
                         when(!exactTenOnOneSheet64&&onSheetSet!=null&&
@@ -881,7 +938,8 @@ public sealed class SupportOrthoTenViewGenerator
                     proof.Titles.Select(t=>
                         new NativeOrthoEffectivePaper59.CaptionFrame(
                             t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
-                    requireTen:options.Views.Count==10);
+                    requireTen:options.Views.Count==10,
+                    bypassTitleBlock:bypassTitleBlock69);
             }
         }
         catch(System.Exception ex)
