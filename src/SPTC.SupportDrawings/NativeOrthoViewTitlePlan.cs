@@ -81,9 +81,17 @@ public static class NativeOrthoViewTitlePlan
         bool allowSubset=false)
     {
         ValidateFrames(actual,paperWidth,paperHeight,allowSubset);
+        // REV66: A0 captions may be slightly WIDER than their slim
+        // native viewports (TOP/BOTTOM in particular). Only the caption
+        // band grows, never the viewport or 1:N plot scale; the
+        // existing checks below prove no neighboring title, viewport,
+        // page border or right-side title block is intersected.
         var result=actual.Select(f=>new Title(
             f.Name,CaptionFor(f.Name),f.X,
-            f.Y-f.H/2-GapBelowFrameMm,f.W,CaptionBandHeightMm)).ToArray();
+            f.Y-f.H/2-GapBelowFrameMm,
+            SupportOrthoPaperTypography66.CaptionWidth(
+                f.Name,f.W,paperWidth,paperHeight),
+            CaptionBandHeightMm)).ToArray();
         const double tol=1e-6;
         foreach(var t in result)
         {

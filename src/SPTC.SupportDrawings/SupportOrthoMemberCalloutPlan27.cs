@@ -60,6 +60,17 @@ public static class SupportOrthoMemberCalloutPlan27
         if(members.Select(m=>m.Handle).Distinct(StringComparer.OrdinalIgnoreCase)
             .Count()!=members.Count)
             throw new ArgumentException("REV22.27 duplicate member handle.");
+        // REV66: on an ACTUAL A0 (or larger) sheet reserve wider,
+        // taller label rectangles so printed text can remain legible.
+        // The original A1 camera/title layout and annotation constants
+        // are unchanged; every expanded label still passes the existing
+        // physical viewport/title/callout collision checks.
+        double lineAdvance=SupportOrthoPaperTypography66.LineAdvance(
+            paperW,paperH);
+        double rowSpacing=SupportOrthoPaperTypography66.RowSpacing(
+            paperW,paperH);
+        double widthCap=SupportOrthoPaperTypography66.WidthCap(
+            paperW,paperH);
         var notes=new List<Callout>();
         var skips=new List<string>();
         var empty=new List<string>();
@@ -78,8 +89,10 @@ public static class SupportOrthoMemberCalloutPlan27
                     Math.Abs(v.Y-camera.Y)<(v.H+camera.H)/2)
                 .OrderBy(v=>v.X).FirstOrDefault();
             double rightLimit=rightNeighbor!=null?
-                rightNeighbor.X-rightNeighbor.W/2-5:paperW*.78-3;
-            double width=Math.Min(114,rightLimit-x);
+                rightNeighbor.X-rightNeighbor.W/2-5:
+                (SupportOrthoPaperTypography66.IsLargePaper(paperW,paperH)?
+                    paperW*.75-3:paperW*.78-3);
+            double width=Math.Min(widthCap,rightLimit-x);
             if(width<54)
             {
                 skips.Add(camera.Name+":NO_SAFE_TEXT_GUTTER");
@@ -131,8 +144,8 @@ public static class SupportOrthoMemberCalloutPlan27
                 // AutoCAD style glyph extents before writing the leader.
                 // DBText cannot wrap; the writer shrinks to fit or
                 // explicitly skips if the real glyph width cannot fit.
-                double height=hasSecondLine?TextLineHeightMm*2:
-                    TextLineHeightMm;
+                double height=hasSecondLine?lineAdvance*2:
+                    lineAdvance;
                 projected.Add((member,p.X,p.Y,
                     secondary==null?label:label+"\n"+secondary,
                     height,hasSecondLine));
@@ -150,7 +163,7 @@ public static class SupportOrthoMemberCalloutPlan27
             double topSafe=Math.Min(camera.Y+halfBand,paperH*.94-2);
             double bottomSafe=Math.Max(camera.Y-halfBand,paperH*.12+8);
             double total=projected.Sum(t=>t.Height)+
-                Math.Max(0,projected.Count-1)*RowSpacingMm;
+                Math.Max(0,projected.Count-1)*rowSpacing;
             if(total>topSafe-bottomSafe+1e-6)
             {
                 // Optional XREF filenames must NEVER crowd out previously
@@ -161,7 +174,7 @@ public static class SupportOrthoMemberCalloutPlan27
                 var extras=projected.Where(t=>
                     t.Member.XrefDrawingName!=null).ToList();
                 double needed=required.Sum(t=>t.Height)+
-                    Math.Max(0,required.Count-1)*RowSpacingMm;
+                    Math.Max(0,required.Count-1)*rowSpacing;
                 if(needed>topSafe-bottomSafe+1e-6)
                 {
                     skips.Add(camera.Name+":NOT_ENOUGH_LABEL_HEIGHT");
@@ -172,8 +185,8 @@ public static class SupportOrthoMemberCalloutPlan27
                 {
                     int count=required.Count+extras.Count;
                     double size=needed+extras.Sum(t=>t.Height)+
-                        (count>1?Math.Max(0,count-1)*RowSpacingMm-
-                            Math.Max(0,required.Count-1)*RowSpacingMm:0);
+                        (count>1?Math.Max(0,count-1)*rowSpacing-
+                            Math.Max(0,required.Count-1)*rowSpacing:0);
                     if(size<=topSafe-bottomSafe+1e-6)break;
                     var dropped=extras[^1];
                     skips.Add(camera.Name+":"+dropped.Member.Handle+
@@ -184,7 +197,7 @@ public static class SupportOrthoMemberCalloutPlan27
                     .ThenBy(t=>t.Member.Handle,
                         StringComparer.OrdinalIgnoreCase).ToList();
                 total=projected.Sum(t=>t.Height)+
-                    Math.Max(0,projected.Count-1)*RowSpacingMm;
+                    Math.Max(0,projected.Count-1)*rowSpacing;
             }
             double rowTop=Math.Min(topSafe,
                 Math.Max(bottomSafe+total,
@@ -193,7 +206,7 @@ public static class SupportOrthoMemberCalloutPlan27
             foreach(var item in projected)
             {
                 double labelTop=rowTop;
-                rowTop-=item.Height+RowSpacingMm;
+                rowTop-=item.Height+rowSpacing;
                 double lane=viewRight+LaneFirstMm+
                     placed*LaneStepMm;
                 if(lane>=x-1.5)

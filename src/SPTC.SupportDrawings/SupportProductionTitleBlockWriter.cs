@@ -138,10 +138,52 @@ internal static class SupportProductionTitleBlockWriter
                    is AttributeReference attr&&
                    !string.IsNullOrWhiteSpace(attr.Tag))
                     tags.Add(attr.Tag);
+            // REV66: a cloned native A0 sheet may still contain
+            // *static* title-block DBText/MText (test1 / ####), not
+            // editable attribute references. Inventory the direct
+            // definition READ ONLY, without printing metadata values
+            // and without changing the original template or XREF.
+            int staticTextCount=0,obviousSeedPlaceholders=0;
+            bool isXref=false;
+            try
+            {
+                if(tr.GetObject(block.BlockTableRecord,
+                    OpenMode.ForRead,false) is BlockTableRecord definition)
+                {
+                    isXref=definition.IsFromExternalReference;
+                    foreach(ObjectId entityId in definition)
+                    {
+                        DBObject entity=tr.GetObject(entityId,
+                            OpenMode.ForRead,false);
+                        string? literal=null;
+                        if(entity is DBText literalText &&
+                           entity is not AttributeDefinition)
+                            literal=literalText.TextString;
+                        else if(entity is MText literalMtext)
+                            literal=literalMtext.Contents;
+                        if(literal==null)continue;
+                        staticTextCount++;
+                        if(SupportOrthoTitleBlockStatic66.
+                            LooksLikeObviousSeedPlaceholder(literal))
+                            obviousSeedPlaceholders++;
+                    }
+                }
+            }
+            catch(System.Exception)
+            {
+                // Diagnostics are best effort: never make title-block
+                // inspection itself a publishing/drawing failure.
+            }
             report.Add("BLOCK="+blockName+
                 ";HANDLE="+block.Handle+
                 ";ATTRIB_TAGS="+
-                (tags.Count==0?"NONE":string.Join(",",tags)));
+                (tags.Count==0?"NONE":string.Join(",",tags))+
+                ";STATIC_TEXT_COUNT="+staticTextCount+
+                ";OBVIOUS_STATIC_PLACEHOLDERS="+obviousSeedPlaceholders+
+                ";TEMPLATE_ACTION="+
+                SupportOrthoTitleBlockStatic66.ActionFor(
+                    tags.Count,staticTextCount,obviousSeedPlaceholders,
+                    isXref));
         }
         return report.Count==0?
             new[]{"NO_EDITABLE_PAPER_BLOCK_REFERENCES"}:

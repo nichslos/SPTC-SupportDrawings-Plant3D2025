@@ -74,7 +74,7 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
         TextAt(supportTagAttribute,243);
 
         panel.Controls.Add(new Label {
-            Text="Map title-block ATTRIB tags (FIELD=TAG); see RESULT.txt candidates.",
+            Text="Map editable ATTRIB tags (FIELD=TAG); static title text requires ATTDEF in template.",
             Location=new Point(20,282),Size=new Size(650,24)
         });
         mapping.SetBounds(20,309,665,120);
