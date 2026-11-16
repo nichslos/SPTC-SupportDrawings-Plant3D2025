@@ -167,6 +167,7 @@ Rev258WitnessIntersectionsTests.Run();
 Rev259NativeStraightEdgeTests.Run();
 Rev260CoordinatedLayoutTests.Run();
 Rev261DrawingQualityAuditTests.Run();
+Rev262NativeSubsetQaTests.Run();
 Rev262TosAndLocalRecoveryTests.Run();
 Rev263AdaptiveLocalDimensionTests.Run();
 Rev264LeaderDimensionCoordinationTests.Run();
