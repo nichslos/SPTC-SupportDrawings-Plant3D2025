@@ -62,6 +62,10 @@
              Link="SupportProductionPackageSettingsStore.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionTitleBlockPlaceholder60.cs"
              Link="SupportProductionTitleBlockPlaceholder60.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoTitleBlockStatic66.cs"
+             Link="SupportOrthoTitleBlockStatic66.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoPaperTypography66.cs"
+             Link="SupportOrthoPaperTypography66.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingPaperScale39.cs"
              Link="SupportDrawingPaperScale39.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingUiPreferences.cs"
