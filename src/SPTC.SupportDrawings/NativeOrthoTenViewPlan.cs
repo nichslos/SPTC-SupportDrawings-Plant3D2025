@@ -39,7 +39,7 @@ public static class NativeOrthoTenViewPlan
             ("SW","SW","SWIsometricView",-root3,-root3,root3,root6,root6,2*root6),
             ("SE","SE","SEIsometricView",root3,-root3,root3,-root6,root6,2*root6)
         };
-        // 2 columns x 5 rows; leave 22% right and 12% bottom for title block.
+        // 2 columns x 5 rows; reserve 25% at the right for the actual side title block and 12% bottom.
         double[] xCenters={.20,.57};
         double[] yCenters={.86,.70,.54,.38,.22};
         double tileW=paperWidth*.34,tileH=paperHeight*.125;
@@ -107,8 +107,8 @@ public static class NativeOrthoTenViewPlan
                 v.ModelWmm*candidate.Scale*1.05);
             double h=Math.Max(5,v.ModelHmm*candidate.Scale*1.05);
             double dx=v.CenterX-topX,dy=v.CenterY-topY;
-            minX=Math.Max(minX,w/2-dx+.1);
-            maxX=Math.Min(maxX,paperWidth*.78-w/2-dx-.1);
+            minX=Math.Max(minX,paperWidth*.03+w/2-dx+.1);
+            maxX=Math.Min(maxX,paperWidth*.75-w/2-dx-.1);
             minY=Math.Max(minY,paperHeight*.12+h/2-dy+.1);
             maxY=Math.Min(maxY,paperHeight*.94-h/2-dy-.1);
         }
@@ -125,8 +125,8 @@ public static class NativeOrthoTenViewPlan
         for(int i=0;i<frames.Count;i++)
         {
             var a=frames[i];
-            if(a.CenterX-a.PaperFrameWidth/2<-1e-7||
-                a.CenterX+a.PaperFrameWidth/2>paperWidth*.78+1e-7||
+            if(a.CenterX-a.PaperFrameWidth/2<paperWidth*.03-1e-7||
+                a.CenterX+a.PaperFrameWidth/2>paperWidth*.75+1e-7||
                 a.CenterY-a.PaperFrameHeight/2<paperHeight*.12-1e-7||
                 a.CenterY+a.PaperFrameHeight/2>paperHeight*.94+1e-7)
                 throw new InvalidOperationException("REV22 "+a.Name+" off-sheet after auto-fit.");
