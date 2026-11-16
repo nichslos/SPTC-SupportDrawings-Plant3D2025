@@ -144,26 +144,61 @@ internal static class SupportProductionTitleBlockWriter
             // definition READ ONLY, without printing metadata values
             // and without changing the original template or XREF.
             int staticTextCount=0,obviousSeedPlaceholders=0;
+            int uninstantiatedAttdefs=0,nestedDefinitions=0;
             bool isXref=false;
             try
             {
-                if(tr.GetObject(block.BlockTableRecord,
-                    OpenMode.ForRead,false) is BlockTableRecord definition)
+                // REV67: previous detector examined only DIRECT DBText
+                // in the title-block definition and missed MText
+                // formatting, nested insert definitions and uninstantiated
+                // ATTDEF text. Inspect nested unique definitions READ ONLY.
+                // Restrict recursion depth and object count to prevent
+                // cycles or unexpectedly huge DWG traversal.
+                var pending=new Stack<(ObjectId Id,int Depth)>();
+                var seen=new HashSet<ObjectId>();
+                pending.Push((block.BlockTableRecord,0));
+                int visitedEntities=0;
+                while(pending.Count>0&&visitedEntities<4096)
                 {
-                    isXref=definition.IsFromExternalReference;
+                    var next=pending.Pop();
+                    if(next.Depth>5||next.Id.IsNull||
+                       !seen.Add(next.Id))continue;
+                    if(tr.GetObject(next.Id,OpenMode.ForRead,false)
+                        is not BlockTableRecord definition)continue;
+                    if(definition.IsFromExternalReference)
+                    {
+                        isXref=true;
+                        continue;
+                    }
+                    if(next.Depth>0)nestedDefinitions++;
                     foreach(ObjectId entityId in definition)
                     {
+                        if(++visitedEntities>4096)break;
                         DBObject entity=tr.GetObject(entityId,
                             OpenMode.ForRead,false);
                         string? literal=null;
-                        if(entity is DBText literalText &&
-                           entity is not AttributeDefinition)
-                            literal=literalText.TextString;
-                        else if(entity is MText literalMtext)
-                            literal=literalMtext.Contents;
-                        if(literal==null)continue;
-                        staticTextCount++;
-                        if(SupportOrthoTitleBlockStatic66.
+                        if(entity is AttributeDefinition attdef)
+                        {
+                            uninstantiatedAttdefs++;
+                            literal=attdef.TextString;
+                        }
+                        else if(entity is DBText text)
+                        {
+                            staticTextCount++;
+                            literal=text.TextString;
+                        }
+                        else if(entity is MText mtext)
+                        {
+                            staticTextCount++;
+                            literal=mtext.Contents;
+                        }
+                        else if(entity is BlockReference inner&&
+                                !inner.BlockTableRecord.IsNull)
+                        {
+                            pending.Push((inner.BlockTableRecord,
+                                next.Depth+1));
+                        }
+                        if(literal!=null&&SupportOrthoTitleBlockStatic66.
                             LooksLikeObviousSeedPlaceholder(literal))
                             obviousSeedPlaceholders++;
                     }
@@ -171,14 +206,16 @@ internal static class SupportProductionTitleBlockWriter
             }
             catch(System.Exception)
             {
-                // Diagnostics are best effort: never make title-block
-                // inspection itself a publishing/drawing failure.
+                // Report partial read-only evidence. Never fail a
+                // verified native DWG/PDF to inspect static seed text.
             }
             report.Add("BLOCK="+blockName+
                 ";HANDLE="+block.Handle+
                 ";ATTRIB_TAGS="+
                 (tags.Count==0?"NONE":string.Join(",",tags))+
                 ";STATIC_TEXT_COUNT="+staticTextCount+
+                ";NESTED_BLOCK_DEFINITIONS="+nestedDefinitions+
+                ";UNINSTANTIATED_ATTDEF_COUNT="+uninstantiatedAttdefs+
                 ";OBVIOUS_STATIC_PLACEHOLDERS="+obviousSeedPlaceholders+
                 ";TEMPLATE_ACTION="+
                 SupportOrthoTitleBlockStatic66.ActionFor(

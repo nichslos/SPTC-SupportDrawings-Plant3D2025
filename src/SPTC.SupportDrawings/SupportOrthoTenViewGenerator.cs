@@ -1917,6 +1917,11 @@ public sealed class SupportOrthoTenViewGenerator
                                 maxTrialsPerView:trialBudget);
                         visibleCallouts=coordinated64.Callouts.ToArray();
                         Log("REV66_SAFE_LEADER_TRIAL_BUDGET="+trialBudget);
+                        Log("REV67_AVAILABLE_LEADER_DIM_TRIALS="+
+                            SupportOrthoLeaderDimensionLayout64.
+                                AvailableTrialCount);
+                        Log("REV67_A0_OPTIONAL_DIMENSION_POLICY="+
+                            "20_TRIALS_ADD_ONLY_PRESERVE_ESSENTIAL_AND_EXISTING");
                         Log("REV60_SAFE_LEADER_TRIAL_BUDGET="+trialBudget);
                         Log("REV60_OPTIONAL_DIMENSION_RECOVERY_POLICY="+
                             "ADD_ONLY_PRESERVE_ALL_ACCEPTED");
@@ -2569,6 +2574,8 @@ public sealed class SupportOrthoTenViewGenerator
                         {
                             Log("REV60_TITLEBLOCK_CANDIDATE="+candidateBlock);
                             Log("REV66_TITLEBLOCK_CANDIDATE="+candidateBlock);
+                            Log("REV67_TITLEBLOCK_NESTED_INSPECTION="+
+                                candidateBlock);
                             if(candidateBlock.Contains("ATTRIB_TAGS=NONE",
                                 StringComparison.Ordinal))
                                 Log("REV66_TITLEBLOCK_STATIC_SEED_POLICY="+

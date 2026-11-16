@@ -92,6 +92,19 @@ internal static class Rev264LeaderDimensionCoordinationTests
         Need(late.ProposedLayouts==14&&late.AddedDimensions==1&&
             late.ShiftedViews==1&&late.RemainingLocalOmissions==0,
             "last two additive-only trials can recover a local member width");
+        // REV67 regression: REV66 A0 requested twenty candidate
+        // leader/dogleg trial slots, but the source table had only
+        // fourteen, throwing before optional dimension recovery.
+        // The original first fourteen A1 candidates must not change.
+        Need(SupportOrthoLeaderDimensionLayout64.AvailableTrialCount==20,
+            "A0 requested 20 options are physically defined");
+        var twenty=SupportOrthoLeaderDimensionLayout64.Coordinate(
+            cameras,titles,new[]{original},594,841,
+            notes=>notes[0].LabelTop>original.LabelTop+31?
+                clear:blocked,maxTrialsPerView:20);
+        Need(twenty.AddedDimensions==1&&
+            twenty.RemainingLocalOmissions==0,
+            "20-trial recovery remains add-only and does not throw");
         var complete=SupportOrthoLeaderDimensionLayout64.Coordinate(
             cameras,titles,new[]{original},594,841,_=>actual);
         Need(complete.Attempts==0&&complete.ShiftedViews==0&&

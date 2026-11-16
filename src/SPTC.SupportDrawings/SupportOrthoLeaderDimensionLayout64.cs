@@ -37,8 +37,14 @@ public static class SupportOrthoLeaderDimensionLayout64
     private static readonly (double Y,double Lane)[] Trials={
         (0,4),(0,7),(8,0),(-8,0),(8,4),(-8,4),
         (16,4),(-16,4),(24,4),(-24,4),(24,7),(-24,7),
-        (32,4),(-32,4)
+        (32,4),(-32,4),
+        // REV67: REV66 requested twenty trial slots on A0 but only
+        // fourteen existed. Extra lateral/dogleg alternatives are
+        // examined ONLY after the original fourteen, preserving
+        // the established A1 candidate order and early success path.
+        (0,10),(0,13),(8,7),(-8,7),(16,7),(-16,7)
     };
+    internal static int AvailableTrialCount=>Trials.Length;
 
     public static Result Coordinate(
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
@@ -226,6 +232,8 @@ public static class SupportOrthoLeaderDimensionLayout64
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles,
         double paperW,double paperH)
     {
+        double nativeLabelLineAdvance=SupportOrthoPaperTypography66.LineAdvance(
+            paperW,paperH);
         var boxes=new List<SupportOrthoSmartDimPlan46.Rect>();
         foreach(var note in notes)
         {
@@ -263,10 +271,10 @@ public static class SupportOrthoLeaderDimensionLayout64
                     var dogleg=new SupportOrthoSmartDimPlan46.Rect(
                         note.LaneX-.45,
                         Math.Min(note.AnchorY,note.LabelTop-
-                            SupportOrthoMemberCalloutPlan27.TextLineHeightMm*.5)-.45,
+                            nativeLabelLineAdvance*.5)-.45,
                         note.LaneX+.45,
                         Math.Max(note.AnchorY,note.LabelTop-
-                            SupportOrthoMemberCalloutPlan27.TextLineHeightMm*.5)+.45);
+                            nativeLabelLineAdvance*.5)+.45);
                     if(dogleg.Intersects(frame,.2))
                         return "LEADER_OVER_NEIGHBOR_VIEWPORT";
                 }
@@ -281,7 +289,7 @@ public static class SupportOrthoLeaderDimensionLayout64
                 if(text.Intersects(titleArea,.20))
                     return "LABEL_OVER_VIEW_TITLE";
                 var landing=note.LabelTop-
-                    SupportOrthoMemberCalloutPlan27.TextLineHeightMm*.5;
+                    nativeLabelLineAdvance*.5;
                 var dogleg=new SupportOrthoSmartDimPlan46.Rect(
                     note.LaneX-.35,Math.Min(note.AnchorY,landing)-.35,
                     note.LaneX+.35,Math.Max(note.AnchorY,landing)+.35);
