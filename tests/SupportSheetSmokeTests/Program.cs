@@ -1,4 +1,5 @@
 using SPTC.SupportDrawings;
+Rev61ExactScaleTests.Run();
 var box = new BoundingBox3(10,20,30,110,220,330);
 Assert(box.SizeX == 100 && box.SizeY == 200 && box.SizeZ == 300, "model spans");
 Assert(box.MidX == 60 && box.MidY == 120 && box.MidZ == 180, "model midpoint");

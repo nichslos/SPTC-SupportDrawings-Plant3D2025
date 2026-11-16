@@ -95,13 +95,33 @@ jobs:
               throw "REV22.39 custom scale form binding missing: $token"
             }
           }
-          foreach($token in @('options.ScaleDenominator<fit.Denominator',
-              'NativeOrthoTenViewAutoPlacement26.Build(fit,w,h)',
+          # REV61: do not reject an exact requested scale based solely
+          # on the conservative AUTO ten-view denominator. Test a real
+          # selected-view physical layout before native registration.
+          $exact61=Get-Content "$root/NativeOrthoExactScalePlacement61.cs" -Raw
+          $scaleTest61=Get-Content 'tests/SupportSheetSmokeTests/Rev61ExactScaleTests.cs' -Raw
+          foreach($token in @(
+              'NativeOrthoExactScalePlacement61.Build(',
+              'NeedsAdaptiveLayout(options.ScaleDenominator',
               'Denominator=options.ScaleDenominator',
-              'Scale=1.0/options.ScaleDenominator')) {
+              'Scale=1.0/options.ScaleDenominator',
+              'NativeOrthoTenViewAutoPlacement26.Build(fit,w,h)',
+              'REV61_NATIVE_SCALE_PRESERVED=1:')) {
             if(-not $gen.Contains($token)) {
-              throw "REV22.39 scale fit/placement protection missing: $token"
+              throw "REV61 exact paper scale and native preflight missing: $token"
             }
+          }
+          foreach($token in @('CaptionAndRowReserveMm',
+              'AnnotationReserveMm','BuildTitles(',
+              'RequireInsideUsableArea(', 'Choose fewer views or a larger')) {
+            if(-not $exact61.Contains($token)) {
+              throw "REV61 safe physical selected-view packing absent: $token"
+            }
+          }
+          if(-not $scaleTest61.Contains('1:20 accepts all ten') -or
+             -not $scaleTest61.Contains('1:10 without false ten-view rejection') -or
+             -not $scaleTest61.Contains('1:1 cannot put a 1.25-meter view')) {
+            throw 'REV61 scale-fit A1 and larger-sheet regression absent'
           }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',

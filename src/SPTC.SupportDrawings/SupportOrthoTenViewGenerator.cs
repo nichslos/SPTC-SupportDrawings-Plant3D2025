@@ -718,20 +718,22 @@ public sealed class SupportOrthoTenViewGenerator
                 var previewSheet=CurrentPaperDetails(previewDb,previewLayout);
                 (double w,double h)=(previewSheet.WidthMm,previewSheet.HeightMm);
                 var fit=NativeOrthoTenViewPlan.Build(layout,w,h);
-                if(options.ScaleDenominator>0 &&
-                   options.ScaleDenominator<fit.Denominator)
-                {
-                    ed.WriteMessage("\nSPTC preflight: Requested 1:"+
-                        options.ScaleDenominator+" cannot fit the ten-view layout. "+
-                        "Minimum safe denominator is "+fit.Denominator+". No drawing created.");
-                    return false;
-                }
+                int autoDenominator=fit.Denominator;
+                bool exactReflow=NativeOrthoExactScalePlacement61.
+                    NeedsAdaptiveLayout(options.ScaleDenominator,
+                        autoDenominator);
                 if(options.ScaleDenominator>0)
                     fit=fit with {Denominator=options.ScaleDenominator,
                         Scale=1.0/options.ScaleDenominator};
-                // Perform the same exact title/frame collision calculations
-                // read-only, BEFORE cloning/registering the new Ortho DWG.
-                var proof=NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
+                // REV61: do not confuse the conservative 10-view automatic
+                // denominator with a physical impossibility. At an explicit
+                // larger 1:N view magnification, first attempt an EXACT
+                // selected-view grid, with native titles and label reserve.
+                // No auto-rescale or native/project writes on failure.
+                var proof=exactReflow?
+                    NativeOrthoExactScalePlacement61.Build(
+                        fit,options.Views,w,h):
+                    NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
                 NativeOrthoEffectivePaper59.RequireInsideUsableArea(
                     previewSheet,
                     proof.Views.Select(v=>
@@ -741,7 +743,7 @@ public sealed class SupportOrthoTenViewGenerator
                     proof.Titles.Select(t=>
                         new NativeOrthoEffectivePaper59.CaptionFrame(
                             t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
-                    requireTen:true);
+                    requireTen:options.Views.Count==10);
             }
         }
         catch(System.Exception ex)
@@ -991,6 +993,9 @@ public sealed class SupportOrthoTenViewGenerator
                 (effectiveSheet.WidthMm,effectiveSheet.HeightMm);
             NativeOrthoTenViewPlan.Plan candidate =
                 NativeOrthoTenViewPlan.Build(layout, paperWidth, paperHeight);
+            int autoDenominator61=candidate.Denominator;
+            bool exactReflow61=NativeOrthoExactScalePlacement61.
+                NeedsAdaptiveLayout(options.ScaleDenominator,autoDenominator61);
             if(options.ScaleDenominator>0)
                 candidate=candidate with {
                     Denominator=options.ScaleDenominator,
@@ -1009,6 +1014,10 @@ public sealed class SupportOrthoTenViewGenerator
                     .RightTitleBlockStartRatio).ToString(
                     "0.###",CultureInfo.InvariantCulture));
             Log("STEP4_COMMON_SCALE=1:" + candidate.Denominator);
+            Log("REV61_EXACT_SCALE_MODE="+
+                (options.ScaleDenominator>0?"REQUESTED_EXACT":"AUTOMATIC"));
+            Log("REV61_AUTOMATIC_TEN_VIEW_DENOMINATOR="+autoDenominator61);
+            Log("REV61_SELECTED_VIEW_ADAPTIVE_LAYOUT="+exactReflow61);
             foreach(var slot in candidate.Views)
                 Log("PROPOSED_" + slot.Name + "_CENTER=" +
                     Point(slot.CenterX,slot.CenterY,0) +
@@ -1218,8 +1227,11 @@ public sealed class SupportOrthoTenViewGenerator
             // Derive the entire two-column x five-row arrangement from
             // the native ten-view candidate, preserve camera/scale and
             // reserve all ten title bands before ANY native generation.
-            var autoPlacement=NativeOrthoTenViewAutoPlacement26.Build(
-                candidate,paperWidth,paperHeight);
+            var autoPlacement=exactReflow61?
+                NativeOrthoExactScalePlacement61.Build(
+                    candidate,options.Views,paperWidth,paperHeight):
+                NativeOrthoTenViewAutoPlacement26.Build(
+                    candidate,paperWidth,paperHeight);
             var group=autoPlacement.Views;
             // Verify all ten frames AND their captions against the real
             // rotated sheet, before calling internal GenerateOrthos.
@@ -1232,8 +1244,10 @@ public sealed class SupportOrthoTenViewGenerator
                 autoPlacement.Titles.Select(t=>
                     new NativeOrthoEffectivePaper59.CaptionFrame(
                         t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
-                requireTen:true);
+                requireTen:options.Views.Count==10);
             Log("REV59_PREFLIGHT_ALL_TEN_INSIDE_EFFECTIVE_SHEET=PASS");
+            Log("REV61_NATIVE_SCALE_PRESERVED=1:"+candidate.Denominator);
+            Log("REV61_ADAPTIVE_SELECTED_VIEW_COUNT="+group.Count);
             Log("STEP5_AUTO_PLACEMENT_ENABLED=True");
             Log("STEP5_PAPER_POINT_CLICKS_REQUIRED=0");
             Log("STEP5_AUTO_TOP_SUGGESTED="+
@@ -1248,7 +1262,7 @@ public sealed class SupportOrthoTenViewGenerator
             targetDoc.Editor.WriteMessage(
                 "\nSPTC: Automatically placing "+resolved.Count+" selected native Ortho "+
                 "view(s) and titles. No insertion click required. "+
-                "TOP center: ("+
+                "reference center: ("+
                 autoPlacement.FinalTopX.ToString("0.###",CultureInfo.InvariantCulture)+
                 ", "+autoPlacement.FinalTopY.ToString("0.###",CultureInfo.InvariantCulture)+").");
             var planned=new List<(NativeOrthoTenViewPlan.Slot Slot,
