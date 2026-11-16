@@ -2657,7 +2657,7 @@ public sealed class SupportOrthoTenViewGenerator
                         "1:"+options.ScaleDenominator:"Automatic",
                     SupportBuildIdentity.Id,explicitSupportTag,
                     titleBlockStatus,
-                    sheetDrawingSuffix);
+                    sheetDrawingSuffix:sheetDrawingSuffix);
                 if(!succeeded)
                     entry=entry with {
                         QaStatus="FAIL",IssueStatus="GENERATION_FAILED",
