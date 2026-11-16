@@ -655,9 +655,11 @@ public sealed class SupportOrthoTenViewGenerator
         string seed="";
         bool exactTenOnOneSheet64=options.ScaleDenominator>0&&
             options.Views.Count==10;
-        // REV69: strict registered A0 sheet behavior always wins.
-        // Only when an explicit All10 1:N cannot fit ANY original
-        // title-block-reserved layout, retry with usable physical paper.
+        // REV70: original strict registered sheet behavior always wins.
+        // Check EVERY existing registered EMPTY native Ortho paper size,
+        // portrait/landscape/custom, rather than hard-coding A0. Only
+        // when explicit All10 1:N fails the original title-block-
+        // reserved layout, retry the actual oriented physical sheet.
         // The title-block BLOCK/TEXT/PDF seed remains unchanged and
         // may be visibly overprinted; this is DRAFT-only mode.
         bool bypassTitleBlock69=false;
@@ -726,7 +728,8 @@ public sealed class SupportOrthoTenViewGenerator
                                 fits?"Ten native frames, captions and right "+
                                     "title-block clearance verified at exact 1:"+
                                     options.ScaleDenominator:
-                                relaxed69?"Physical page A0 bypass fits exact 1:"+
+                                relaxed69?"Project-registered physical paper "+
+                                    "bypass fits exact 1:"+
                                     options.ScaleDenominator+
                                     "; EXISTING PRINTED TITLE BLOCK MAY OVERLAP":
                                     reason+(bypassReason.Length>0?
@@ -789,10 +792,13 @@ public sealed class SupportOrthoTenViewGenerator
                             options.ScaleDenominator+" in any available "+
                             "registered EMPTY native Ortho sheet ("+
                             checkedEmpty+" checked). "+
-                            "Create and register an A0 landscape (1189 x 841 mm) "+
-                            "or larger correctly plotted EMPTY Ortho seed in "+
-                            "Plant 3D Project Manager. No DWG/PDF created; "+
-                            "scale and view count unchanged.");
+                            "No existing registered EMPTY Ortho paper size "+
+                            "can contain this entire native assembly at "+
+                            "the requested scale, even with the title-block "+
+                            "reservation bypass. Add or configure a properly "+
+                            "plotted, project-registered EMPTY Ortho seed "+
+                            "with enough physical printable space. No DWG/PDF "+
+                            "created; scale and view count unchanged.");
                         return false;
                     }
                 }
@@ -890,7 +896,7 @@ public sealed class SupportOrthoTenViewGenerator
                         proof=NativeOrthoExactScalePlacement61.Build(
                             fit,options.Views,w,h);
                         // The strict planner passed, so all older
-                        // successful A0/A1 drawings remain identical.
+                        // successful drawings on ANY project paper remain identical.
                         bypassTitleBlock69=false;
                     }
                     catch(NativeOrthoExactScalePlacement61.DoesNotFitException)
@@ -902,7 +908,8 @@ public sealed class SupportOrthoTenViewGenerator
                         proof=NativeOrthoExactScalePlacement61.Build(
                             fit,options.Views,w,h,bypassTitleBlock:true);
                         bypassTitleBlock69=true;
-                        ed.WriteMessage("\nSPTC REV69: Existing A0 title-block "+
+                        ed.WriteMessage("\nSPTC REV70: Existing registered "+
+                            "Ortho sheet's title-block "+
                             "reservation bypassed for exact 1:"+
                             options.ScaleDenominator+
                             ". Printed title block is unchanged and may "+
@@ -949,8 +956,10 @@ public sealed class SupportOrthoTenViewGenerator
                     " REV64: ALL 10 views must remain in ONE native Ortho DWG "+
                     "at exact 1:"+options.ScaleDenominator+
                     ". The manually chosen sheet may be too small; "+
-                    "select a correctly plotted registered EMPTY A0 landscape "+
-                    "or larger Ortho seed. No multi-sheet fallback.":""));
+                    "select a correctly plotted registered EMPTY Ortho "+
+                    "seed with sufficient physical sheet area, of ANY "+
+                    "supported project paper size or orientation. "+
+                    "No multi-sheet fallback.":""));
             return false;
         }
         progress.Report("Preflight PASS. Output: "+Path.GetFileName(dest)+
@@ -1216,6 +1225,13 @@ public sealed class SupportOrthoTenViewGenerator
                 (paperWidth*NativeOrthoEffectivePaper59
                     .RightTitleBlockStartRatio).ToString(
                     "0.###",CultureInfo.InvariantCulture));
+            Log("REV70_PAPER_SIZE_POLICY=ALL_REGISTERED_EMPTY_NATIVE_ORTHO_MEDIA");
+            Log("REV70_EFFECTIVE_REGISTERED_PAPER_MM="+
+                Point(paperWidth,paperHeight,0));
+            Log("REV70_PROJECT_PAPER_BYPASS_ELIGIBLE="+
+                NativeOrthoTitleBlockBypass69.Eligible(
+                    paperWidth,paperHeight,candidate.Denominator,
+                    options.Views.Count));
             Log("REV69_TITLE_BLOCK_RESERVED_AREA_BYPASSED="+
                 bypassTitleBlock69);
             Log("REV69_EFFECTIVE_RIGHT_MARGIN_MM="+
