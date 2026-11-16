@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace SPTC.SupportDrawings;
@@ -74,28 +75,76 @@ internal static class NativeOrthoExactScalePlacement61
         double availableHeight=top-bottom;
         const double columnGap=6;
         const double rowGap=5;
-        // Respect the established 2-column layout preference; use
-        // other grid counts only to accommodate a requested exact scale.
+        // REV65 extends, but DOES NOT relax, the REV61 physical fit
+        // check. Preserve the original order as the FIRST candidate,
+        // then try bounded, deterministic groups of similar heights
+        // and widths to reduce wasted row/column space. Camera names,
+        // projection directions, scale and final result order do not
+        // change. The native title/viewport guards validate every
+        // candidate identically.
+        int[] original=Enumerable.Range(0,views.Length).ToArray();
+        var orders=new (string Label,int[] Indices)[]
+        {
+            ("PRESET",original),
+            ("HEIGHT_DESC",original.OrderByDescending(i=>views[i].Height)
+                .ThenByDescending(i=>views[i].Width).ToArray()),
+            ("WIDTH_DESC",original.OrderByDescending(i=>views[i].Width)
+                .ThenByDescending(i=>views[i].Height).ToArray()),
+            ("AREA_DESC",original.OrderByDescending(i=>
+                views[i].Width*views[i].Height).ToArray()),
+            ("HEIGHT_ASC",original.OrderBy(i=>views[i].Height)
+                .ThenBy(i=>views[i].Width).ToArray()),
+            ("WIDTH_ASC",original.OrderBy(i=>views[i].Width)
+                .ThenBy(i=>views[i].Height).ToArray())
+        };
+        var uniqueOrders=new HashSet<string>(StringComparer.Ordinal);
+        string nearest="";
+        double bestShortfall=double.PositiveInfinity;
+        string firstTitleCollision="";
+        // Use exactly the existing grid-column preferences to preserve
+        // the tested 2-column layout wherever it already passes.
         var columnOptions=new[]{2,1,3,4}
             .Where(x=>x<=views.Length).Distinct().ToArray();
         foreach(int cols in columnOptions)
+        foreach(var order in orders)
         {
+            // A distinct layout ordering is needed for the same cols;
+            // the same ordering at DIFFERENT column counts is different.
+            string key=cols+":"+string.Join(",",order.Indices);
+            if(!uniqueOrders.Add(key))continue;
             int rows=(views.Length+cols-1)/cols;
             var colWidths=new double[cols];
             var rowHeights=new double[rows];
             for(int i=0;i<views.Length;i++)
             {
+                var item=views[order.Indices[i]];
                 int c=i%cols,r=i/cols;
                 colWidths[c]=Math.Max(colWidths[c],
-                    views[i].Width+AnnotationReserveMm);
+                    item.Width+AnnotationReserveMm);
                 rowHeights[r]=Math.Max(rowHeights[r],
-                    views[i].Height+CaptionAndRowReserveMm);
+                    item.Height+CaptionAndRowReserveMm);
             }
             double totalWidth=colWidths.Sum()+columnGap*(cols-1);
             double totalHeight=rowHeights.Sum()+rowGap*(rows-1);
-            if(totalWidth>availableWidth-2||
-               totalHeight>availableHeight-2)
-                continue;
+            double shortageW=Math.Max(0,totalWidth-(availableWidth-2));
+            double shortageH=Math.Max(0,totalHeight-(availableHeight-2));
+            double normalShortfall=shortageW/Math.Max(1,availableWidth)+
+                shortageH/Math.Max(1,availableHeight);
+            if(normalShortfall<bestShortfall)
+            {
+                bestShortfall=normalShortfall;
+                nearest=cols+"x"+rows+" "+order.Label+
+                    " required "+totalWidth.ToString("0.#",CultureInfo.InvariantCulture)+
+                    " x "+totalHeight.ToString("0.#",CultureInfo.InvariantCulture)+
+                    " mm; available "+
+                    (availableWidth-2).ToString("0.#",CultureInfo.InvariantCulture)+
+                    " x "+(availableHeight-2).ToString("0.#",
+                        CultureInfo.InvariantCulture)+
+                    " mm; shortage "+
+                    shortageW.ToString("0.#",CultureInfo.InvariantCulture)+
+                    " x "+shortageH.ToString("0.#",CultureInfo.InvariantCulture)+" mm";
+            }
+            if(shortageW>0||shortageH>0)continue;
 
             double startX=left+(availableWidth-totalWidth)/2;
             double startY=top-(availableHeight-totalHeight)/2;
@@ -116,11 +165,15 @@ internal static class NativeOrthoExactScalePlacement61
             var frames=new NativeOrthoTenViewPlan.Placement[views.Length];
             for(int i=0;i<views.Length;i++)
             {
+                int sourceIndex=order.Indices[i];
+                var item=views[sourceIndex];
                 int c=i%cols,r=i/cols;
-                double cx=colLefts[c]+views[i].Width/2;
-                double cy=rowTops[r]-views[i].Height/2;
-                frames[i]=new NativeOrthoTenViewPlan.Placement(
-                    views[i].Name,cx,cy,views[i].Width,views[i].Height);
+                double cx=colLefts[c]+item.Width/2;
+                double cy=rowTops[r]-item.Height/2;
+                // Preserve original preset order for downstream native
+                // registration even when the paper positions are reflowed.
+                frames[sourceIndex]=new NativeOrthoTenViewPlan.Placement(
+                    item.Name,cx,cy,item.Width,item.Height);
             }
             try
             {
@@ -160,9 +213,15 @@ internal static class NativeOrthoExactScalePlacement61
                     first.CenterX,first.CenterY,
                     0,false,frames,titles);
             }
-            catch(InvalidOperationException)
+            catch(InvalidOperationException ex)
             {
-                // Another bounded grid might fit without collisions.
+                // An otherwise physically fitting layout can still fail
+                // the existing caption, sheet border and overlap checks.
+                // Keep the exact reason to distinguish geometry shortage
+                // from title/collision rejection in REV65 diagnostics.
+                if(firstTitleCollision.Length==0)
+                    firstTitleCollision=cols+"x"+rows+" "+order.Label+
+                        ": "+ex.Message;
             }
         }
         throw new DoesNotFitException(
@@ -171,6 +230,10 @@ internal static class NativeOrthoExactScalePlacement61
             "with the title block and annotation clearances. "+
             "Choose fewer views or a larger registered empty Ortho seed "+
             "with suitable plot media. The plugin never changes 1:"+
-            plan.Denominator+" into a different scale or draws off-sheet.");
+            plan.Denominator+" into a different scale or draws off-sheet. "+
+            "REV65 closest layout: "+nearest+
+            (firstTitleCollision.Length>0?
+                "; physical size fits but native title/frame validation "+
+                "failed: "+firstTitleCollision:""));
     }
 }
