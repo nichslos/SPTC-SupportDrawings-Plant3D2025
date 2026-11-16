@@ -251,13 +251,12 @@ public sealed class SupportOrthoTenViewGenerator
                 // Show the existing non-modal progress window during
                 // a single run as well as sequential batch runs.
                 progress.Show();
-                // REV63: exact manual scales with All 10 may require
-                // multiple physical paper drawings. Keep ONE host-native
-                // support selection for the entire sheet set. The first
-                // GenerateOne is only permitted to request a sheet set
-                // on a typed scale-fit preflight failure: NO Ortho DWG or
-                // project registration has occurred at that point.
-                ObjectId[]? setSourceIds=null;
+                // REV64: ALL 10 manual 1:N must stay ONE native Ortho
+                // DWG / ONE PDF. Read the host selection only once.
+                // GenerateOne chooses the smallest verified registered
+                // empty sheet at exact scale; if no sheet fits, NO DWG
+                // or PDF is created and no multiple-sheet fallback runs.
+                ObjectId[]? singleSourceIds=null;
                 if(options.ScaleDenominator>0&&options.Views.Count==10)
                 {
                     var supportSelection=ed.GetSelection(
@@ -267,127 +266,10 @@ public sealed class SupportOrthoTenViewGenerator
                                 : "\nSPTC: Select support entities for Original OrthoCube mode: "
                         });
                     if(supportSelection.Status!=PromptStatus.OK)return;
-                    setSourceIds=supportSelection.Value.GetObjectIds();
+                    singleSourceIds=supportSelection.Value.GetObjectIds();
                 }
-                IReadOnlyList<NativeOrthoMultiSheetPlan63.Sheet>? sheets=null;
-                bool ok=await GenerateOne(sourceDoc,setSourceIds,options,progress,
-                    productionEntries.Add,proposed=>sheets=proposed);
-                if(sheets!=null)
-                {
-                    progress.SetWorkload(sheets.Count);
-                    progress.Report("REV63: All "+options.Views.Count+
-                        " views at exact 1:"+options.ScaleDenominator+
-                        " require "+sheets.Count+" native Ortho sheets.");
-                    bool complete=true;
-                    int completed=0,verifiedPdfs=0;
-                    var sheetSetReport=new StringBuilder();
-                    sheetSetReport.AppendLine("SPTC_REV63_NATIVE_MULTISHEET_REPORT");
-                    sheetSetReport.AppendLine("SOURCE="+source);
-                    sheetSetReport.AppendLine("SCALE=1:"+options.ScaleDenominator);
-                    sheetSetReport.AppendLine("SHEETS_REQUIRED="+sheets.Count);
-                    for(int sheetIndex=0;sheetIndex<sheets.Count;sheetIndex++)
-                    {
-                        var sheet=sheets[sheetIndex];
-                        bool pageOk=false,pdfOkForPage=!packageForRun.Enabled||
-                            !packageForRun.PublishPdf;
-                        int beforeEntries=productionEntries.Count;
-                        string? createdDwg=null;
-                        try
-                        {
-                            AcadApp.DocumentManager.MdiActiveDocument=sourceDoc;
-                            string prefix=string.IsNullOrWhiteSpace(
-                                options.DrawingPrefix)?sheet.Suffix:
-                                options.DrawingPrefix+"_"+sheet.Suffix;
-                            var pageOptions=options with {
-                                Views=sheet.Views,
-                                DrawingPrefix=prefix
-                            };
-                            progress.Report("REV63 "+sheet.Suffix+
-                                " views="+string.Join(",",sheet.Views));
-                            pageOk=await GenerateOne(sourceDoc,setSourceIds,
-                                pageOptions,progress,productionEntries.Add,
-                                sheetDrawingSuffix:sheet.DrawingNumberSuffix,
-                                onOutputDwg:path=>createdDwg=path);
-                            if(productionEntries.Count>beforeEntries&&
-                               packageForRun.Enabled&&packageForRun.PublishPdf)
-                            {
-                                var entry=productionEntries[^1];
-                                var published=await
-                                    SupportProductionNativePdfPublisher.PublishAsync(
-                                        sourceDoc,packageForRun,entry,progress.Report);
-                                productionEntries[^1]=published;
-                                pdfOkForPage=published.PdfStatus==
-                                    "PDF_PUBLISHED_VERIFIED";
-                                if(pdfOkForPage)verifiedPdfs++;
-                                try {SupportProductionPackagePlan.SaveEntry(published);}
-                                catch(System.Exception ex)
-                                {
-                                    progress.Report("REV63 sidecar error: "+ex.Message);
-                                    pdfOkForPage=false;
-                                }
-                            }
-                            if(packageForRun.Enabled&&
-                               productionEntries.Count==beforeEntries)
-                                pdfOkForPage=false;
-                            sheetSetReport.AppendLine("SHEET="+sheet.Suffix+
-                                " VIEWS="+string.Join(";",sheet.Views)+
-                                " DWG="+(pageOk?"PASS":"FAILED")+
-                                " PDF="+(!packageForRun.Enabled||
-                                    !packageForRun.PublishPdf?"DISABLED":
-                                    pdfOkForPage?"VERIFIED":"FAILED_OR_BLOCKED")+
-                                " FILE="+(createdDwg??"NONE"));
-                            if(pageOk&&pdfOkForPage)completed++;
-                            else complete=false;
-                        }
-                        catch(System.Exception ex)
-                        {
-                            complete=false;
-                            sheetSetReport.AppendLine("SHEET="+sheet.Suffix+
-                                " FAILED="+ex.GetType().Name+":"+ex.Message);
-                            progress.Report("REV63 "+sheet.Suffix+
-                                " FAILED: "+ex.Message);
-                        }
-                        finally
-                        {
-                            progress.AdvanceWorkload(pageOk&&pdfOkForPage);
-                        }
-                        // Never claim complete set after a failed sheet.
-                        // Earlier registered drawings are retained with
-                        // their own honest QA/PDF status, not deleted.
-                        if(!pageOk)break;
-                    }
-                    sheetSetReport.AppendLine("COMPLETE="+complete+
-                        " SHEETS_PASS="+completed+"/"+sheets.Count+
-                        " PDF_VERIFIED="+verifiedPdfs);
-                    try
-                    {
-                        string folder=Path.GetDirectoryName(source)!;
-                        string id=DateTime.UtcNow.ToString(
-                            "yyyyMMdd_HHmmss",CultureInfo.InvariantCulture)+
-                            "_"+Guid.NewGuid().ToString("N")[..6];
-                        string reportPath=Path.Combine(folder,
-                            "SPTC_REV63_SHEETSET_"+id+".txt");
-                        File.WriteAllText(reportPath,sheetSetReport.ToString(),
-                            new UTF8Encoding(false));
-                        progress.Report("REV63 sheet-set report: "+reportPath);
-                        if(productionEntries.Count>0)
-                        {
-                            string registerPath=Path.ChangeExtension(reportPath,
-                                ".register.csv");
-                            SupportProductionPackagePlan.SaveRegister(
-                                registerPath,productionEntries);
-                            progress.Report("REV63 sheet-set register: "+registerPath);
-                        }
-                    }
-                    catch(System.Exception ex)
-                    {
-                        progress.Report("REV63 register/report error: "+ex.Message);
-                    }
-                    progress.Report("REV63 sheet-set status="+
-                        (complete?"PASS":"PARTIAL/FAILED")+
-                        " ("+completed+"/"+sheets.Count+")");
-                    return;
-                }
+                bool ok=await GenerateOne(sourceDoc,singleSourceIds,options,
+                    progress,productionEntries.Add);
                 bool pdfOk=!packageForRun.Enabled||
                     !packageForRun.PublishPdf;
                 if(productionEntries.Count>0&&packageForRun.Enabled&&
@@ -771,6 +653,8 @@ public sealed class SupportOrthoTenViewGenerator
         // REV22.35: discover only native, project-registered and EMPTY seeds.
         // Never treat a previous generated Ortho or an arbitrary DWG as a seed.
         string seed="";
+        bool exactTenOnOneSheet64=options.ScaleDenominator>0&&
+            options.Views.Count==10;
         if(options.AutoSeed)
         {
             try
@@ -782,7 +666,69 @@ public sealed class SupportOrthoTenViewGenerator
                     .OrderByDescending(p=>Path.GetFileName(p).Contains(
                         "SEED",StringComparison.OrdinalIgnoreCase))
                     .ThenBy(p=>p,StringComparer.OrdinalIgnoreCase);
-                foreach(string path in candidates)
+                // REV64 selects the SMALLEST registered EMPTY native
+                // Ortho media that demonstrably fits the full ten-view
+                // EXACT manual scale, never the first arbitrary A1 seed.
+                // Only this explicit All10 case scans additional seeds;
+                // AUTO 1:25 keeps the existing fast first-seed policy.
+                if(exactTenOnOneSheet64)
+                {
+                    var validMedia=new List<NativeOrthoSingleSheet64.Seed>();
+                    int checkedEmpty=0;
+                    foreach(string path in candidates)
+                    {
+                        try
+                        {
+                            if(ViewCatalog(part.OrthoPart,path)!=
+                               "EMPTY_REGISTERED_ORTHO"||
+                               !IsNativeOrthoValid(part.OrthoPart,path))
+                                continue;
+                            checkedEmpty++;
+                            using var previewDb=new Database(false,true);
+                            previewDb.ReadDwgFile(path,
+                                FileOpenMode.OpenForReadAndAllShare,true,null);
+                            previewDb.CloseInput(true);
+                            var previewSheet=CurrentPaperDetails(previewDb,
+                                FindPaperLayout(previewDb));
+                            validMedia.Add(new NativeOrthoSingleSheet64.Seed(
+                                Path.GetFullPath(path),
+                                previewSheet.WidthMm,previewSheet.HeightMm,true));
+                        }
+                        catch(System.Exception)
+                        {
+                            // Fail closed; corrupted or unplottable native
+                            // seed media is never used to produce output.
+                        }
+                    }
+                    var winner=NativeOrthoSingleSheet64.SmallestFitting(
+                        layout,options.Views,options.ScaleDenominator,validMedia);
+                    if(winner!=null)
+                    {
+                        seed=winner.Path;
+                        ed.WriteMessage("\nSPTC REV64: ONE SHEET / 1:"+
+                            options.ScaleDenominator+" / all 10 views. "+
+                            "Registered empty Ortho seed: "+Path.GetFileName(seed)+
+                            "; paper "+
+                            winner.WidthMm.ToString("0.###",CultureInfo.InvariantCulture)+
+                            " x "+
+                            winner.HeightMm.ToString("0.###",CultureInfo.InvariantCulture)+
+                            " mm. No multi-sheet output.");
+                    }
+                    else
+                    {
+                        ed.WriteMessage("\nSPTC REV64: ONE SHEET REQUIRED. "+
+                            "Cannot place all ten views at exact 1:"+
+                            options.ScaleDenominator+" in any available "+
+                            "registered EMPTY native Ortho sheet ("+
+                            checkedEmpty+" checked). "+
+                            "Create and register an A0 landscape (1189 x 841 mm) "+
+                            "or larger correctly plotted EMPTY Ortho seed in "+
+                            "Plant 3D Project Manager. No DWG/PDF created; "+
+                            "scale and view count unchanged.");
+                        return false;
+                    }
+                }
+                else foreach(string path in candidates)
                 {
                     try
                     {
@@ -857,9 +803,9 @@ public sealed class SupportOrthoTenViewGenerator
                 (double w,double h)=(previewSheet.WidthMm,previewSheet.HeightMm);
                 var fit=NativeOrthoTenViewPlan.Build(layout,w,h);
                 int autoDenominator=fit.Denominator;
-                bool exactReflow=NativeOrthoExactScalePlacement61.
-                    NeedsAdaptiveLayout(options.ScaleDenominator,
-                        autoDenominator);
+                bool exactReflow=exactTenOnOneSheet64||
+                    NativeOrthoExactScalePlacement61.NeedsAdaptiveLayout(
+                        options.ScaleDenominator,autoDenominator);
                 if(options.ScaleDenominator>0)
                     fit=fit with {Denominator=options.ScaleDenominator,
                         Scale=1.0/options.ScaleDenominator};
@@ -877,7 +823,8 @@ public sealed class SupportOrthoTenViewGenerator
                             fit,options.Views,w,h);
                     }
                     catch(NativeOrthoExactScalePlacement61.DoesNotFitException)
-                        when(onSheetSet!=null&&options.Views.Count==10)
+                        when(!exactTenOnOneSheet64&&onSheetSet!=null&&
+                            options.Views.Count==10)
                     {
                         // REV63: all ten cannot fit ONE exact-scale A1
                         // drawing. Preflight EVERY proposed sheet before
@@ -910,7 +857,13 @@ public sealed class SupportOrthoTenViewGenerator
         }
         catch(System.Exception ex)
         {
-            ed.WriteMessage("\nSPTC preflight failed before drawing registration: "+ex.Message);
+            ed.WriteMessage("\nSPTC preflight failed before drawing registration: "+ex.Message+
+                (exactTenOnOneSheet64?
+                    " REV64: ALL 10 views must remain in ONE native Ortho DWG "+
+                    "at exact 1:"+options.ScaleDenominator+
+                    ". The manually chosen sheet may be too small; "+
+                    "select a correctly plotted registered EMPTY A0 landscape "+
+                    "or larger Ortho seed. No multi-sheet fallback.":""));
             return false;
         }
         progress.Report("Preflight PASS. Output: "+Path.GetFileName(dest)+
@@ -1156,8 +1109,9 @@ public sealed class SupportOrthoTenViewGenerator
             NativeOrthoTenViewPlan.Plan candidate =
                 NativeOrthoTenViewPlan.Build(layout, paperWidth, paperHeight);
             int autoDenominator61=candidate.Denominator;
-            bool exactReflow61=NativeOrthoExactScalePlacement61.
-                NeedsAdaptiveLayout(options.ScaleDenominator,autoDenominator61);
+            bool exactReflow61=exactTenOnOneSheet64||
+                NativeOrthoExactScalePlacement61.NeedsAdaptiveLayout(
+                    options.ScaleDenominator,autoDenominator61);
             if(options.ScaleDenominator>0)
                 candidate=candidate with {
                     Denominator=options.ScaleDenominator,
@@ -1176,6 +1130,11 @@ public sealed class SupportOrthoTenViewGenerator
                     .RightTitleBlockStartRatio).ToString(
                     "0.###",CultureInfo.InvariantCulture));
             Log("STEP4_COMMON_SCALE=1:" + candidate.Denominator);
+            Log("REV64_ONE_NATIVE_SHEET_REQUIRED="+exactTenOnOneSheet64);
+            Log("REV64_SELECTED_REGISTERED_SEED="+
+                Path.GetFileName(seed));
+            Log("REV64_SELECTED_PAPER_MM="+
+                Point(paperWidth,paperHeight,0));
             Log("REV61_EXACT_SCALE_MODE="+
                 (options.ScaleDenominator>0?"REQUESTED_EXACT":"AUTOMATIC"));
             Log("REV61_AUTOMATIC_TEN_VIEW_DENOMINATOR="+autoDenominator61);

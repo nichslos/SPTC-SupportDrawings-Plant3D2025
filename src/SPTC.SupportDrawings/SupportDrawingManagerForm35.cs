@@ -546,9 +546,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             " Description="+description.Checked+
             "   |   Prefix: "+(prefix.Text.Length==0?
                 "Automatic unique name":prefix.Text)+
-            "\r\nREV63: Manual 1:N stays exact. All 10 auto-splits "+
-            "into individually verified native sheets when needed. "+
-            "Even one oversized view still requires a larger Ortho seed.";
+            "\r\nREV64: All 10 = ONE native sheet at the exact 1:N. "+
+            "Automatic seed chooses the smallest registered fitting media "+
+            "(A0 or larger when required). No automatic split/rescale.";
     }
 
     private void RunSelected()
