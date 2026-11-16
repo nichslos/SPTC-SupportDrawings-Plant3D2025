@@ -1782,7 +1782,13 @@ public sealed class SupportOrthoTenViewGenerator
                 Log("REV22_38_PIPE_LABEL_FORMAT=BARE_LINE_TAG_AND_BOP");
                 annotated=CreateNativePaperMemberLeaders27(
                     targetDoc.Database,paperLayout,visibleCallouts,
-                    out var nativeTextWarnings);
+                    out var nativeTextWarnings,out double smallestRenderedTextMm,
+                    out int shrunkAnnotationLabels);
+                Log("REV60_ANNOTATION_MIN_RENDERED_TEXT_MM="+
+                    smallestRenderedTextMm.ToString("0.###",
+                        CultureInfo.InvariantCulture));
+                Log("REV60_ANNOTATION_SHRUNK_LABELS="+shrunkAnnotationLabels);
+                Log("REV60_ANNOTATION_VISUAL_REVIEW_REQUIRED=True");
                 foreach(var warning in nativeTextWarnings)
                     Log("REV22_29_NATIVE_TEXT_SKIP="+warning);
                 Log("REV22_29_NATIVE_TEXT_SKIPPED_COUNT="+
@@ -2726,9 +2732,12 @@ public sealed class SupportOrthoTenViewGenerator
     private static int CreateNativePaperMemberLeaders27(
         Database db,string paperLayout,
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout> callouts,
-        out List<string> skipped)
+        out List<string> skipped,out double minimumRenderedTextMm,
+        out int shrunkAnnotationLabels)
     {
         skipped=new List<string>();
+        minimumRenderedTextMm=0;
+        shrunkAnnotationLabels=0;
         using Transaction tr=db.TransactionManager.StartTransaction();
         var layouts=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,OpenMode.ForRead);
         if(!layouts.Contains(paperLayout))
@@ -2884,6 +2893,10 @@ public sealed class SupportOrthoTenViewGenerator
                     paper.AppendEntity(leader);
                     tr.AddNewlyCreatedDBObject(leader,true);
                 }
+                minimumRenderedTextMm=count==0?fontHeight:
+                    Math.Min(minimumRenderedTextMm,fontHeight);
+                if(fontHeight<SupportOrthoMemberCalloutPlan27.TextHeightMm-.01)
+                    shrunkAnnotationLabels++;
                 count++;
             }
             finally
