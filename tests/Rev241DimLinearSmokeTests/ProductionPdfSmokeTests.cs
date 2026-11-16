@@ -101,6 +101,39 @@ internal static class ProductionPdfSmokeTests
                 0,841,candidates).Found,
                 "invalid native paper dimensions fail closed");
 
+            // TEST5 2026-11-16: SetPlotConfigurationName and A1 media
+            // discovery succeeded, but PlotInfoValidator with MatchDisabled
+            // rejected final layout/device merging. MatchEnabled is safe
+            // only with this strict post-validation evidence check.
+            Need(SupportProductionPdfMediaMatcher.ConfirmValidated(
+                "DWG To PDF.pc3","DWG To PDF.pc3",594,841,
+                false,"ISO_full_bleed_A1",594,841),
+                "validated same PDF PC3 and A1 portrait sheet accepted");
+            Need(SupportProductionPdfMediaMatcher.ConfirmValidated(
+                "DWG To PDF.pc3",
+                @"C:\Users\Public\DWG To PDF.pc3",594,841,
+                true,"ISO_A1_LANDSCAPE",841,594),
+                "validated full-path PC3 and rotated A1 supported");
+            Need(!SupportProductionPdfMediaMatcher.ConfirmValidated(
+                "DWG To PDF.pc3","SomePrinter.pc3",594,841,
+                false,"ISO_A1",594,841),
+                "unexpected validated output device always blocked");
+            Need(!SupportProductionPdfMediaMatcher.ConfirmValidated(
+                "DWG To PDF.pc3","DWG To PDF.pc3",594,841,
+                false,"ISO_A2",420,594),
+                "AutoCAD must not substitute A2 after MatchEnabled");
+            Need(!SupportProductionPdfMediaMatcher.ConfirmValidated(
+                "DWG To PDF.pc3","DWG To PDF.pc3",594,841,
+                false,"ISO_A0",841,1189),
+                "AutoCAD must not substitute A0 after MatchEnabled");
+            Need(!SupportProductionPdfMediaMatcher.ConfirmValidated(
+                "DWG To PDF.pc3","DWG To PDF.pc3",594,841,
+                false,"ISO_A1_LANDSCAPE",841,594),
+                "validated media orientation must match approved rotation");
+            Need(!SupportProductionPdfMediaMatcher.ConfirmValidated(
+                "DWG To PDF.pc3","DWG To PDF.pc3",594,841,
+                false,"",594,841),
+                "missing validated canonical media must fail closed");
             var entry=new SupportProductionPackagePlan.Entry(
                 "SPTC-PRODUCTION-DRAWING-1","T26-SUP-FOO","K1",
                 Path.Combine(folder,"source.dwg"),new[]{"8A4"},1,100,
