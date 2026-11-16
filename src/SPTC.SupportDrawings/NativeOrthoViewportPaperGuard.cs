@@ -14,7 +14,8 @@ public static class NativeOrthoViewportPaperGuard
         double Scale,double ViewHeight);
 
     public static string Validate(Frame planned,Frame actual,
-        double paperWidth,double paperHeight,IReadOnlyList<Frame> previouslyCreated)
+        double paperWidth,double paperHeight,IReadOnlyList<Frame> previouslyCreated,
+        bool bypassTitleBlockReserve=false)
     {
         if (planned==null||actual==null||previouslyCreated==null)
             throw new ArgumentNullException(nameof(actual));
@@ -34,7 +35,10 @@ public static class NativeOrthoViewportPaperGuard
             return "NATIVE_VIEWPORT_SCALE_CHANGED";
         const double tolerance=0.1; // measured in paper-space drawing units (mm)
         if (actual.X-actual.W/2 < -tolerance||
-            actual.X+actual.W/2 > paperWidth*.78+tolerance||
+            actual.X+actual.W/2 > paperWidth*
+                (bypassTitleBlockReserve?
+                    NativeOrthoTitleBlockBypass69.RightBorderRatio:.78)+
+                    tolerance||
             actual.Y-actual.H/2 < paperHeight*.12-tolerance||
             actual.Y+actual.H/2 > paperHeight*.94+tolerance)
             return "NATIVE_VIEWPORT_OFF_SAFE_SHEET";
