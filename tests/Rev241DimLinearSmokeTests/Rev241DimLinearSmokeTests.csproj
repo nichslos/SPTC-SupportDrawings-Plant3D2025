@@ -60,6 +60,8 @@
              Link="SupportProductionPackagePlan.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPackageSettingsStore.cs"
              Link="SupportProductionPackageSettingsStore.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionTitleBlockPlaceholder60.cs"
+             Link="SupportProductionTitleBlockPlaceholder60.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingPaperScale39.cs"
              Link="SupportDrawingPaperScale39.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingUiPreferences.cs"
