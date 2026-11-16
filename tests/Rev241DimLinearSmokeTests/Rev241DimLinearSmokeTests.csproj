@@ -52,6 +52,8 @@
              Link="SupportOrthoUpdatePerformancePolicy.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoEffectivePaper59.cs"
              Link="NativeOrthoEffectivePaper59.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoTitleBlockBypass69.cs"
+             Link="NativeOrthoTitleBlockBypass69.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPdfMediaMatcher.cs"
              Link="SupportProductionPdfMediaMatcher.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPdfPolicy.cs"
