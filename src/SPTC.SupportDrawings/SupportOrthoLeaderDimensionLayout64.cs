@@ -242,7 +242,7 @@ public static class SupportOrthoLeaderDimensionLayout64
                 note.LabelTop-note.LabelHeight-textInsetSafety,
                 note.LabelX+note.LabelWidth+textInsetSafety,
                 note.LabelTop+textInsetSafety);
-            if(text.L<2||text.R>paperW*.78-1||
+            if(text.L<2||text.R>paperW*NativeOrthoEffectivePaper59.RightTitleBlockStartRatio-1||
                text.B<paperH*.12+1||text.T>paperH*.94-1)
                 return "LABEL_OUTSIDE_SHEET";
             if(boxes.Any(b=>b.Intersects(text,.20)))
