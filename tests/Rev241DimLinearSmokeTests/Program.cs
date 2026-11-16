@@ -179,6 +179,7 @@ ProductionUiPreferencesTests.Run();
 ProductionPackageSmokeTests.Run();
 ProductionPdfSmokeTests.Run();
 Rev259NativeSheetPlacementTests.Run();
+Rev260TitleBlockPlaceholderTests.Run();
 Console.WriteLine("REV22.43 vertical overall-height fallback and cross-axis compact safety PASS");
 
 Console.WriteLine("REV22.42 compact DIMLINEAR across six views PASS");

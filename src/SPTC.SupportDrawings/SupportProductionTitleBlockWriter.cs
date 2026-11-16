@@ -89,8 +89,11 @@ internal static class SupportProductionTitleBlockWriter
                 already++;
                 continue;
             }
-            if(!config.OverwriteExistingAttributes&&
-               !string.IsNullOrWhiteSpace(attr.TextString))
+            // REV60: already mapped, unmistakable seed placeholders are
+            // eligible for replacement even when broad overwrite is off.
+            // Real nonempty entries remain protected.
+            if(!SupportProductionTitleBlockPlaceholder60.CanReplace(
+                field,attr.TextString,config.OverwriteExistingAttributes))
             {
                 preserved++;
                 continue;
@@ -104,6 +107,48 @@ internal static class SupportProductionTitleBlockWriter
             "PARTIAL_NEEDS_REVIEW":
             "MAPPED_ATTRIBUTES_VERIFIED_IN_MEMORY";
         return new(status,1,written,already,preserved,missing.ToArray());
+    }
+
+    /// <summary>
+    /// Read-only discovery for the GENERATED native Ortho paper layout.
+    /// Report exact editable block names and ATTRIBUTE tags, never
+    /// attribute values. This does not guess which template block to edit.
+    /// </summary>
+    internal static IReadOnlyList<string> InspectCandidates(
+        Database db,string layoutName)
+    {
+        var report=new List<string>();
+        using var tr=db.TransactionManager.StartTransaction();
+        var layouts=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,
+            OpenMode.ForRead);
+        if(!layouts.Contains(layoutName))
+            return new[]{"LAYOUT_NOT_FOUND"};
+        var layout=(Layout)tr.GetObject(layouts.GetAt(layoutName),
+            OpenMode.ForRead);
+        var paper=(BlockTableRecord)tr.GetObject(layout.BlockTableRecordId,
+            OpenMode.ForRead);
+        foreach(ObjectId id in paper)
+        {
+            if(tr.GetObject(id,OpenMode.ForRead,false)
+                is not BlockReference block)continue;
+            string blockName=EffectiveBlockName(tr,block);
+            var tags=new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach(ObjectId attrId in block.AttributeCollection)
+                if(tr.GetObject(attrId,OpenMode.ForRead,false)
+                   is AttributeReference attr&&
+                   !string.IsNullOrWhiteSpace(attr.Tag))
+                    tags.Add(attr.Tag);
+            report.Add("BLOCK="+blockName+
+                ";HANDLE="+block.Handle+
+                ";ATTRIB_TAGS="+
+                (tags.Count==0?"NONE":string.Join(",",tags)));
+        }
+        return report.Count==0?
+            new[]{"NO_EDITABLE_PAPER_BLOCK_REFERENCES"}:
+            report.OrderByDescending(x=>x.Contains("ATTRIB_TAGS=NONE",
+                    StringComparison.Ordinal)?0:1)
+                .ThenBy(x=>x,StringComparer.OrdinalIgnoreCase)
+                .Take(16).ToArray();
     }
 
     private static string EffectiveBlockName(Transaction tr,

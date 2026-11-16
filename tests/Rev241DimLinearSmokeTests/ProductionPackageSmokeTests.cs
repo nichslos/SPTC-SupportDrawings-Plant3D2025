@@ -138,7 +138,12 @@ internal static class ProductionPackageSmokeTests
                 baseDir);
             try
             {
-                SupportProductionPackageSettingsStore.Save(baseDir,settings);
+                var saved=SupportProductionPackageSettingsStore.SaveAndVerify(
+                    baseDir,settings);
+                Need(saved.TitleBlockName=="SHEET_TITLE"&&
+                    saved.AttributeTags.Count==3&&
+                    saved.AttributeTags["DrawingNumber"]=="DRAWING_NO",
+                    "exact title-block name and ATTRIB mappings survive save");
                 Need(SupportProductionPackageSettingsStore.TryLoad(
                     baseDir,out var restored,out var status)&&
                     restored.Enabled&&status=="CONFIGURED_ENABLED"&&

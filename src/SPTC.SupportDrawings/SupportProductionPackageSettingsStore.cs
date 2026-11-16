@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 
@@ -47,7 +48,17 @@ internal static class SupportProductionPackageSettingsStore
            !string.Equals(actual.DrawingSeries,expected.DrawingSeries,
                StringComparison.Ordinal)||
            !string.Equals(actual.Revision,expected.Revision,
-               StringComparison.Ordinal))
+               StringComparison.Ordinal)||
+           !string.Equals(actual.DrawingTitle,expected.DrawingTitle,
+               StringComparison.Ordinal)||
+           !string.Equals(actual.TitleBlockName,expected.TitleBlockName,
+               StringComparison.Ordinal)||
+           actual.OverwriteExistingAttributes!=
+               expected.OverwriteExistingAttributes||
+           actual.AttributeTags.Count!=expected.AttributeTags.Count||
+           expected.AttributeTags.Any(x=>
+               !actual.AttributeTags.TryGetValue(x.Key,out string? tag)||
+               !string.Equals(x.Value,tag,StringComparison.Ordinal)))
             throw new IOException("Production package settings could not be "+
                 "verified after saving ("+reason+"). No settings were confirmed.");
         return actual;
