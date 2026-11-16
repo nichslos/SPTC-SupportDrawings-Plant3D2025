@@ -114,6 +114,10 @@ internal static class ProductionPdfSmokeTests
                 @"C:\Users\Public\DWG To PDF.pc3",594,841,
                 true,"ISO_A1_LANDSCAPE",841,594),
                 "validated full-path PC3 and rotated A1 supported");
+            Need(SupportProductionPdfMediaMatcher.ConfirmValidated(
+                "DWG To PDF.pc3","DWG To PDF.pc3",594,841,
+                false,"ISO_A1_ROUNDED",594.25,840.82),
+                "validated PC3 media retains A1 within printer rounding");
             Need(!SupportProductionPdfMediaMatcher.ConfirmValidated(
                 "DWG To PDF.pc3","SomePrinter.pc3",594,841,
                 false,"ISO_A1",594,841),
