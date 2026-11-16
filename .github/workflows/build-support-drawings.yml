@@ -102,7 +102,7 @@ jobs:
           $scaleTest61=Get-Content 'tests/SupportSheetSmokeTests/Rev61ExactScaleTests.cs' -Raw
           foreach($token in @(
               'NativeOrthoExactScalePlacement61.Build(',
-              'NeedsAdaptiveLayout(options.ScaleDenominator',
+              'NativeOrthoExactScalePlacement61.NeedsAdaptiveLayout(',
               'Denominator=options.ScaleDenominator',
               'Scale=1.0/options.ScaleDenominator',
               'NativeOrthoTenViewAutoPlacement26.Build(fit,w,h)',
