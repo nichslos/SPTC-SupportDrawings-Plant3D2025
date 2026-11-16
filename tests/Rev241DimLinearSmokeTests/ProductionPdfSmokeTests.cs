@@ -113,6 +113,14 @@ internal static class ProductionPdfSmokeTests
             Need(SupportProductionPdfMediaMatcher
                     .TargetPlotRotationDegrees(true)==90,
                 "swapped A1 media uses exact quarter-turn for paper-space fit");
+            // Fixture from the uploaded REV57 PDF and its corresponding
+            // native report: TOP/BOTTOM centers have Y=723.26 mm.
+            // These are valid portrait A1 positions but impossible in a
+            // displayed landscape page of only 594 mm tall.
+            const double topRowY=723.26,portraitHeight=841.0,
+                landscapeHeight=594.0;
+            Need(topRowY<portraitHeight&&topRowY>landscapeHeight,
+                "REV58 cropped TOP/BOTTOM regression: portrait planning cannot plot landscape");
             var tenViewPortrait=SupportProductionPdfMediaMatcher.Select(
                 594,841,new[]{
                     new SupportProductionPdfMediaMatcher.Candidate(
