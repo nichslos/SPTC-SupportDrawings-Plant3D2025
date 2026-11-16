@@ -329,8 +329,9 @@ jobs:
              -not $test68.Contains('A0 supplementary search stays bounded')) {
             throw 'REV68 dimension preservation regression is missing'
           }
-          # REV69: strict first; only explicit All10 A0 can bypass
-          # unused right title-block reserve after normal fit fails.
+          # REV70: strict first; explicit All10 can bypass the right
+          # title-block reserve on ANY actually registered EMPTY native
+          # Ortho paper, irrespective of name, dimensions or orientation.
           # Actual printed title-block text, title template, SDK scale
           # and native PDF publisher are never changed. Overprint risk
           # is flagged in DRAFT for live visual verification.
@@ -368,6 +369,21 @@ jobs:
              -not $test69.Contains('EntersOldTitleBlockZone') -or
              -not $test69.Contains('1:10 TEST5 still passes strict layout')) {
             throw 'REV69 physical viewport, annotation/dimension or regression coverage missing'
+          }
+          # REV70: ensure the old REV69 A0 1100x800 threshold cannot
+          # silently exclude valid A1/portrait/custom/smaller registered
+          # native Ortho seeds. Exact physical fit remains the safeguard.
+          $test70=Get-Content 'tests/SupportSheetSmokeTests/Rev70ProjectMediaTests.cs' -Raw
+          if($bypass69.Contains('paperW>=1100') -or
+             $bypass69.Contains('paperH>=800') -or
+             -not $bypass69.Contains('NativeOrthoEffectivePaper59.FromMedia(') -or
+             -not $gen.Contains('REV70_PAPER_SIZE_POLICY=ALL_REGISTERED_EMPTY_NATIVE_ORTHO_MEDIA') -or
+             -not $gen.Contains('REV70_EFFECTIVE_REGISTERED_PAPER_MM=') -or
+             -not $test70.Contains('594,841,1150,900') -or
+             -not $test70.Contains('920,650,1150,900') -or
+             -not $test70.Contains('594,420,550,445') -or
+             -not $test70.Contains('SmallestFitting(')) {
+            throw 'REV70 all project-native paper sizes and custom/portrait bypass regression missing'
           }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
