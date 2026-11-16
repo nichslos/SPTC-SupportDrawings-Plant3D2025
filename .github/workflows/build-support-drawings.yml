@@ -259,6 +259,41 @@ jobs:
              -not $staticTests66.Contains('real static text')) {
             throw 'REV66 A0/A1 and static-template test coverage missing'
           }
+          # REV67: the A0 DIMLINEAR coordinator must actually provide
+          # 20 native collision-tested trial slots (REV66 requested 20
+          # while only 14 were defined), and never change the first 14.
+          $coordinator67=Get-Content "$root/SupportOrthoLeaderDimensionLayout64.cs" -Raw
+          $writer67=Get-Content "$root/SupportProductionTitleBlockWriter.cs" -Raw
+          $pdfAudit67=Get-Content "$root/SupportProductionPdfStructure67.cs" -Raw
+          $pdfPublisher67=Get-Content "$root/SupportProductionNativePdfPublisher.cs" -Raw
+          $tests67=Get-Content 'tests/Rev241DimLinearSmokeTests/Rev267ProductionFinishTests.cs' -Raw
+          $coordTests67=Get-Content 'tests/Rev241DimLinearSmokeTests/Rev264LeaderDimensionCoordinationTests.cs' -Raw
+          foreach($token in @('AvailableTrialCount=>Trials.Length',
+              '(0,10),(0,13),(8,7),(-8,7),(16,7),(-16,7)',
+              'ESSENTIAL_OVERALL_COUNT_CHANGED','PREVIOUS_DIMENSION_CHANGED',
+              'nativeLabelLineAdvance')) {
+            if(-not $coordinator67.Contains($token)) {
+              throw "REV67 complete A0 leader dimension trial safety missing: $token"
+            }
+          }
+          foreach($token in @('NESTED_BLOCK_DEFINITIONS=',
+              'UNINSTANTIATED_ATTDEF_COUNT=',
+              'BlockReference inner', 'pending.Push(')) {
+            if(-not $writer67.Contains($token)) {
+              throw "REV67 read-only nested titleblock evidence missing: $token"
+            }
+          }
+          if(-not $pdfAudit67.Contains('REVIEW_INVALID_XREF_OFFSET') -or
+             -not $pdfAudit67.Contains('BASIC_STRUCTURE_PASS') -or
+             -not $pdfPublisher67.Contains('REV67_PDF_STRUCTURE=') -or
+             -not $pdfPublisher67.Contains('REV67_EXTERNAL_PDF_READER_CHECK_REQUIRED=TRUE')) {
+            throw 'REV67 read-only independent PDF compatibility audit missing'
+          }
+          if(-not $tests67.Contains('REVIEW_TRAILING_DATA') -or
+             -not $tests67.Contains('MText formatted hash') -or
+             -not $coordTests67.Contains('AvailableTrialCount==20')) {
+            throw 'REV67 dimension, static titleblock and PDF smoke tests absent'
+          }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
               'options.AutoSeed','options.Views.Count',
