@@ -8,7 +8,7 @@ internal static class Rev63MultiSheetTests
     {
         if(!condition)throw new Exception("REV63 exact-scale sheet set: "+message);
     }
-    static void Run()
+    internal static void Run()
     {
         var shape=NativeOrthoLayout.Build(
             new BoundingBox3(0,0,0,180,1234,603),1.0,0);
