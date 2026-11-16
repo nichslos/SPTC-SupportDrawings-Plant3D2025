@@ -18,7 +18,8 @@ internal static class NativeOrthoSingleSheet64
 
     internal static bool TryExactTenFit(NativeOrthoLayout.Plan layout,
         IReadOnlyList<string> selectedViews,int denominator,
-        double widthMm,double heightMm,out string reason)
+        double widthMm,double heightMm,out string reason,
+        bool bypassTitleBlockReserve=false)
     {
         reason="";
         if(layout==null||denominator<1||
@@ -35,7 +36,8 @@ internal static class NativeOrthoSingleSheet64
             // Force the selection-aware EXACT-scale layout, even when
             // an oversized sheet has a less conservative auto fit.
             var placement=NativeOrthoExactScalePlacement61.Build(
-                plan,selectedViews,widthMm,heightMm);
+                plan,selectedViews,widthMm,heightMm,
+                bypassTitleBlockReserve:bypassTitleBlockReserve);
             NativeOrthoEffectivePaper59.RequireInsideUsableArea(
                 NativeOrthoEffectivePaper59.FromMedia(widthMm,heightMm,0),
                 placement.Views.Select(v=>
@@ -45,7 +47,8 @@ internal static class NativeOrthoSingleSheet64
                 placement.Titles.Select(t=>
                     new NativeOrthoEffectivePaper59.CaptionFrame(
                         t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
-                requireTen:true);
+                requireTen:true,
+                bypassTitleBlockReserve:bypassTitleBlockReserve);
             if(placement.Views.Count!=10||placement.Titles.Count!=10)
                 throw new InvalidOperationException(
                     "Native Ortho views/titles not complete.");
@@ -61,13 +64,15 @@ internal static class NativeOrthoSingleSheet64
 
     internal static Seed? SmallestFitting(
         NativeOrthoLayout.Plan layout,IReadOnlyList<string> views,
-        int denominator,IEnumerable<Seed> candidates)
+        int denominator,IEnumerable<Seed> candidates,
+        bool bypassTitleBlockReserve=false)
     {
         if(candidates==null)throw new ArgumentNullException(nameof(candidates));
         return candidates.Where(x=>x.RegisteredEmpty&&
                 !string.IsNullOrWhiteSpace(x.Path)&&
                 TryExactTenFit(layout,views,denominator,
-                    x.WidthMm,x.HeightMm,out _))
+                    x.WidthMm,x.HeightMm,out _,
+                    bypassTitleBlockReserve:bypassTitleBlockReserve))
             // Prefer the smallest suitable paper and make tie-breaking
             // deterministic across project sessions.
             .OrderBy(x=>x.WidthMm*x.HeightMm)
