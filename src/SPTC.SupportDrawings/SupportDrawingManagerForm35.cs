@@ -546,9 +546,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             " Description="+description.Checked+
             "   |   Prefix: "+(prefix.Text.Length==0?
                 "Automatic unique name":prefix.Text)+
-            "\r\nREV64: All 10 = ONE native sheet at the exact 1:N. "+
-            "Automatic seed chooses the smallest registered fitting media "+
-            "(A0 or larger when required). No automatic split/rescale.";
+            "\r\nREV65: All 10 = ONE native sheet at exact 1:N. "+
+            "Bounded view rearrangement chooses the smallest safe "+
+            "registered paper; failed seeds list sizes and reasons in command log.";
     }
 
     private void RunSelected()
