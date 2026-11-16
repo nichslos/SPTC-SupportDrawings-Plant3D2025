@@ -674,38 +674,65 @@ public sealed class SupportOrthoTenViewGenerator
                 if(exactTenOnOneSheet64)
                 {
                     var validMedia=new List<NativeOrthoSingleSheet64.Seed>();
+                    var reviews=new List<NativeOrthoSeedDiagnostics65.Result>();
                     int checkedEmpty=0;
                     foreach(string path in candidates)
                     {
+                        // Only the Project Manager's registered EMPTY native
+                        // Ortho drawing is a valid source; generated Ortho
+                        // drawings or arbitrary copied DWGs stay excluded.
+                        string catalog=ViewCatalog(part.OrthoPart,path);
+                        if(catalog!="EMPTY_REGISTERED_ORTHO")continue;
+                        checkedEmpty++;
+                        string name=Path.GetFileName(path);
                         try
                         {
-                            if(ViewCatalog(part.OrthoPart,path)!=
-                               "EMPTY_REGISTERED_ORTHO"||
-                               !IsNativeOrthoValid(part.OrthoPart,path))
+                            if(!IsNativeOrthoValid(part.OrthoPart,path))
+                            {
+                                reviews.Add(new NativeOrthoSeedDiagnostics65.Result(
+                                    name,"NATIVE_INVALID",0,0,
+                                    "OrthoDocUtils rejected this registered drawing"));
                                 continue;
-                            checkedEmpty++;
+                            }
                             using var previewDb=new Database(false,true);
                             previewDb.ReadDwgFile(path,
                                 FileOpenMode.OpenForReadAndAllShare,true,null);
                             previewDb.CloseInput(true);
                             var previewSheet=CurrentPaperDetails(previewDb,
                                 FindPaperLayout(previewDb));
-                            validMedia.Add(new NativeOrthoSingleSheet64.Seed(
-                                Path.GetFullPath(path),
-                                previewSheet.WidthMm,previewSheet.HeightMm,true));
+                            bool fits=NativeOrthoSingleSheet64.TryExactTenFit(
+                                layout,options.Views,options.ScaleDenominator,
+                                previewSheet.WidthMm,previewSheet.HeightMm,
+                                out string reason);
+                            reviews.Add(new NativeOrthoSeedDiagnostics65.Result(
+                                name,fits?"PASS":"NO_FIT",
+                                previewSheet.WidthMm,previewSheet.HeightMm,
+                                fits?"Ten native frames, captions and right "+
+                                    "title-block clearance verified at exact 1:"+
+                                    options.ScaleDenominator:reason));
+                            if(fits)
+                                validMedia.Add(new NativeOrthoSingleSheet64.Seed(
+                                    Path.GetFullPath(path),
+                                    previewSheet.WidthMm,previewSheet.HeightMm,true));
                         }
-                        catch(System.Exception)
+                        catch(System.Exception ex)
                         {
-                            // Fail closed; corrupted or unplottable native
-                            // seed media is never used to produce output.
+                            // Report rather than silently hide corrupted or
+                            // unplottable registered empty seed problems.
+                            reviews.Add(new NativeOrthoSeedDiagnostics65.Result(
+                                name,"MEDIA_UNREADABLE",0,0,
+                                ex.GetType().Name+": "+ex.Message));
                         }
                     }
+                    foreach(string line in NativeOrthoSeedDiagnostics65.Format(
+                        reviews))
+                        ed.WriteMessage("\nSPTC "+line);
                     var winner=NativeOrthoSingleSheet64.SmallestFitting(
                         layout,options.Views,options.ScaleDenominator,validMedia);
                     if(winner!=null)
                     {
                         seed=winner.Path;
-                        ed.WriteMessage("\nSPTC REV64: ONE SHEET / 1:"+
+                        ed.WriteMessage("\nSPTC REV65: SMALLEST SAFE SHEET / 1:"+
                             options.ScaleDenominator+" / all 10 views. "+
                             "Registered empty Ortho seed: "+Path.GetFileName(seed)+
                             "; paper "+
@@ -716,7 +743,9 @@ public sealed class SupportOrthoTenViewGenerator
                     }
                     else
                     {
-                        ed.WriteMessage("\nSPTC REV64: ONE SHEET REQUIRED. "+
+                        ed.WriteMessage("\nSPTC REV65: ONE SHEET REQUIRED. "+
+                            "See REV65_SEED_CANDIDATE for the exact sheet "+
+                            "media and rejection reason. "+
                             "Cannot place all ten views at exact 1:"+
                             options.ScaleDenominator+" in any available "+
                             "registered EMPTY native Ortho sheet ("+
