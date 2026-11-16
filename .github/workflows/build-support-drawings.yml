@@ -270,7 +270,7 @@ jobs:
           foreach($token in @('rotationDegrees==90||rotationDegrees==270',
               'RightTitleBlockStartRatio=0.75',
               'RequireInsideUsableArea(',
-              'paper-space border')) {
+              'actual border')) {
             if(-not $orientedPaper.Contains($token)) {
               throw "REV59 native border/title-block policy missing: $token"
             }
