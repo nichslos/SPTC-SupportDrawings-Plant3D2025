@@ -319,6 +319,28 @@ jobs:
              -not $pdfSmoke.Contains('unexpected validated output device always blocked')) {
             throw 'Strict resolved PDF device and physical A1 regression absent'
           }
+          # REV58: Live PDF structurally verified, but page /Rotate=270
+          # turned native portrait A1 (594x841) into landscape (841x594)
+          # and clipped TOP/BOTTOM and part of LEFT/RIGHT. The printer
+          # override must explicitly use native sheet orientation, not
+          # the seed layout PlotRotation. Protect all 10 view placements.
+          foreach($token in @('TargetPlotRotationDegrees(match.Rotate90)',
+              '0=>PlotRotation.Degrees000',
+              '90=>PlotRotation.Degrees090',
+              'SPTC_PDF_ORTHO_SHEET_MM=',
+              'SPTC_PDF_PAGE_ORIENTATION_CHECK=PASS')) {
+            if(-not $pdfNative.Contains($token)) {
+              throw "REV58 safe portrait PDF override missing: $token"
+            }
+          }
+          if($pdfNative.Contains('PlotRotation rotation=layout.PlotRotation;')) {
+            throw 'REV58: Never propagate rotated native seed page setup into output PDF'
+          }
+          if(-not $pdfMedia.Contains('TargetPlotRotationDegrees(bool mediaSwapped)') -or
+             -not $pdfSmoke.Contains('portrait 594x841 direct media must plot 0 degrees') -or
+             -not $pdfSmoke.Contains('ten native view rows use portrait A1')) {
+            throw 'REV58 paper-space 10-view orientation regressions missing'
+          }
           # Native PDF phase failures must disclose SaveAs versus
           # PlotEngine versus validation, not just a generic native error.
           $pdfNativeDiagnostics=Get-Content "$root/SupportProductionNativePdfPublisher.cs" -Raw
