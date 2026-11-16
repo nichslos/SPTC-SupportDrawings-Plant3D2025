@@ -123,6 +123,27 @@ jobs:
              -not $scaleTest61.Contains('1:1 cannot put a 1.25-meter view')) {
             throw 'REV61 scale-fit A1 and larger-sheet regression absent'
           }
+          # REV62: the native 1:10 Ortho6 and ISO4 sheets must remain
+          # compatible with full native QA/PDF safety. Require both the
+          # actual viewport-row fix and explicit dimension-not-applicable
+          # ISO classification, with pure regression tests.
+          $callout62=Get-Content "$root/SupportOrthoMemberCalloutPlan27.cs" -Raw
+          $audit62=Get-Content "$root/SupportOrthoDrawingQualityAudit61.cs" -Raw
+          $subsetTest62=Get-Content 'tests/Rev241DimLinearSmokeTests/Rev262NativeSubsetQaTests.cs' -Raw
+          if(-not $callout62.Contains('Math.Abs(v.Y-camera.Y)<(v.H+camera.H)/2')) {
+            throw 'REV62 actual vertical viewport-neighbor overlap policy missing'
+          }
+          if(-not $audit62.Contains('validIsoOnly') -or
+             -not $audit62.Contains('NO_NATIVE_MEMBER_EVIDENCE') -or
+             -not $audit62.Contains('UNSUPPORTED_VIEW') -or
+             -not $gen.Contains('REV62_DIMENSION_QA_MODE=')) {
+            throw 'REV62 native ISO-only QA exclusion/integrity policy missing'
+          }
+          if(-not $subsetTest62.Contains('all six TEST5 1:10 views') -or
+             -not $subsetTest62.Contains('ISO-only native drawing') -or
+             -not $subsetTest62.Contains('invalid native ISO camera')) {
+            throw 'REV62 1:10 native subset regressions absent'
+          }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
               'options.AutoSeed','options.Views.Count',
