@@ -305,7 +305,9 @@ public sealed class SupportOrthoTenViewGenerator
     private async Task<bool> GenerateOne(Document sourceDoc,
         ObjectId[]? selectedOverride,SupportDrawingUiOptions options,
         SupportDrawingProgressForm35 progress,
-        Action<SupportProductionPackagePlan.Entry>? onProductionEntry=null)
+        Action<SupportProductionPackagePlan.Entry>? onProductionEntry=null,
+        Action<IReadOnlyList<NativeOrthoMultiSheetPlan63.Sheet>>? onSheetSet=null,
+        string sheetDrawingSuffix="")
     {
         Editor ed=sourceDoc.Editor;
         bool succeeded=false;
@@ -730,10 +732,34 @@ public sealed class SupportOrthoTenViewGenerator
                 // larger 1:N view magnification, first attempt an EXACT
                 // selected-view grid, with native titles and label reserve.
                 // No auto-rescale or native/project writes on failure.
-                var proof=exactReflow?
-                    NativeOrthoExactScalePlacement61.Build(
-                        fit,options.Views,w,h):
-                    NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
+                NativeOrthoTenViewAutoPlacement26.Result proof;
+                if(exactReflow)
+                {
+                    try
+                    {
+                        proof=NativeOrthoExactScalePlacement61.Build(
+                            fit,options.Views,w,h);
+                    }
+                    catch(NativeOrthoExactScalePlacement61.DoesNotFitException)
+                        when(onSheetSet!=null&&options.Views.Count==10)
+                    {
+                        // REV63: all ten cannot fit ONE exact-scale A1
+                        // drawing. Preflight EVERY proposed sheet before
+                        // cloning or registering any native Ortho DWG.
+                        // If even a singleton cannot fit, the entire
+                        // request is rejected with zero project writes.
+                        var sheetSet=NativeOrthoMultiSheetPlan63.Build(
+                            fit,options.Views,w,h);
+                        onSheetSet(sheetSet);
+                        ed.WriteMessage("\nSPTC REV63: 1:"+
+                            fit.Denominator+" needs "+sheetSet.Count+
+                            " native Ortho sheets. Verified all page "+
+                            "layouts without registering a DWG.");
+                        return false;
+                    }
+                }
+                else
+                    proof=NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
                 NativeOrthoEffectivePaper59.RequireInsideUsableArea(
                     previewSheet,
                     proof.Views.Select(v=>
@@ -2376,7 +2402,8 @@ public sealed class SupportOrthoTenViewGenerator
                 try
                 {
                     string number=SupportProductionPackagePlan.DrawingNumber(
-                        packageSettings,source,handles,explicitSupportTag);
+                        packageSettings,source,handles,explicitSupportTag)+
+                        sheetDrawingSuffix;
                     string scaleText="1:"+candidate.Denominator;
                     var metadata=SupportProductionTitleBlockWriter.Metadata(
                         packageSettings,number,source,
@@ -2493,7 +2520,8 @@ public sealed class SupportOrthoTenViewGenerator
                     options.ScaleDenominator>0?
                         "1:"+options.ScaleDenominator:"Automatic",
                     SupportBuildIdentity.Id,explicitSupportTag,
-                    titleBlockStatus);
+                    titleBlockStatus,
+                    sheetDrawingSuffix);
                 if(!succeeded)
                     entry=entry with {
                         QaStatus="FAIL",IssueStatus="GENERATION_FAILED",
