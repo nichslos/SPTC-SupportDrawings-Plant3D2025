@@ -337,21 +337,32 @@ internal static class SupportProductionNativePdfPublisher
             ()=>validator.RefreshLists(sheet),log);
         MediaStep("OVERRIDE_SELECT_MATCHED_MEDIA",
             ()=>validator.SetCanonicalMediaName(sheet,match.MediaName!),log);
-        // The PDF device may expose A1 only as landscape while native
-        // layout is portrait. Compensate 90 degrees in this disposable
-        // plot override, never in the original layout or its viewports.
-        PlotRotation rotation=layout.PlotRotation;
-        if(match.Rotate90)
-        {
-            rotation=rotation switch {
-                PlotRotation.Degrees000=>PlotRotation.Degrees090,
-                PlotRotation.Degrees090=>PlotRotation.Degrees000,
-                PlotRotation.Degrees180=>PlotRotation.Degrees270,
-                PlotRotation.Degrees270=>PlotRotation.Degrees180,
-                _=>throw new InvalidOperationException(
-                    "Unknown plot rotation; cannot preserve orientation")
-            };
-        }
+        // REV58: Native Ortho view centers/frames were generated in
+        // unrotated 594x841 mm portrait layout coordinates. The original
+        // seed's PlotRotation=270 caused the PDF to display as landscape
+        // 841x594; TOP/BOTTOM disappeared and LEFT/RIGHT were clipped,
+        // even though native view/QA checks all passed.
+        //
+        // Never inherit seed rotation for the disposable PDF override.
+        // Direct A1 printer media => Degrees000 (portrait PDF);
+        // a physically swapped A1 medium => Degrees090. Keep original
+        // paper layout/viewport/dimensions and seed unchanged.
+        int degrees=SupportProductionPdfMediaMatcher
+            .TargetPlotRotationDegrees(match.Rotate90);
+        PlotRotation rotation=degrees switch {
+            0=>PlotRotation.Degrees000,
+            90=>PlotRotation.Degrees090,
+            _=>throw new InvalidOperationException(
+                "Unsupported physical PDF page orientation.")
+        };
+        log("SPTC_PDF_ORTHO_SHEET_MM="+
+            originalWidth.ToString("0.###",
+                System.Globalization.CultureInfo.InvariantCulture)+"x"+
+            originalHeight.ToString("0.###",
+                System.Globalization.CultureInfo.InvariantCulture)+
+            " NATIVE_SEED_ROTATION="+layout.PlotRotation+
+            " PDF_OVERRIDE_ROTATION="+rotation+
+            " MEDIA_SWAPPED="+match.Rotate90);
         MediaStep("OVERRIDE_SET_ROTATION",
             ()=>validator.SetPlotRotation(sheet,rotation),log);
         MediaStep("OVERRIDE_SET_LAYOUT_PLOT_AREA",
@@ -403,7 +414,14 @@ internal static class SupportProductionNativePdfPublisher
                     "sheet size/orientation; publication blocked.");
             if(checkedSheet.PlotRotation!=rotation)
                 throw new InvalidOperationException(
-                    "Validated PDF rotation changed from requested layout.");
+                    "Validated PDF orientation differs from the native "+
+                    "paper-space coordinate system; prevent clipped views.");
+            log("SPTC_PDF_PAGE_ORIENTATION_CHECK=PASS "+
+                "ROTATION="+rotation+" NATIVE_SHEET_MM="+
+                originalWidth.ToString("0.###",
+                    System.Globalization.CultureInfo.InvariantCulture)+"x"+
+                originalHeight.ToString("0.###",
+                    System.Globalization.CultureInfo.InvariantCulture));
             log("SPTC_PDF_VALIDATED_MEDIA=PASS DEVICE="+
                 checkedSheet.PlotConfigurationName+
                 " MEDIA="+checkedSheet.CanonicalMediaName+
