@@ -151,6 +151,17 @@ internal static class SupportProductionNativePdfPublisher
                 throw new IOException("PDF plot ended without a valid PDF header/EOF.");
             log("SPTC PDF verified: "+Path.GetFileName(pdf)+
                 " bytes="+pdfBytes);
+            // REV67: independent, read-only PDF structural review.
+            // Retain the established byte/header/EOF verification as
+            // the native publication gate. PDF syntax compatibility
+            // cannot be guaranteed by this lightweight audit and must
+            // be checked with Acrobat or qpdf before engineering issue.
+            var pdfEvidence=SupportProductionPdfStructure67.InspectFile(pdf);
+            log("REV67_PDF_STRUCTURE="+pdfEvidence.Status+
+                " STARTXREF="+pdfEvidence.StartXrefOffset+
+                " EOF="+pdfEvidence.EofOffset+
+                " NOTE="+pdfEvidence.Note);
+            log("REV67_EXTERNAL_PDF_READER_CHECK_REQUIRED=TRUE");
             return SupportProductionPdfPolicy.AfterPublication(
                 entry,pdf,pdfBytes,savedBytes,config.PdfPlotDevice);
         }
