@@ -541,9 +541,14 @@ jobs:
               throw "REV59 native border/title-block policy missing: $token"
             }
           }
+          # REV69: the original 25% right title-block reservation
+          # REMAINS the strict DEFAULT. Explicit A0 All10 failure may
+          # only trigger the separately tested physical-page bypass.
           if(-not $orthoPlan.Contains('paperWidth*.75') -or
-             -not $titlePlan59.Contains('paperWidth*.75')) {
-            throw 'REV59 view and title planners must reserve 25% title block'
+             -not $titlePlan59.Contains('NativeOrthoTitleBlockBypass69.Right(') -or
+             -not $bypass69.Contains('LegacyRightRatio=.75') -or
+             -not $bypass69.Contains('LegacyBottomRatio=.12')) {
+            throw 'REV59 strict default view/title title-block reservation missing'
           }
           if(-not $rev59Tests.Contains('original off-border TOP view') -or
              -not $rev59Tests.Contains('right-side title-block overlap') -or
