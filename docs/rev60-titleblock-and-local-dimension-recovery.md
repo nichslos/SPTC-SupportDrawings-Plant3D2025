@@ -30,3 +30,5 @@ It also reports `PRODUCTION_TITLEBLOCK_STATUS=NOT_CONFIGURED`. This is not proof
 ## Limits
 
 Unit tests and Windows CI cannot inspect your actual title block contents or validate Plant 3D 2025 native Update View. The source PDF has `SPTC_NATIVE_SEED_01` and `####` visible, but we cannot know whether they are ATTRIB, DBText, MText or XREF until title-block discovery or the original DWG is inspected. Leave the draft status intact until visual and source tests pass.
+
+Build verification: run the Windows Actions smoke tests before any Plant 3D acceptance claim; a successful compile does not prove native Ortho Update View or template attribute compatibility.
