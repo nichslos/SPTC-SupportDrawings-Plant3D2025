@@ -14,6 +14,11 @@ namespace SPTC.SupportDrawings;
 /// </summary>
 internal static class NativeOrthoExactScalePlacement61
 {
+    internal sealed class DoesNotFitException:InvalidOperationException
+    {
+        internal DoesNotFitException(string message):base(message) {}
+    }
+
     internal const double ModelFrameMargin=1.05;
     internal const double AnnotationReserveMm=
         SupportOrthoMemberCalloutPlan27.LabelGapFromFrameMm+114+5;
@@ -160,7 +165,7 @@ internal static class NativeOrthoExactScalePlacement61
                 // Another bounded grid might fit without collisions.
             }
         }
-        throw new InvalidOperationException(
+        throw new DoesNotFitException(
             "Requested 1:"+plan.Denominator+" cannot fit "+
             views.Length+" selected native view(s) on this paper sheet "+
             "with the title block and annotation clearances. "+
