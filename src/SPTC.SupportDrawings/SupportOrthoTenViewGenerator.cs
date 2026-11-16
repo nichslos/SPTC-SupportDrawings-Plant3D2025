@@ -291,6 +291,7 @@ public sealed class SupportOrthoTenViewGenerator
                         bool pageOk=false,pdfOkForPage=!packageForRun.Enabled||
                             !packageForRun.PublishPdf;
                         int beforeEntries=productionEntries.Count;
+                        string? createdDwg=null;
                         try
                         {
                             AcadApp.DocumentManager.MdiActiveDocument=sourceDoc;
@@ -305,7 +306,8 @@ public sealed class SupportOrthoTenViewGenerator
                                 " views="+string.Join(",",sheet.Views));
                             pageOk=await GenerateOne(sourceDoc,setSourceIds,
                                 pageOptions,progress,productionEntries.Add,
-                                sheetDrawingSuffix:sheet.DrawingNumberSuffix);
+                                sheetDrawingSuffix:sheet.DrawingNumberSuffix,
+                                onOutputDwg:path=>createdDwg=path);
                             if(productionEntries.Count>beforeEntries&&
                                packageForRun.Enabled&&packageForRun.PublishPdf)
                             {
@@ -330,11 +332,10 @@ public sealed class SupportOrthoTenViewGenerator
                             sheetSetReport.AppendLine("SHEET="+sheet.Suffix+
                                 " VIEWS="+string.Join(";",sheet.Views)+
                                 " DWG="+(pageOk?"PASS":"FAILED")+
-                                " PDF="+(pdfOkForPage?"VERIFIED_OR_DISABLED":
-                                    "FAILED_OR_BLOCKED")+
-                                (productionEntries.Count>beforeEntries?
-                                    " FILE="+productionEntries[^1].DestinationDwg:
-                                    " FILE=NONE"));
+                                " PDF="+(!packageForRun.Enabled||
+                                    !packageForRun.PublishPdf?"DISABLED":
+                                    pdfOkForPage?"VERIFIED":"FAILED_OR_BLOCKED")+
+                                " FILE="+(createdDwg??"NONE"));
                             if(pageOk&&pdfOkForPage)completed++;
                             else complete=false;
                         }
@@ -441,7 +442,8 @@ public sealed class SupportOrthoTenViewGenerator
         SupportDrawingProgressForm35 progress,
         Action<SupportProductionPackagePlan.Entry>? onProductionEntry=null,
         Action<IReadOnlyList<NativeOrthoMultiSheetPlan63.Sheet>>? onSheetSet=null,
-        string sheetDrawingSuffix="")
+        string sheetDrawingSuffix="",
+        Action<string>? onOutputDwg=null)
     {
         Editor ed=sourceDoc.Editor;
         bool succeeded=false;
@@ -2676,6 +2678,7 @@ public sealed class SupportOrthoTenViewGenerator
                 catch { /* native report may be unavailable */ }
             }
         }
+        if(cloned&&File.Exists(dest))onOutputDwg?.Invoke(dest);
         return succeeded;
     }
 
