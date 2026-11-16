@@ -294,6 +294,41 @@ jobs:
              -not $coordTests67.Contains('AvailableTrialCount==20')) {
             throw 'REV67 dimension, static titleblock and PDF smoke tests absent'
           }
+          # REV68: additional A0 optional native DIMLINEAR witnesses
+          # and paper line offsets; title blocks explicitly OUT OF SCOPE.
+          # Keep source geometry, first successful 25/27 dimension set,
+          # 12 essential overalls and PDF publisher safety untouched.
+          $geom68=Get-Content "$root/SupportOrthoReferenceDimPlan47.cs" -Raw
+          $stations68=Get-Content "$root/SupportOrthoProfileStationPlan.cs" -Raw
+          $offsets68=Get-Content "$root/SupportOrthoReferenceLayout51.cs" -Raw
+          $pdf68=Get-Content "$root/SupportProductionPdfStructure67.cs" -Raw
+          $publisher68=Get-Content "$root/SupportProductionNativePdfPublisher.cs" -Raw
+          $test68=Get-Content 'tests/Rev241DimLinearSmokeTests/Rev268SafeOptionalDimensionGeometryTests.cs' -Raw
+          $testReport68=Get-Content 'tests/Rev241DimLinearSmokeTests/Rev267ProductionFinishTests.cs' -Raw
+          foreach($token in @('supplementalA0', '-.10,.10,-.18,.18',
+              'Math.Abs(candidate-midpoint)<.35')) {
+            if(-not $stations68.Contains($token)) {
+              throw "REV68 verified-native-axis witness candidates missing: $token"
+            }
+          }
+          if(-not $offsets68.Contains('SupplementaryLocalMemberLaneOffsets(') -or
+             -not $geom68.Contains('supplementaryStationAttempts') -or
+             -not $geom68.Contains('supplementaryOffsetAttempts') -or
+             -not $geom68.Contains('supplementaryOptionIds') -or
+             -not $geom68.Contains('supplementaryGeometryRecovered') -or
+             -not $gen.Contains('REV68_A0_EXTRA_WITNESS_AND_LINE_GEOMETRY_TESTED=')) {
+            throw 'REV68 bounded A0 optional witness/line geometry recovery is missing'
+          }
+          if(-not $pdf68.Contains('TryAppendToExistingResult(') -or
+             -not $publisher68.Contains('REV68_PDF_AUDIT_PERSISTED_TO_RESULT=') -or
+             -not $testReport68.Contains('REV67_PDF_STRUCTURE=BASIC_STRUCTURE_PASS')) {
+            throw 'REV68 PDF audit persistence to existing RESULT.txt is missing'
+          }
+          if(-not $test68.Contains('PriorityOverallDimensions==4') -or
+             -not $test68.Contains('UnintendedAcceptedWitnessIntersections==0') -or
+             -not $test68.Contains('A0 supplementary search stays bounded')) {
+            throw 'REV68 dimension preservation regression is missing'
+          }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
               'options.AutoSeed','options.Views.Count',

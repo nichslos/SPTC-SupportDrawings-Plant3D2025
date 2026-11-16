@@ -2183,6 +2183,12 @@ public sealed class SupportOrthoTenViewGenerator
                             detailPlan.VerifiedAxisStationCandidatesTested);
                         Log("DIM_LAYOUT_AXIS_STATION_DIMENSIONS_RECOVERED="+
                             detailPlan.VerifiedAxisStationDimensionsRecovered);
+                        Log("REV68_A0_EXTRA_WITNESS_AND_LINE_GEOMETRY_TESTED="+
+                            detailPlan.Rev68SupplementaryGeometryCandidatesTested);
+                        Log("REV68_A0_EXTRA_LOCAL_DIMENSIONS_RECOVERED="+
+                            detailPlan.Rev68SupplementaryGeometryDimensionsRecovered);
+                        Log("REV68_LOCAL_DIMENSION_SAFETY="+
+                            "ADD_ONLY_12_OVERALLS_AND_EXISTING_DIMENSIONS_PROTECTED");
                         foreach(string line in
                             SupportOrthoDimensionReflow.HierarchyLinePositions(
                                 detailPlan))

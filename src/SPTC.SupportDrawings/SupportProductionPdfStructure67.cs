@@ -17,6 +17,47 @@ internal static class SupportProductionPdfStructure67
     internal sealed record Result(string Status,int StartXrefOffset,
         int EofOffset,string Note);
 
+    // REV68: append the already-computed PDF diagnostic to the
+    // generated RESULT.txt AFTER native PDF verification. Does NOT
+    // rewrite a PDF, alter production issue status or change title
+    // blocks. Never create/overwrite an unverified report file.
+    internal static bool TryAppendToExistingResult(
+        string? reportPath,Result evidence,out string status)
+    {
+        status="NO_EXISTING_RESULT_REPORT";
+        if(string.IsNullOrWhiteSpace(reportPath)||
+           !string.Equals(Path.GetExtension(reportPath),".txt",
+                StringComparison.OrdinalIgnoreCase))
+            return false;
+        try
+        {
+            var info=new FileInfo(reportPath);
+            if(!info.Exists||info.Length>32*1024*1024)
+            {
+                status="REPORT_MISSING_OR_OVERSIZED";
+                return false;
+            }
+            string line=DateTime.UtcNow.ToString("O")+
+                " REV67_PDF_STRUCTURE="+evidence.Status+
+                " STARTXREF="+evidence.StartXrefOffset+
+                " EOF="+evidence.EofOffset+
+                " NOTE="+evidence.Note.Replace("\r"," ").
+                    Replace("\n"," ")+"\r\n"+
+                DateTime.UtcNow.ToString("O")+
+                " REV67_EXTERNAL_PDF_READER_CHECK_REQUIRED=TRUE\r\n";
+            File.AppendAllText(reportPath,line);
+            status="APPENDED_TO_EXISTING_RESULT";
+            return true;
+        }
+        catch(System.Exception ex) when(ex is IOException||
+            ex is UnauthorizedAccessException||
+            ex is ArgumentException)
+        {
+            status="REPORT_APPEND_FAILED_"+ex.GetType().Name;
+            return false;
+        }
+    }
+
     internal static Result InspectFile(string path)
     {
         try

@@ -17,7 +17,8 @@ public static class SupportOrthoProfileStationPlan
     public static IReadOnlyList<double> AlongVerifiedAxis(
         bool verifiedNativeAxis,
         double midpoint,double longitudinalDelta,
-        double transverseMin,double transverseMax)
+        double transverseMin,double transverseMax,
+        bool supplementalA0=false)
     {
         if(!verifiedNativeAxis||
            !new[]{midpoint,longitudinalDelta,transverseMin,
@@ -31,7 +32,19 @@ public static class SupportOrthoProfileStationPlan
         double span=transverseMax-transverseMin;
         double margin=Math.Max(.35,span*.015);
         var stations=new List<double>();
-        foreach(double fraction in new[]{-.25,.25,-.375,.375})
+        // REV68: the previous four interpolated stations remain the
+        // first choices. On a true A0 sheet ONLY, optionally sample
+        // additional fractions along the same EXPLICIT, straight Plant
+        // Start/End axis. These are verified axis locations, not
+        // fabricated width endpoints, bolt pitches or added model data.
+        // Actual extension lines, dimension text and paper keepouts
+        // must still independently pass every REV58 collision check.
+        var fractions=new[]{-.25,.25,-.375,.375};
+        if(supplementalA0)
+            fractions=fractions.Concat(new[]{
+                -.10,.10,-.18,.18,-.30,.30,-.42,.42,-.46,.46
+            }).ToArray();
+        foreach(double fraction in fractions)
         {
             double candidate=midpoint+longitudinalDelta*fraction;
             if(candidate<=transverseMin+margin||

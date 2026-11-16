@@ -82,9 +82,35 @@ internal static class Rev267ProductionFinishTests
                 "native PDF reader refuses synthetic files shorter than 1KB");
         }
         finally {if(File.Exists(path))File.Delete(path);}
+        // REV68: RESULT.txt must carry the actual native PDF audit
+        // after PDF verification. Appending must never create a missing
+        // report or change a PDF's bytes or production status.
+        string report=Path.Combine(Path.GetTempPath(),
+            "SPTC_REV68_RESULT_"+Guid.NewGuid().ToString("N")+".txt");
+        string missing=report+".missing.txt";
+        try
+        {
+            File.WriteAllText(report,"BASELINE_DIMENSION_QA=PASS\r\n");
+            Need(SupportProductionPdfStructure67.TryAppendToExistingResult(
+                report,pass,out string appended)&&
+                appended=="APPENDED_TO_EXISTING_RESULT",
+                "verified PDF structure appends to existing generated report");
+            var content=File.ReadAllText(report);
+            Need(content.Contains("BASELINE_DIMENSION_QA=PASS")&&
+                content.Contains("REV67_PDF_STRUCTURE=BASIC_STRUCTURE_PASS")&&
+                content.Contains("REV67_EXTERNAL_PDF_READER_CHECK_REQUIRED=TRUE"),
+                "native audit persists without deleting original QA lines");
+            Need(!SupportProductionPdfStructure67.TryAppendToExistingResult(
+                missing,pass,out _)&&!File.Exists(missing),
+                "missing result file is not silently manufactured");
+        }
+        finally
+        {
+            if(File.Exists(report))File.Delete(report);
+        }
         Console.WriteLine(
-            "REV67 production: 20 safe A0 trials, read-only rich/nested "+
-            "title-block evidence, PDF xref/EOF compatibility audit, "+
-            "existing native publisher untouched PASS");
+            "REV67/68 production: 20 safe A0 trials, read-only rich "+
+            "title-block baseline retained unchanged, PDF xref/EOF "+
+            "compatibility and RESULT.txt append auditing PASS");
     }
 }

@@ -40,7 +40,9 @@ public static class SupportOrthoReferenceDimPlan47
         int IntermediateChainLaneGroupsRecovered=0,
         int AdaptiveLocalWidthDimensionsRecovered=0,
         int VerifiedAxisStationCandidatesTested=0,
-        int VerifiedAxisStationDimensionsRecovered=0);
+        int VerifiedAxisStationDimensionsRecovered=0,
+        int Rev68SupplementaryGeometryCandidatesTested=0,
+        int Rev68SupplementaryGeometryDimensionsRecovered=0);
 
     // Revision-independent paper-space search policy. Rank indices
     // reorder existing candidate lanes; they never prescribe geometry,
@@ -111,6 +113,7 @@ public static class SupportOrthoReferenceDimPlan47
             compactLocalRecovered=0,intermediateChainRecovered=0,
             adaptiveLocalRecovered=0,
             verifiedStationTested=0,verifiedStationRecovered=0,
+            supplementaryGeometryTested=0,supplementaryGeometryRecovered=0,
             rejected=0,requested=0;
         var paper=new SupportOrthoSmartDimPlan46.Rect(
             2,paperH*.12+2,paperW*.78-2,paperH*.94-2);
@@ -353,6 +356,7 @@ public static class SupportOrthoReferenceDimPlan47
                 Placed P,bool Exact,bool NativeAxis,
                 bool Compact,bool Adaptive,bool AxisStation)>();
             int optionId=0;
+            var supplementaryOptionIds=new HashSet<int>();
             foreach(bool horizontal in new[]{true,false})
             {
                 double min=horizontal?minX:minY;
@@ -913,12 +917,35 @@ public static class SupportOrthoReferenceDimPlan47
                     if(alternatives.Count==0&&verifiedMidpoint&&
                        physical==null)
                     {
+                        bool enableRev68=paperW>=1000&&paperH>=700;
+                        double transverseMin=horizontal?
+                            member.Bounds.B:member.Bounds.L;
+                        double transverseMax=horizontal?
+                            member.Bounds.T:member.Bounds.R;
+                        double longitudinal=horizontal?axis.Dy:axis.Dx;
+                        var originalStations=
+                            SupportOrthoProfileStationPlan.AlongVerifiedAxis(
+                                true,witness,longitudinal,
+                                transverseMin,transverseMax);
                         var transverseStations=
                             SupportOrthoProfileStationPlan.AlongVerifiedAxis(
-                                true,witness,
-                                horizontal?axis.Dy:axis.Dx,
-                                horizontal?member.Bounds.B:member.Bounds.L,
-                                horizontal?member.Bounds.T:member.Bounds.R);
+                                true,witness,longitudinal,
+                                transverseMin,transverseMax,
+                                supplementalA0:enableRev68);
+                        var establishedLanes=SupportOrthoReferenceLayout51
+                            .AdaptiveLocalMemberLaneOffsets().ToArray();
+                        // Only AFTER the old stations and exact existing
+                        // line offsets have failed, examine additional
+                        // source-verified transverse positions and paper
+                        // DIMLINEAR baseline offsets. These alternatives
+                        // never alter source extents, model geometry,
+                        // labels or the committed dimension geometry.
+                        var laneCandidates=establishedLanes.AsEnumerable();
+                        if(enableRev68)
+                            laneCandidates=laneCandidates.Concat(
+                                SupportOrthoReferenceLayout51
+                                    .SupplementaryLocalMemberLaneOffsets());
+                        var additionalLanes=laneCandidates.ToArray();
                         if(transverseStations.Count>0)
                         {
                             var stationBlocks=FixedZones(
@@ -930,6 +957,8 @@ public static class SupportOrthoReferenceDimPlan47
                                         new Obstacle(x,"RESERVED_PAPER_AREA")));
                             double firstSide=SupportOrthoReferenceLayout51
                                 .PreferredSide(camera.Name,horizontal);
+                            int supplementaryStationAttempts=0;
+                            int supplementaryOffsetAttempts=0;
                             foreach(double transverse in transverseStations)
                             {
                                 if(alternatives.Count>=16)break;
@@ -945,14 +974,41 @@ public static class SupportOrthoReferenceDimPlan47
                                     var request=stationReq with {
                                         OutwardLocalLabel=sign!=firstSide
                                     };
-                                    foreach(double offset in
-                                        SupportOrthoReferenceLayout51
-                                            .AdaptiveLocalMemberLaneOffsets())
+                                    foreach(double offset in additionalLanes)
                                     {
                                         if(alternatives.Count>=16)break;
+                                        bool additionalStation=enableRev68&&
+                                            !originalStations.Any(x=>
+                                                Math.Abs(x-transverse)<1e-7);
+                                        bool additionalOffset=enableRev68&&
+                                            !establishedLanes.Any(x=>
+                                                Math.Abs(x-offset)<1e-7);
+                                        bool supplemental=additionalStation||
+                                            additionalOffset;
+                                        // Independent bounded budgets prevent
+                                        // new line offsets at the first
+                                        // original station from exhausting
+                                        // every source-verified new station.
+                                        int budget=additionalStation?400:240;
+                                        if(supplemental&&
+                                           (additionalStation?
+                                               supplementaryStationAttempts:
+                                               supplementaryOffsetAttempts)>=budget)
+                                            continue;
                                         for(int tier=0;tier<12;tier++)
                                         {
                                             if(alternatives.Count>=16)break;
+                                            if(supplemental)
+                                            {
+                                                int prior=additionalStation?
+                                                    supplementaryStationAttempts:
+                                                    supplementaryOffsetAttempts;
+                                                if(prior>=budget)break;
+                                                if(additionalStation)
+                                                    supplementaryStationAttempts++;
+                                                else supplementaryOffsetAttempts++;
+                                                supplementaryGeometryTested++;
+                                            }
                                             verifiedStationTested++;
                                             var candidate=Candidate(camera,
                                                 assembly,projected,
@@ -1000,6 +1056,8 @@ public static class SupportOrthoReferenceDimPlan47
                                                 continue;
                                             }
                                             int id=optionId++;
+                                            if(supplemental)
+                                                supplementaryOptionIds.Add(id);
                                             profileOptions.Add(id,(
                                                 candidate.Value.D,
                                                 candidate.Value.P,
@@ -1065,6 +1123,8 @@ public static class SupportOrthoReferenceDimPlan47
                     if(picked.Compact)compactLocalRecovered++;
                     if(picked.Adaptive)adaptiveLocalRecovered++;
                     if(picked.AxisStation)verifiedStationRecovered++;
+                    if(supplementaryOptionIds.Contains(choice.AlternativeId))
+                        supplementaryGeometryRecovered++;
                     if(picked.NativeAxis)midpointNative++;
                     else midpointBounds++;
                 }
@@ -1093,7 +1153,8 @@ public static class SupportOrthoReferenceDimPlan47
             coordinatedComparisons,compactLocalRecovered,
             intermediateChainRecovered,
             adaptiveLocalRecovered,
-            verifiedStationTested,verifiedStationRecovered);
+            verifiedStationTested,verifiedStationRecovered,
+            supplementaryGeometryTested,supplementaryGeometryRecovered);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
