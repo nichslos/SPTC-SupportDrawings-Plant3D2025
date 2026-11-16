@@ -56,14 +56,16 @@ internal static class NativeOrthoEffectivePaper59
     internal static void RequireInsideUsableArea(Sheet sheet,
         IReadOnlyList<ViewFrame> views,
         IReadOnlyList<CaptionFrame>? captions=null,
-        bool requireTen=false)
+        bool requireTen=false,bool bypassTitleBlockReserve=false)
     {
         if(views==null||views.Count==0||
            (requireTen&&views.Count!=10))
             throw new InvalidOperationException(
                 "REV59 missing native viewport frames to validate.");
         double left=sheet.WidthMm*LeftMarginRatio;
-        double right=sheet.WidthMm*RightTitleBlockStartRatio;
+        double right=sheet.WidthMm*
+            NativeOrthoTitleBlockBypass69.RightBoundaryRatio(
+                bypassTitleBlockReserve);
         double bottom=sheet.HeightMm*BottomMarginRatio;
         double top=sheet.HeightMm*TopMarginRatio;
         const double tol=0.001;
