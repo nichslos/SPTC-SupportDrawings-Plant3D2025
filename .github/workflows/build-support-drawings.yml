@@ -213,6 +213,52 @@ jobs:
              -not $tests65.Contains('command diagnostic names')) {
             throw 'REV65 quantitative A1, layout and per-seed tests missing'
           }
+          # REV66: A0-only legible paper-space text and single-line
+          # title bands, plus opt-in static title-block template warning.
+          # The REV59 A1 path and all native/QA safeguards are mandatory.
+          $typography66=Get-Content "$root/SupportOrthoPaperTypography66.cs" -Raw
+          $static66=Get-Content "$root/SupportOrthoTitleBlockStatic66.cs" -Raw
+          $nativeTitle66=Get-Content "$root/NativeOrthoViewTitlePlan.cs" -Raw
+          $nativeLabels66=Get-Content "$root/SupportOrthoMemberCalloutPlan27.cs" -Raw
+          $titleWriter66=Get-Content "$root/SupportProductionTitleBlockWriter.cs" -Raw
+          $tests66=Get-Content 'tests/SupportSheetSmokeTests/Rev66A0ReadabilityTests.cs' -Raw
+          $staticTests66=Get-Content 'tests/Rev241DimLinearSmokeTests/Rev266TitleBlockStaticTests.cs' -Raw
+          foreach($token in @('A0TextHeightMm=2.15',
+              'A0LabelWidthCapMm=160', 'A0LineAdvanceMm=3.5',
+              'A0RowSpacingMm=2.2', 'ExtraDimTrials(')) {
+            if(-not $typography66.Contains($token)) {
+              throw "REV66 A0-only readable typography not present: $token"
+            }
+          }
+          foreach($token in @('SupportOrthoPaperTypography66.CaptionWidth(',
+              'REV22.13 titles overlap:', 'label intersects native')) {
+            if(-not ($nativeTitle66.Contains($token) -or
+                     $nativeLabels66.Contains($token))) {
+              throw "REV66 caption or label collision guard missing: $token"
+            }
+          }
+          foreach($token in @('REV66_A0_LABEL_PREFERRED_TEXT_MM=',
+              'REV66_LABELS_BELOW_2MM_REVIEW_REQUIRED=',
+              'REV66_SAFE_LEADER_TRIAL_BUDGET=',
+              'label.ActualHeight', 'Math.Max(3.0',
+              'REV66_TITLEBLOCK_STATIC_SEED_POLICY=')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV66 runtime font/title/QA guard missing: $token"
+            }
+          }
+          foreach($token in @('STATIC_TEXT_COUNT=',
+              'OBVIOUS_STATIC_PLACEHOLDERS=',
+              'SupportOrthoTitleBlockStatic66.ActionFor(')) {
+            if(-not $titleWriter66.Contains($token)) {
+              throw "REV66 read-only title-block template diagnosis missing: $token"
+            }
+          }
+          if(-not $static66.Contains('test1') -or
+             -not $tests66.Contains('REV59 A1 typography') -or
+             -not $tests66.Contains('A0 permits wider text') -or
+             -not $staticTests66.Contains('real static text')) {
+            throw 'REV66 A0/A1 and static-template test coverage missing'
+          }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
               'options.AutoSeed','options.Views.Count',
