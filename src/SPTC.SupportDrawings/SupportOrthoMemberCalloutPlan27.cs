@@ -69,8 +69,13 @@ public static class SupportOrthoMemberCalloutPlan27
             // Reserve 17.5mm for orthogonal leader dogleg lanes. Labels
             // remain outside every native viewport, not on top of its lines.
             double x=viewRight+LabelGapFromFrameMm;
+            // REV62: only a viewport whose ACTUAL paper rectangle
+            // overlaps this row can limit the right annotation gutter.
+            // The old Math.Max(height) test treated the next, disjoint
+            // 1:10 row as a horizontal neighbor, hiding TOP/BOTTOM labels.
+            // Keep all downstream frame/title/label collision guards.
             var rightNeighbor=cameras.Where(v=>v.X>camera.X+1e-5 &&
-                    Math.Abs(v.Y-camera.Y)<Math.Max(v.H,camera.H))
+                    Math.Abs(v.Y-camera.Y)<(v.H+camera.H)/2)
                 .OrderBy(v=>v.X).FirstOrDefault();
             double rightLimit=rightNeighbor!=null?
                 rightNeighbor.X-rightNeighbor.W/2-5:paperW*.78-3;
