@@ -545,7 +545,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             " BOP="+bop.Checked+" TOS="+tos.Checked+
             " Description="+description.Checked+
             "   |   Prefix: "+(prefix.Text.Length==0?
-                "Automatic unique name":prefix.Text);
+                "Automatic unique name":prefix.Text)+
+            "\r\nREV61: Manual 1:N remains exact. Oversized views need "+
+            "fewer selected views or a larger empty registered Ortho sheet.";
     }
 
     private void RunSelected()
