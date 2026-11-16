@@ -74,7 +74,7 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
         TextAt(supportTagAttribute,243);
 
         panel.Controls.Add(new Label {
-            Text="Mapped title-block ATTRIBUTE tags (FIELD=TAG). Find exact tags in RESULT.txt REV60_TITLEBLOCK_CANDIDATE.",
+            Text="Map title-block ATTRIB tags (FIELD=TAG); see RESULT.txt candidates.",
             Location=new Point(20,282),Size=new Size(650,24)
         });
         mapping.SetBounds(20,309,665,120);
