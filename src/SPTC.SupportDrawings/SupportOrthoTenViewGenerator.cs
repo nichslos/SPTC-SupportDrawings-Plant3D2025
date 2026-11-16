@@ -251,8 +251,143 @@ public sealed class SupportOrthoTenViewGenerator
                 // Show the existing non-modal progress window during
                 // a single run as well as sequential batch runs.
                 progress.Show();
-                bool ok=await GenerateOne(sourceDoc,null,options,progress,
-                    productionEntries.Add);
+                // REV63: exact manual scales with All 10 may require
+                // multiple physical paper drawings. Keep ONE host-native
+                // support selection for the entire sheet set. The first
+                // GenerateOne is only permitted to request a sheet set
+                // on a typed scale-fit preflight failure: NO Ortho DWG or
+                // project registration has occurred at that point.
+                ObjectId[]? setSourceIds=null;
+                if(options.ScaleDenominator>0&&options.Views.Count==10)
+                {
+                    var supportSelection=ed.GetSelection(
+                        new PromptSelectionOptions {
+                            MessageForAdding=options.SupportFocus
+                                ? "\nSPTC: Select STRUCTURE MEMBERS and/or Plant 3D SUPPORT objects: "
+                                : "\nSPTC: Select support entities for Original OrthoCube mode: "
+                        });
+                    if(supportSelection.Status!=PromptStatus.OK)return;
+                    setSourceIds=supportSelection.Value.GetObjectIds();
+                }
+                IReadOnlyList<NativeOrthoMultiSheetPlan63.Sheet>? sheets=null;
+                bool ok=await GenerateOne(sourceDoc,setSourceIds,options,progress,
+                    productionEntries.Add,proposed=>sheets=proposed);
+                if(sheets!=null)
+                {
+                    progress.SetWorkload(sheets.Count);
+                    progress.Report("REV63: All "+options.Views.Count+
+                        " views at exact 1:"+options.ScaleDenominator+
+                        " require "+sheets.Count+" native Ortho sheets.");
+                    bool complete=true;
+                    int completed=0,verifiedPdfs=0;
+                    var sheetSetReport=new StringBuilder();
+                    sheetSetReport.AppendLine("SPTC_REV63_NATIVE_MULTISHEET_REPORT");
+                    sheetSetReport.AppendLine("SOURCE="+source);
+                    sheetSetReport.AppendLine("SCALE=1:"+options.ScaleDenominator);
+                    sheetSetReport.AppendLine("SHEETS_REQUIRED="+sheets.Count);
+                    for(int sheetIndex=0;sheetIndex<sheets.Count;sheetIndex++)
+                    {
+                        var sheet=sheets[sheetIndex];
+                        bool pageOk=false,pdfOkForPage=!packageForRun.Enabled||
+                            !packageForRun.PublishPdf;
+                        int beforeEntries=productionEntries.Count;
+                        string? createdDwg=null;
+                        try
+                        {
+                            AcadApp.DocumentManager.MdiActiveDocument=sourceDoc;
+                            string prefix=string.IsNullOrWhiteSpace(
+                                options.DrawingPrefix)?sheet.Suffix:
+                                options.DrawingPrefix+"_"+sheet.Suffix;
+                            var pageOptions=options with {
+                                Views=sheet.Views,
+                                DrawingPrefix=prefix
+                            };
+                            progress.Report("REV63 "+sheet.Suffix+
+                                " views="+string.Join(",",sheet.Views));
+                            pageOk=await GenerateOne(sourceDoc,setSourceIds,
+                                pageOptions,progress,productionEntries.Add,
+                                sheetDrawingSuffix:sheet.DrawingNumberSuffix,
+                                onOutputDwg:path=>createdDwg=path);
+                            if(productionEntries.Count>beforeEntries&&
+                               packageForRun.Enabled&&packageForRun.PublishPdf)
+                            {
+                                var entry=productionEntries[^1];
+                                var published=await
+                                    SupportProductionNativePdfPublisher.PublishAsync(
+                                        sourceDoc,packageForRun,entry,progress.Report);
+                                productionEntries[^1]=published;
+                                pdfOkForPage=published.PdfStatus==
+                                    "PDF_PUBLISHED_VERIFIED";
+                                if(pdfOkForPage)verifiedPdfs++;
+                                try {SupportProductionPackagePlan.SaveEntry(published);}
+                                catch(System.Exception ex)
+                                {
+                                    progress.Report("REV63 sidecar error: "+ex.Message);
+                                    pdfOkForPage=false;
+                                }
+                            }
+                            if(packageForRun.Enabled&&
+                               productionEntries.Count==beforeEntries)
+                                pdfOkForPage=false;
+                            sheetSetReport.AppendLine("SHEET="+sheet.Suffix+
+                                " VIEWS="+string.Join(";",sheet.Views)+
+                                " DWG="+(pageOk?"PASS":"FAILED")+
+                                " PDF="+(!packageForRun.Enabled||
+                                    !packageForRun.PublishPdf?"DISABLED":
+                                    pdfOkForPage?"VERIFIED":"FAILED_OR_BLOCKED")+
+                                " FILE="+(createdDwg??"NONE"));
+                            if(pageOk&&pdfOkForPage)completed++;
+                            else complete=false;
+                        }
+                        catch(System.Exception ex)
+                        {
+                            complete=false;
+                            sheetSetReport.AppendLine("SHEET="+sheet.Suffix+
+                                " FAILED="+ex.GetType().Name+":"+ex.Message);
+                            progress.Report("REV63 "+sheet.Suffix+
+                                " FAILED: "+ex.Message);
+                        }
+                        finally
+                        {
+                            progress.AdvanceWorkload(pageOk&&pdfOkForPage);
+                        }
+                        // Never claim complete set after a failed sheet.
+                        // Earlier registered drawings are retained with
+                        // their own honest QA/PDF status, not deleted.
+                        if(!pageOk)break;
+                    }
+                    sheetSetReport.AppendLine("COMPLETE="+complete+
+                        " SHEETS_PASS="+completed+"/"+sheets.Count+
+                        " PDF_VERIFIED="+verifiedPdfs);
+                    try
+                    {
+                        string folder=Path.GetDirectoryName(source)!;
+                        string id=DateTime.UtcNow.ToString(
+                            "yyyyMMdd_HHmmss",CultureInfo.InvariantCulture)+
+                            "_"+Guid.NewGuid().ToString("N")[..6];
+                        string reportPath=Path.Combine(folder,
+                            "SPTC_REV63_SHEETSET_"+id+".txt");
+                        File.WriteAllText(reportPath,sheetSetReport.ToString(),
+                            new UTF8Encoding(false));
+                        progress.Report("REV63 sheet-set report: "+reportPath);
+                        if(productionEntries.Count>0)
+                        {
+                            string registerPath=Path.ChangeExtension(reportPath,
+                                ".register.csv");
+                            SupportProductionPackagePlan.SaveRegister(
+                                registerPath,productionEntries);
+                            progress.Report("REV63 sheet-set register: "+registerPath);
+                        }
+                    }
+                    catch(System.Exception ex)
+                    {
+                        progress.Report("REV63 register/report error: "+ex.Message);
+                    }
+                    progress.Report("REV63 sheet-set status="+
+                        (complete?"PASS":"PARTIAL/FAILED")+
+                        " ("+completed+"/"+sheets.Count+")");
+                    return;
+                }
                 bool pdfOk=!packageForRun.Enabled||
                     !packageForRun.PublishPdf;
                 if(productionEntries.Count>0&&packageForRun.Enabled&&
@@ -305,7 +440,10 @@ public sealed class SupportOrthoTenViewGenerator
     private async Task<bool> GenerateOne(Document sourceDoc,
         ObjectId[]? selectedOverride,SupportDrawingUiOptions options,
         SupportDrawingProgressForm35 progress,
-        Action<SupportProductionPackagePlan.Entry>? onProductionEntry=null)
+        Action<SupportProductionPackagePlan.Entry>? onProductionEntry=null,
+        Action<IReadOnlyList<NativeOrthoMultiSheetPlan63.Sheet>>? onSheetSet=null,
+        string sheetDrawingSuffix="",
+        Action<string>? onOutputDwg=null)
     {
         Editor ed=sourceDoc.Editor;
         bool succeeded=false;
@@ -730,10 +868,34 @@ public sealed class SupportOrthoTenViewGenerator
                 // larger 1:N view magnification, first attempt an EXACT
                 // selected-view grid, with native titles and label reserve.
                 // No auto-rescale or native/project writes on failure.
-                var proof=exactReflow?
-                    NativeOrthoExactScalePlacement61.Build(
-                        fit,options.Views,w,h):
-                    NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
+                NativeOrthoTenViewAutoPlacement26.Result proof;
+                if(exactReflow)
+                {
+                    try
+                    {
+                        proof=NativeOrthoExactScalePlacement61.Build(
+                            fit,options.Views,w,h);
+                    }
+                    catch(NativeOrthoExactScalePlacement61.DoesNotFitException)
+                        when(onSheetSet!=null&&options.Views.Count==10)
+                    {
+                        // REV63: all ten cannot fit ONE exact-scale A1
+                        // drawing. Preflight EVERY proposed sheet before
+                        // cloning or registering any native Ortho DWG.
+                        // If even a singleton cannot fit, the entire
+                        // request is rejected with zero project writes.
+                        var sheetSet=NativeOrthoMultiSheetPlan63.Build(
+                            fit,options.Views,w,h);
+                        onSheetSet(sheetSet);
+                        ed.WriteMessage("\nSPTC REV63: 1:"+
+                            fit.Denominator+" needs "+sheetSet.Count+
+                            " native Ortho sheets. Verified all page "+
+                            "layouts without registering a DWG.");
+                        return false;
+                    }
+                }
+                else
+                    proof=NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
                 NativeOrthoEffectivePaper59.RequireInsideUsableArea(
                     previewSheet,
                     proof.Views.Select(v=>
@@ -2376,7 +2538,8 @@ public sealed class SupportOrthoTenViewGenerator
                 try
                 {
                     string number=SupportProductionPackagePlan.DrawingNumber(
-                        packageSettings,source,handles,explicitSupportTag);
+                        packageSettings,source,handles,explicitSupportTag)+
+                        sheetDrawingSuffix;
                     string scaleText="1:"+candidate.Denominator;
                     var metadata=SupportProductionTitleBlockWriter.Metadata(
                         packageSettings,number,source,
@@ -2493,7 +2656,8 @@ public sealed class SupportOrthoTenViewGenerator
                     options.ScaleDenominator>0?
                         "1:"+options.ScaleDenominator:"Automatic",
                     SupportBuildIdentity.Id,explicitSupportTag,
-                    titleBlockStatus);
+                    titleBlockStatus,
+                    sheetDrawingSuffix:sheetDrawingSuffix);
                 if(!succeeded)
                     entry=entry with {
                         QaStatus="FAIL",IssueStatus="GENERATION_FAILED",
@@ -2514,6 +2678,7 @@ public sealed class SupportOrthoTenViewGenerator
                 catch { /* native report may be unavailable */ }
             }
         }
+        if(cloned&&File.Exists(dest))onOutputDwg?.Invoke(dest);
         return succeeded;
     }
 

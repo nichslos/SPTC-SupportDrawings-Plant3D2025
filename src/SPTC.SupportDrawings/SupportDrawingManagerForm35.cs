@@ -546,8 +546,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             " Description="+description.Checked+
             "   |   Prefix: "+(prefix.Text.Length==0?
                 "Automatic unique name":prefix.Text)+
-            "\r\nREV61: Manual 1:N remains exact. Oversized views need "+
-            "fewer selected views or a larger empty registered Ortho sheet.";
+            "\r\nREV63: Manual 1:N stays exact. All 10 auto-splits "+
+            "into individually verified native sheets when needed. "+
+            "Even one oversized view still requires a larger Ortho seed.";
     }
 
     private void RunSelected()

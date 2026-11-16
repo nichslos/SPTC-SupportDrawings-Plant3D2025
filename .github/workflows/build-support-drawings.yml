@@ -144,6 +144,34 @@ jobs:
              -not $subsetTest62.Contains('invalid native ISO camera')) {
             throw 'REV62 1:10 native subset regressions absent'
           }
+          # REV63 automatic sheet-set fallback must remain exact-scale,
+          # per-sheet verified, and never run on ordinary AUTO 1:25.
+          $multi63=Get-Content "$root/NativeOrthoMultiSheetPlan63.cs" -Raw
+          $multiTest63=Get-Content 'tests/SupportSheetSmokeTests/Rev63MultiSheetTests.cs' -Raw
+          foreach($token in @('DoesNotFitException',
+              'NativeOrthoMultiSheetPlan63.Build(',
+              'options.ScaleDenominator>0&&options.Views.Count==10',
+              'sheetDrawingSuffix:sheet.DrawingNumberSuffix',
+              'SPTC_REV63_SHEETSET_',
+              'REV63 sheet-set status=')) {
+            if(-not $gen.Contains($token) -and
+               -not $multi63.Contains($token) -and
+               -not $exact61.Contains($token)) {
+              throw "REV63 exact multi-Ortho sheet-set guard missing: $token"
+            }
+          }
+          foreach($token in @('AppendFitting(',
+              'NativeOrthoExactScalePlacement61.Build(',
+              'SINGLE','DrawingNumberSuffix')) {
+            if(-not $multi63.Contains($token)) {
+              throw "REV63 independent page layout/identity missing: $token"
+            }
+          }
+          if(-not $multiTest63.Contains('All10 1:10') -or
+             -not $multiTest63.Contains('oversize 1:1') -or
+             -not $multiTest63.Contains('exactly ten original native presets')) {
+            throw 'REV63 exact 1:10 all-ten, full coverage, oversized sheet regressions absent'
+          }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
               'options.AutoSeed','options.Views.Count',
