@@ -82,6 +82,29 @@ internal static class ProductionPackageSmokeTests
             var entry=SupportProductionPackagePlan.BuildEntry(
                 settings,model,handles,output,report,log,views,
                 "1:15","TEST_SHA","SP-0001","NOT_CONFIGURED");
+            var page1=SupportProductionPackagePlan.BuildEntry(
+                settings,model,handles,output,report,log,
+                new[]{"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK"},
+                "1:10","TEST_SHA","SP-0001","NOT_CONFIGURED",
+                sheetDrawingSuffix:"-S01");
+            var page2=SupportProductionPackagePlan.BuildEntry(
+                settings,model,handles,output,report,isoLog,
+                new[]{"NW","NE","SW","SE"},
+                "1:10","TEST_SHA","SP-0001","NOT_CONFIGURED",
+                sheetDrawingSuffix:"-S02");
+            Need(page1.DrawingNumber!=page2.DrawingNumber&&
+                page1.DrawingNumber.EndsWith("-S01",
+                    StringComparison.Ordinal)&&
+                page2.DrawingNumber.EndsWith("-S02",
+                    StringComparison.Ordinal)&&
+                page1.SourceHandles.SequenceEqual(page2.SourceHandles),
+                "REV63 exact-scale sheet-set pages retain one source "+
+                "but have distinct drawing numbers in the register");
+            bool malformedSuffixRejected=false;
+            try{SupportProductionPackagePlan.ValidateSheetSuffix("../S01");}
+            catch(ArgumentException){malformedSuffixRejected=true;}
+            Need(malformedSuffixRejected,
+                "REV63 sheet number suffix rejects arbitrary or path text");
             Need(entry.DrawingNumber.StartsWith("TB26-SUP-SP-0001-",
                 StringComparison.Ordinal)&&
                 entry.SourceHandles.SequenceEqual(new[]{"8A3","8A4"})&&
