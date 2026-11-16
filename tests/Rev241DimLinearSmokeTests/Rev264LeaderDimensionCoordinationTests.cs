@@ -82,6 +82,16 @@ internal static class Rev264LeaderDimensionCoordinationTests
         Need(refused.ShiftedViews==0&&refused.AddedDimensions==0&&
             refused.Callouts.Single()==original,
             "an otherwise useful local candidate may not move any approved dimension");
+        // REV60: two further bounded alternatives may recover a
+        // detail, but only if the exact plan preserves every accepted
+        // witness, text position and existing DIMLINEAR.
+        var late=SupportOrthoLeaderDimensionLayout64.Coordinate(
+            cameras,titles,new[]{original},594,841,
+            notes=>notes[0].LabelTop>original.LabelTop+31?
+                clear:blocked,maxTrialsPerView:14);
+        Need(late.ProposedLayouts==14&&late.AddedDimensions==1&&
+            late.ShiftedViews==1&&late.RemainingLocalOmissions==0,
+            "last two additive-only trials can recover a local member width");
         var complete=SupportOrthoLeaderDimensionLayout64.Coordinate(
             cameras,titles,new[]{original},594,841,_=>actual);
         Need(complete.Attempts==0&&complete.ShiftedViews==0&&
