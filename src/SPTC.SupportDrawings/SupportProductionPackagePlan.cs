@@ -185,12 +185,26 @@ internal static class SupportProductionPackagePlan
             Get("FINAL_STATUS"));
     }
 
+    // Strictly allow internally generated, per-sheet issue identifiers.
+    // Do not allow arbitrary user paths/text to change drawing numbers.
+    internal static string ValidateSheetSuffix(string? suffix)
+    {
+        if(string.IsNullOrEmpty(suffix))return "";
+        if(suffix.Length!=4||!suffix.StartsWith("-S",
+                StringComparison.Ordinal)||
+           !char.IsAsciiDigit(suffix[2])||
+           !char.IsAsciiDigit(suffix[3])||
+           suffix=="-S00")
+            throw new ArgumentException("Invalid native sheet drawing suffix.");
+        return suffix;
+    }
+
     internal static Entry BuildEntry(
         Settings config,string sourceDwg,IEnumerable<string> handles,
         string destinationDwg,string reportPath,string reportText,
         string[] selectedViews,string scale,string buildId,
         string? supportTag=null,string? titleBlockStatus=null,
-        string? materialCsv=null)
+        string? materialCsv=null,string sheetDrawingSuffix="")
     {
         var valid=Validate(config);
         if(!valid.Enabled)throw new ArgumentException("Package is disabled.");
@@ -209,7 +223,8 @@ internal static class SupportProductionPackagePlan
             "DWG_SAVE_AND_ISSUE_REVIEW_REQUIRED";
         return new Entry(
             "SPTC-PRODUCTION-DRAWING-1",
-            DrawingNumber(valid,sourceDwg,orderedHandles,supportTag),
+            DrawingNumber(valid,sourceDwg,orderedHandles,supportTag)+
+                ValidateSheetSuffix(sheetDrawingSuffix),
             Fingerprint(sourceDwg,orderedHandles),
             Path.GetFullPath(sourceDwg),orderedHandles,
             stamp.Exists?stamp.LastWriteTimeUtc.Ticks:0,
