@@ -715,7 +715,8 @@ public sealed class SupportOrthoTenViewGenerator
                     FileOpenMode.OpenForReadAndAllShare,true,null);
                 previewDb.CloseInput(true);
                 string previewLayout=FindPaperLayout(previewDb);
-                (double w,double h)=CurrentPaper(previewDb,previewLayout);
+                var previewSheet=CurrentPaperDetails(previewDb,previewLayout);
+                (double w,double h)=(previewSheet.WidthMm,previewSheet.HeightMm);
                 var fit=NativeOrthoTenViewPlan.Build(layout,w,h);
                 if(options.ScaleDenominator>0 &&
                    options.ScaleDenominator<fit.Denominator)
@@ -730,7 +731,17 @@ public sealed class SupportOrthoTenViewGenerator
                         Scale=1.0/options.ScaleDenominator};
                 // Perform the same exact title/frame collision calculations
                 // read-only, BEFORE cloning/registering the new Ortho DWG.
-                NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
+                var proof=NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
+                NativeOrthoEffectivePaper59.RequireInsideUsableArea(
+                    previewSheet,
+                    proof.Views.Select(v=>
+                        new NativeOrthoEffectivePaper59.ViewFrame(
+                            v.Name,v.CenterX,v.CenterY,
+                            v.PaperFrameWidth,v.PaperFrameHeight)).ToArray(),
+                    proof.Titles.Select(t=>
+                        new NativeOrthoEffectivePaper59.CaptionFrame(
+                            t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
+                    requireTen:true);
             }
         }
         catch(System.Exception ex)
@@ -975,7 +986,9 @@ public sealed class SupportOrthoTenViewGenerator
             }
             if (targetDoc.Database.TileMode)
                 throw new InvalidOperationException("AutoCAD remains in model space after paper layout selection.");
-            (double paperWidth, double paperHeight) = CurrentPaper(targetDoc.Database, paperLayout);
+            var effectiveSheet=CurrentPaperDetails(targetDoc.Database,paperLayout);
+            (double paperWidth,double paperHeight)=
+                (effectiveSheet.WidthMm,effectiveSheet.HeightMm);
             NativeOrthoTenViewPlan.Plan candidate =
                 NativeOrthoTenViewPlan.Build(layout, paperWidth, paperHeight);
             if(options.ScaleDenominator>0)
@@ -985,6 +998,16 @@ public sealed class SupportOrthoTenViewGenerator
                 };
             Log("STEP4_SHEET_LAYOUT=" + paperLayout);
             Log("STEP4_SHEET_MM=" + Point(paperWidth,paperHeight,0));
+            Log("REV59_RAW_MEDIA_MM="+Point(
+                effectiveSheet.MediaWidthMm,effectiveSheet.MediaHeightMm,0));
+            Log("REV59_NATIVE_PLOT_ROTATION_DEG="+
+                effectiveSheet.RotationDegrees);
+            Log("REV59_EFFECTIVE_PAPER_MM="+Point(
+                effectiveSheet.WidthMm,effectiveSheet.HeightMm,0));
+            Log("REV59_TITLE_BLOCK_SAFE_RIGHT_MM="+
+                (paperWidth*NativeOrthoEffectivePaper59
+                    .RightTitleBlockStartRatio).ToString(
+                    "0.###",CultureInfo.InvariantCulture));
             Log("STEP4_COMMON_SCALE=1:" + candidate.Denominator);
             foreach(var slot in candidate.Views)
                 Log("PROPOSED_" + slot.Name + "_CENTER=" +
@@ -1198,6 +1221,19 @@ public sealed class SupportOrthoTenViewGenerator
             var autoPlacement=NativeOrthoTenViewAutoPlacement26.Build(
                 candidate,paperWidth,paperHeight);
             var group=autoPlacement.Views;
+            // Verify all ten frames AND their captions against the real
+            // rotated sheet, before calling internal GenerateOrthos.
+            NativeOrthoEffectivePaper59.RequireInsideUsableArea(
+                effectiveSheet,
+                group.Select(v=>
+                    new NativeOrthoEffectivePaper59.ViewFrame(
+                        v.Name,v.CenterX,v.CenterY,
+                        v.PaperFrameWidth,v.PaperFrameHeight)).ToArray(),
+                autoPlacement.Titles.Select(t=>
+                    new NativeOrthoEffectivePaper59.CaptionFrame(
+                        t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
+                requireTen:true);
+            Log("REV59_PREFLIGHT_ALL_TEN_INSIDE_EFFECTIVE_SHEET=PASS");
             Log("STEP5_AUTO_PLACEMENT_ENABLED=True");
             Log("STEP5_PAPER_POINT_CLICKS_REQUIRED=0");
             Log("STEP5_AUTO_TOP_SUGGESTED="+
@@ -1545,6 +1581,16 @@ public sealed class SupportOrthoTenViewGenerator
             var newFrames=PaperViewports(targetDoc.Database,paperLayout)
                 .Where(v=>!priorHandles.Contains(v.Handle)).ToList();
             Log("STEP10_NEW_PAPER_VIEWPORT_COUNT="+newFrames.Count);
+            // Native internal API may adjust a requested viewport frame.
+            // Check the REAL created paper-space entities, not only the
+            // planned centers; reject any off-border/title-block result.
+            NativeOrthoEffectivePaper59.RequireInsideUsableArea(
+                effectiveSheet,
+                newFrames.Select(v=>
+                    new NativeOrthoEffectivePaper59.ViewFrame(
+                        v.Handle,v.X,v.Y,v.W,v.H)).ToArray(),
+                requireTen:options.Views.Count==10);
+            Log("REV59_ACTUAL_NATIVE_VIEWPORTS_IN_SAFE_SHEET=PASS");
             bool overlaps=false,possibleTitleBlock=false;
             for(int i=0;i<newFrames.Count;i++)
             {
@@ -1579,6 +1625,16 @@ public sealed class SupportOrthoTenViewGenerator
                 confirmedFrames.Select(f=>new NativeOrthoViewTitlePlan.Frame(
                     f.Name,f.X,f.Y,f.W,f.H)).ToArray(),
                 paperWidth,paperHeight,allowSubset:options.Views.Count!=10);
+            NativeOrthoEffectivePaper59.RequireInsideUsableArea(
+                effectiveSheet,
+                confirmedFrames.Select(f=>
+                    new NativeOrthoEffectivePaper59.ViewFrame(
+                        f.Name,f.X,f.Y,f.W,f.H)).ToArray(),
+                titles.Select(t=>
+                    new NativeOrthoEffectivePaper59.CaptionFrame(
+                        t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
+                requireTen:options.Views.Count==10);
+            Log("REV59_ACTUAL_NATIVE_TITLES_IN_SAFE_SHEET=PASS");
             Log("STEP10_TITLE_LAYER="+NativeOrthoViewTitlePlan.TitleLayer);
             var titleHandles=CreateNativePaperTitles(
                 targetDoc.Database,paperLayout,titles);
@@ -3118,7 +3174,8 @@ public sealed class SupportOrthoTenViewGenerator
         return best;
     }
 
-    private static (double width,double height) CurrentPaper(Database db,string layoutName)
+    private static NativeOrthoEffectivePaper59.Sheet CurrentPaperDetails(
+        Database db,string layoutName)
     {
         using Transaction tr=db.TransactionManager.StartTransaction();
         var dict=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,OpenMode.ForRead);
@@ -3126,10 +3183,25 @@ public sealed class SupportOrthoTenViewGenerator
         {
             if (tr.GetObject(entry.Value,OpenMode.ForRead) is not Layout paper ||
                 paper.LayoutName!=layoutName) continue;
-            double factor=paper.PlotPaperUnits.ToString()=="Inches"?25.4:1;
+            if(paper.PlotPaperUnits==PlotPaperUnit.Pixels)
+                throw new InvalidOperationException(
+                    "Native Ortho paper media in pixels is unsupported.");
+            double factor=paper.PlotPaperUnits==PlotPaperUnit.Inches?25.4:1;
             Point2d size=paper.PlotPaperSize;
-            if (!(size.X>0 && size.Y>0)) break;
-            return (size.X*factor,size.Y*factor);
+            int degrees=paper.PlotRotation switch
+            {
+                PlotRotation.Degrees000=>0,
+                PlotRotation.Degrees090=>90,
+                PlotRotation.Degrees180=>180,
+                PlotRotation.Degrees270=>270,
+                _=>throw new InvalidOperationException(
+                    "Unsupported native Ortho paper rotation.")
+            };
+            // 594x841 media with a 270-degree seed rotation is an
+            // 841x594 actual landscape paper-space border. Without this
+            // transpose, TOP/BOTTOM are placed above the native border.
+            return NativeOrthoEffectivePaper59.FromMedia(
+                size.X*factor,size.Y*factor,degrees);
         }
         throw new InvalidOperationException("Valid Ortho paper-space layout not found.");
     }
