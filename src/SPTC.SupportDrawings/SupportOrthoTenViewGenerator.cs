@@ -857,7 +857,13 @@ public sealed class SupportOrthoTenViewGenerator
         }
         catch(System.Exception ex)
         {
-            ed.WriteMessage("\nSPTC preflight failed before drawing registration: "+ex.Message);
+            ed.WriteMessage("\nSPTC preflight failed before drawing registration: "+ex.Message+
+                (exactTenOnOneSheet64?
+                    " REV64: ALL 10 views must remain in ONE native Ortho DWG "+
+                    "at exact 1:"+options.ScaleDenominator+
+                    ". The manually chosen sheet may be too small; "+
+                    "select a correctly plotted registered EMPTY A0 landscape "+
+                    "or larger Ortho seed. No multi-sheet fallback.":""));
             return false;
         }
         progress.Report("Preflight PASS. Output: "+Path.GetFileName(dest)+
