@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace SPTC.SupportDrawings;
 
@@ -15,11 +16,32 @@ internal static class SupportOrthoTitleBlockStatic66
     internal static bool LooksLikeObviousSeedPlaceholder(string? raw)
     {
         if(string.IsNullOrWhiteSpace(raw))return false;
-        string s=raw.Trim();
+        string s=NormalizeLiteral(raw);
         return s.Length>=3&&s.Length<=64&&
             (s.All(c=>c=='#'||c=='?')||
              string.Equals(s,"SPTC_NATIVE_SEED_01",
                  StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// MText may wrap a visually plain ### placeholder in AutoCAD font,
+    /// height, color and paragraph formatting. Decode ONLY safe display
+    /// formatting for read-only diagnostics; never use this normalization
+    /// to select or edit any source DBText, block or ATTDEF.
+    /// </summary>
+    internal static string NormalizeLiteral(string raw)
+    {
+        if(string.IsNullOrWhiteSpace(raw))return "";
+        string s=raw.Length>512?raw[..512]:raw;
+        s=Regex.Replace(s,@"\\[ACFHQTW][^;]{0,120};","",
+            RegexOptions.IgnoreCase,TimeSpan.FromMilliseconds(100));
+        s=Regex.Replace(s,@"\\[PpNn]"," ",
+            RegexOptions.None,TimeSpan.FromMilliseconds(100));
+        s=Regex.Replace(s,@"\\[LlOoKk]","",
+            RegexOptions.None,TimeSpan.FromMilliseconds(100));
+        s=s.Replace("{","").Replace("}","")
+            .Replace("\\~"," ").Trim();
+        return s;
     }
 
     internal static string ActionFor(int editableAttributeCount,
