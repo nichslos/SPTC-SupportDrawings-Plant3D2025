@@ -1473,7 +1473,10 @@ public sealed class SupportOrthoTenViewGenerator
             if(bypassTitleBlock69)
                 Log("REV69_TITLEBLOCK_OVERPRINT_POSSIBLE="+
                     NativeOrthoTitleBlockBypass69.EntersOldTitleBlockZone(
-                        group,autoPlacement.Titles,paperWidth)+
+                        group.Select(v=>v.CenterX+v.PaperFrameWidth/2)
+                            .Concat(autoPlacement.Titles.Select(t=>
+                                t.CenterX+t.Width/2)),
+                        paperWidth)+
                     " PRINTED_TITLEBLOCK_STAYS_UNCHANGED=TRUE");
             Log("REV61_NATIVE_SCALE_PRESERVED=1:"+candidate.Denominator);
             Log("REV61_ADAPTIVE_SELECTED_VIEW_COUNT="+group.Count);
