@@ -212,3 +212,44 @@ real-world check of page size, lineweights, viewports and title
 block. Windows CI can verify matching policy compilation and
 postvalidation tests, **not** actual PlotEngine behavior on the
 user's PC3 installation.
+
+## REV58 — PDF sheet orientation and ten-view visibility
+
+**Live evidence:** The `20261116_003025_7622` TEST5 production
+register and JSON show `PDF_PUBLISHED_VERIFIED` using
+`DWG To PDF.pc3` with 75,961 bytes; all 10 native Ortho views and 12
+essential overall dimensions were registered. The uploaded 1-page PDF
+was physically ISO A1 (594 × 841 mm in its unrotated PDF MediaBox), but
+has a **270-degree page rotation**, giving a displayed landscape
+841 × 594 mm sheet. Native automatic placement had planned portrait
+594 × 841 coordinates, including TOP and BOTTOM near Y=723 mm.
+The resulting PDF clipped TOP/BOTTOM entirely and cut LEFT/RIGHT at
+the displayed top page boundary. FRONT/BACK and NW/NE/SW/SE remained
+visible. The registration check had therefore passed while the
+physical published page was visually incomplete.
+
+**Targeted fix:** Do not inherit the Ortho seed's PDF
+`layout.PlotRotation` into the disposable PDF PlotSettings.
+Use `PlotRotation.Degrees000` for a PDF PC3 media directly matching
+the native sheet orientation, or `Degrees090` when the only physical
+A1 media is the transposed orientation. The existing strict
+`PlotInfo.ValidatedSettings` media/device/orientation check stays in
+place, along with native QSAVE and all dimensions. The PDF publisher
+logs original seed rotation and chosen PDF override rotation, plus
+`SPTC_PDF_PAGE_ORIENTATION_CHECK=PASS` when the validated override
+agrees. It never updates the original title block, sheet page setup,
+viewports, scale, XREFs or dimension database.
+
+**Acceptance:** Generate a new TEST5 PDF in a copied project and
+confirm 10/10 visible views with intact titles and dimensions inside
+the A1 sheet boundary (not merely a 10/10 registered view count).
+Verify the effective displayed page is portrait 594 × 841 mm, the
+existing title block remains on the right, no view extends past the
+top/bottom edge, and annotations remain legible. QA must fail/hold
+release if any published view is cropped. This is not claimed passed
+until the actual Plant 3D output PDF has been inspected.
+
+**Still separate:** Seed title block contains placeholder drawing name,
+number and fields; `TitleBlockStatus=NOT_CONFIGURED`. Attribute
+mapping/replacement is independent of PDF viewport clipping, and
+should be tested after portrait view completeness is confirmed.
