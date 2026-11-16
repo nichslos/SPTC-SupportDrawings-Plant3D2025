@@ -42,7 +42,8 @@ public static class SupportOrthoMemberCalloutPlan27
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles,
         IReadOnlyList<Member> members,double paperW,double paperH,
-        bool allowSubset=false)
+        bool allowSubset=false,
+        bool bypassTitleBlockReserve=false)
     {
         if(cameras==null||cameras.Count<1||cameras.Count>10||members==null||
            titles==null||titles.Count!=cameras.Count||
@@ -90,8 +91,10 @@ public static class SupportOrthoMemberCalloutPlan27
                 .OrderBy(v=>v.X).FirstOrDefault();
             double rightLimit=rightNeighbor!=null?
                 rightNeighbor.X-rightNeighbor.W/2-5:
-                (SupportOrthoPaperTypography66.IsLargePaper(paperW,paperH)?
-                    paperW*.75-3:paperW*.78-3);
+                (bypassTitleBlockReserve?
+                    paperW*NativeOrthoTitleBlockBypass69.RightBorderRatio-3:
+                    SupportOrthoPaperTypography66.IsLargePaper(paperW,paperH)?
+                        paperW*.75-3:paperW*.78-3);
             double width=Math.Min(widthCap,rightLimit-x);
             if(width<54)
             {
@@ -228,7 +231,9 @@ public static class SupportOrthoMemberCalloutPlan27
         {
             double lx=note.LabelX,rx=note.LabelX+note.LabelWidth;
             double bottom=note.LabelTop-note.LabelHeight;
-            if(lx<0||rx>paperW*.78+1e-5||
+            if(lx<0||rx>paperW*
+                    (bypassTitleBlockReserve?
+                        NativeOrthoTitleBlockBypass69.RightBorderRatio:.78)+1e-5||
                 note.LabelTop>paperH*.94+1e-5||
                 bottom<paperH*.12-1e-5)
                 throw new InvalidOperationException(
