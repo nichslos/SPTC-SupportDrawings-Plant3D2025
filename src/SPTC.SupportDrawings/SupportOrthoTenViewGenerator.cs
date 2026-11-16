@@ -2556,17 +2556,28 @@ public sealed class SupportOrthoTenViewGenerator
                         targetDoc.Database,paperLayout,packageSettings,metadata);
                     titleBlockStatus=stamped.Status;
                     if(stamped.Status=="NOT_CONFIGURED"||
-                       stamped.Status=="TITLEBLOCK_NOT_FOUND")
+                       stamped.Status=="TITLEBLOCK_NOT_FOUND"||
+                       stamped.Status=="PARTIAL_NEEDS_REVIEW")
                     {
-                        // REV60 diagnostic is READ ONLY: exact block
-                        // name/tag discovery without editing seed geometry,
-                        // unrelated text, or any unmapped attributes.
+                        // REV66: distinguish editable ATTRIB tags from
+                        // static seed text. Never rewrite ambiguous
+                        // test1/#### DBText, MText, block definitions or
+                        // XREFs merely by matching printed characters.
                         foreach(string candidateBlock in
                             SupportProductionTitleBlockWriter.InspectCandidates(
                                 targetDoc.Database,paperLayout))
+                        {
                             Log("REV60_TITLEBLOCK_CANDIDATE="+candidateBlock);
+                            Log("REV66_TITLEBLOCK_CANDIDATE="+candidateBlock);
+                            if(candidateBlock.Contains("ATTRIB_TAGS=NONE",
+                                StringComparison.Ordinal))
+                                Log("REV66_TITLEBLOCK_STATIC_SEED_POLICY="+
+                                    "READ_ONLY_REQUIRES_APPROVED_ATTDEF_TEMPLATE");
+                        }
                         Log("REV60_TITLEBLOCK_NEXT_ACTION="+
                             "MAP_EXACT_BLOCK_AND_ATTRIBUTE_TAGS_IN_PRODUCTION_SETTINGS");
+                        Log("REV66_TITLEBLOCK_NEXT_ACTION="+
+                            "ADD_APPROVED_ATTDEF_ATTRIB_TO_SEED_OR_MAP_EXISTING_TAGS");
                     }
                     Log("PRODUCTION_DRAWING_NUMBER="+number);
                     Log("PRODUCTION_TITLEBLOCK_STATUS="+stamped.Status+
