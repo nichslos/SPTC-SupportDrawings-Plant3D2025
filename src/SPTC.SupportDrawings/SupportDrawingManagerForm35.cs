@@ -28,7 +28,8 @@ internal sealed record SupportDrawingUiOptions(
     bool BatchOrtho,
     bool XrefMemberNames,
     bool AutoDimLinear,
-    bool ReferenceDetailDimensions=true)
+    bool ReferenceDetailDimensions=true,
+    bool BypassTitleBlockReserve=false)
 {
     public static readonly string[] AllViews =
         {"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK","NW","NE","SW","SE"};
@@ -60,6 +61,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly CheckBox xrefNames = new();
     private readonly CheckBox autoDimLinear = new();
     private readonly CheckBox referenceDimensions = new();
+    private readonly CheckBox bypassTitleBlockReserve = new();
     private readonly TextBox preview = new();
     private readonly Button runButton = new();
     private readonly Button preflightButton = new();
@@ -284,6 +286,14 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         Label notice = L("Batch runs sequentially. Start with a copied project.",407,424,330);
         notice.ForeColor = Color.DarkGoldenrod;
         orthoTab.Controls.Add(notice);
+        // REV69 dangerous, explicitly opt-in per invocation. Never
+        // saved to preferences, and only applies to exact manual
+        // 1:N + All10. This can cover printed title-block contents.
+        bypassTitleBlockReserve.SetBounds(407,456,332,33);
+        bypassTitleBlockReserve.Text=
+            "Use title-block area (may overprint title block)";
+        bypassTitleBlockReserve.Checked=false;
+        orthoTab.Controls.Add(bypassTitleBlockReserve);
 
         // Explicit local, per-project preferences: safe from accidental
         // project-switch propagation and no write occurs on Run.
@@ -462,6 +472,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         autoDimLinear.Checked=v.AutoDimLinear;
         referenceDimensions.Checked=v.ReferenceDetailDimensions;
         batch.Checked=v.BatchOrtho;
+        // NEVER silently restore this potentially overprinting option.
+        bypassTitleBlockReserve.Checked=false;
         // Never persist manual DWG/seed paths.
         autoSeed.Checked=true;
         seed.Text="";
@@ -538,6 +550,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 SupportDrawingPaperScale39.Resolve(scale.Text,(int)customScale.Value)) +
             "   |   XREF member names: " + (xrefNames.Checked?"On":"Off") +
             "   |   Auto DIMLINEAR: " + (autoDimLinear.Checked?"On":"Off") +
+            "   |   Title-block reserve bypass: "+
+            (bypassTitleBlockReserve.Checked?"ON / OVERPRINT WARNING":"Off") +
             "   |   Detail style: " +
             (referenceDimensions.Checked?"Chain + overall":"All member H/V")+
             "   |   Batch Ortho: "+(batch.Checked?"Sequential":"Off")+
@@ -571,6 +585,17 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                     "SPTC",MessageBoxButtons.OK,MessageBoxIcon.Warning);
                 return;
             }
+            if(bypassTitleBlockReserve.Checked&&
+               (selected.Length!=10||
+                scale.Text==SupportDrawingPaperScale39.Automatic))
+            {
+                MessageBox.Show(this,
+                    "Title-block area bypass is allowed ONLY for "+
+                    "All 10 views with an explicit manual 1:N scale.",
+                    "REV69 scope restriction",MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
             if(prefix.Text.Trim().Length>48 ||
                 prefix.Text.IndexOfAny(Path.GetInvalidFileNameChars())>=0 ||
                 prefix.Text.Contains("..",StringComparison.Ordinal) ||
@@ -601,7 +626,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             autoSeed.Checked, seed.Text.Trim(), prefix.Text.Trim(), denominator,
             selected, line.Checked,bop.Checked,tos.Checked,
             description.Checked,batch.Checked,xrefNames.Checked,
-            autoDimLinear.Checked,referenceDimensions.Checked);
+            autoDimLinear.Checked,referenceDimensions.Checked,
+            bypassTitleBlockReserve.Checked);
         // Modeless palette remains open; dispatch in a fresh AutoCAD
         // command context rather than accessing Editor from this UI callback.
         RunRequested?.Invoke(Settings);
