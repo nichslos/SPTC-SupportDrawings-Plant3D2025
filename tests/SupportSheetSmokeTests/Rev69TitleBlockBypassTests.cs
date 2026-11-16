@@ -44,15 +44,19 @@ internal static class Rev69TitleBlockBypassTests
         }
         Need(strictFailed,
             "original REV68 A0 .75 width/.12 bottom cannot fit wide assembly");
-        Need(!NativeOrthoTitleBlockBypass69.Eligible(
+        Need(NativeOrthoTitleBlockBypass69.Eligible(
                 841,594,10,10)&&
+             NativeOrthoTitleBlockBypass69.Eligible(
+                594,841,10,10)&&
+             NativeOrthoTitleBlockBypass69.Eligible(
+                900,650,10,10)&&
              !NativeOrthoTitleBlockBypass69.Eligible(
                 1189,841,0,10)&&
              !NativeOrthoTitleBlockBypass69.Eligible(
                 1189,841,10,6)&&
              NativeOrthoTitleBlockBypass69.Eligible(
                 1189,841,10,10),
-            "bypass ONLY applies to exact 10-view landscape A0 and larger");
+            "bypass applies to valid project-native paper media in either orientation");
         var safe=NativeOrthoExactScalePlacement61.Build(
             wide,names,1189,841,bypassTitleBlock:true);
         Need(safe.Views.Count==10&&safe.Titles.Count==10&&
@@ -104,7 +108,7 @@ internal static class Rev69TitleBlockBypassTests
         Need(!NativeOrthoSingleSheet64.TryExactTenFit(
                 source,names,10,841,594,out _,
                 bypassTitleBlock:true),
-            "A1 is never accidentally widened into false A0 printable media");
+            "A1 remains too small for the original full-size model at 1:10 even though it is eligible");
 
         // Previous successful A0 TEST5 must remain strict-first
         // (bypass is not an automatic alternate whenever strict fits).

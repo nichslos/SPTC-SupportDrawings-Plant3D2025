@@ -42,7 +42,7 @@ internal static class NativeOrthoExactScalePlacement61
             paperWidth,paperHeight,plan?.Denominator??0,
             selectedViews?.Count??0))
             throw new ArgumentException(
-                "REV69 requires explicit 1:N All10 on A0 landscape.");
+                "REV70 bypass requires explicit 1:N All10 on valid registered Ortho paper media.");
         if(plan==null||plan.Views==null||plan.Views.Count!=10||
            !double.IsFinite(plan.Scale)||plan.Scale<=0||
            !double.IsFinite(paperWidth)||!double.IsFinite(paperHeight)||
