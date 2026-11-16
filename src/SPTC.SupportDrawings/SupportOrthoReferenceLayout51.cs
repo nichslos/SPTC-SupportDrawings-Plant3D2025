@@ -130,6 +130,26 @@ public static class SupportOrthoReferenceLayout51
         yield return first+textHeight*1.0;
     }
 
+    // REV68: supplementary paper-only DIMLINEAR baseline positions
+    // for A0 optional native member widths after all earlier trusted
+    // exact/witness/label alternatives fail. Use actual DIMSTYLE
+    // 2 mm-derived offsets; no source coordinates or scales change.
+    public static IEnumerable<double> SupplementaryLocalMemberLaneOffsets(
+        double textHeight=2.0)
+    {
+        if(!double.IsFinite(textHeight)||textHeight<=0)
+            throw new ArgumentException("Invalid native dimension text height.");
+        double first=ChainOffset(textHeight);
+        foreach(double fraction in new[]{
+            .125,-.125,.25,-.25,.375,-.375,.50,-.50,.625,-.625
+        })
+        {
+            double lane=Math.Max(textHeight*.85,
+                first+fraction*textHeight);
+            if(lane>0)yield return lane;
+        }
+    }
+
     // Move a SHORT optional dimension label along its existing
     // dimension line only; this NEVER modifies its witness points,
     // DIMLFAC, measurement or source member. Earlier compact tiers
