@@ -51,6 +51,8 @@
              Link="SupportOrthoReferenceLayout51.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoNativeDimensionPolicy48.cs"
              Link="SupportOrthoNativeDimensionPolicy48.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoPlantPlatePolicy82.cs"
+             Link="SupportOrthoPlantPlatePolicy82.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoUpdatePerformancePolicy.cs"
              Link="SupportOrthoUpdatePerformancePolicy.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoEffectivePaper59.cs"

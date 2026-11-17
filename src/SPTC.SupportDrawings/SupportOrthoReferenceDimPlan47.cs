@@ -73,7 +73,8 @@ public static class SupportOrthoReferenceDimPlan47
         bool ExactNativeProfileEdge=false,
         bool CompactLocalLabel=false,
         bool AdaptiveShortLocalLabel=false,
-        bool OutwardLocalLabel=false);
+        bool OutwardLocalLabel=false,
+        bool PlateEnvelope=false);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text,
@@ -373,6 +374,86 @@ public static class SupportOrthoReferenceDimPlan47
                 bool Compact,bool Adaptive,bool AxisStation)>();
             int optionId=0;
             var supplementaryOptionIds=new HashSet<int>();
+            // REV82: PLANTSTEELPLATE is a native StructurePlate, not
+            // a linear StructureMember. The plate's measured WCS entity
+            // envelope projects into the saved native H/V camera plane.
+            // Each candidate is explicitly labeled as a PROJECTED
+            // ENVELOPE, never a manufacturing edge/cut length. These
+            // are optional profiles: their placement must not displace
+            // an overall, verified chain or terminal-remainder dimension.
+            foreach(var plate in projectedMembers.Where(m=>
+                m.Member.Kind=="PLATE"))
+            foreach(bool horizontal in new[]{true,false})
+            {
+                string direction=horizontal?"H":"V";
+                if(profileGroups.Count>=24)
+                {
+                    skipped.Add(camera.Name+"/"+plate.Member.Key+
+                        ":PLATE82_OPTIONAL_GROUP_CAPACITY");
+                    continue;
+                }
+                double from=horizontal?plate.Bounds.L:plate.Bounds.B;
+                double to=horizontal?plate.Bounds.R:plate.Bounds.T;
+                if(to-from<.25)
+                {
+                    skipped.Add(camera.Name+"/"+plate.Member.Key+
+                        ":PLATE82_"+direction+"_PROJECTED_SPAN_TOO_SMALL");
+                    continue;
+                }
+                double witness=horizontal?
+                    (plate.Bounds.B+plate.Bounds.T)*.5:
+                    (plate.Bounds.L+plate.Bounds.R)*.5;
+                var plateRequest=MakeRequest(horizontal,from,to,
+                    false,0,camera.Scale,unitsToMm) with {
+                    SourceKey=plate.Member.Key,
+                    LocalBounds=plate.Bounds,
+                    MidpointWitness=witness,
+                    PlateEnvelope=true,
+                    CompactLocalLabel=true
+                };
+                var optionsForPlate=new List<
+                    SupportOrthoCoordinatedLayout60.Alternative>();
+                double preferred=SupportOrthoReferenceLayout51
+                    .PreferredSide(camera.Name,horizontal);
+                foreach(double sign in new[]{preferred,-preferred})
+                foreach(double lane in SupportOrthoReferenceLayout51
+                    .LocalMemberLaneOffsets())
+                {
+                    if(optionsForPlate.Count>=24)break;
+                    for(int tier=0;tier<4;tier++)
+                    {
+                        if(optionsForPlate.Count>=24)break;
+                        var candidate=Candidate(camera,assembly,projected,
+                            verifiedWitnessPoints,plateRequest,
+                            sign,lane,tier);
+                        if(candidate==null||
+                           !InnerThanReservedOverall(candidate.Value.P)||
+                           RejectionReason(candidate.Value.P,blocks,paper,
+                               placed,projected)!=null)
+                            continue;
+                        int id=optionId++;
+                        profileOptions.Add(id,(
+                            candidate.Value.D,candidate.Value.P,
+                            false,false,true,false,false));
+                        optionsForPlate.Add(new(
+                            id,Math.Min(90,lane*.65+tier*.18+
+                                (sign==preferred?0:15))));
+                    }
+                }
+                if(optionsForPlate.Count==0)
+                {
+                    skipped.Add(camera.Name+"/"+plate.Member.Key+
+                        ":PLATE82_"+direction+
+                        "_NO_SAFE_NATIVE_DIMENSION_LANE");
+                    continue;
+                }
+                // Source-derived projected plate face extents take
+                // precedence over purely approximate member profiles
+                // when they compete for finite paper-space lanes.
+                profileGroups.Add(new(
+                    direction+":PLATE:"+plate.Member.Key,
+                    75,optionsForPlate));
+            }
             foreach(bool horizontal in new[]{true,false})
             {
                 double min=horizontal?minX:minY;
@@ -615,6 +696,10 @@ public static class SupportOrthoReferenceDimPlan47
                 // fabricated 50/100 value. Limit to two different local
                 // widths per view direction to avoid duplicate clutter.
                 var localCandidates=projectedMembers
+                    // StructurePlate uses its dedicated REV82 projected
+                    // envelope groups, never double-count a plate as
+                    // an ordinary StructureMember profile width.
+                    .Where(m=>m.Member.Kind!="PLATE")
                     .Select(m=>new {
                         m.Member,
                         m.Bounds,
@@ -1419,13 +1504,16 @@ public static class SupportOrthoReferenceDimPlan47
                 tx+1.3,ty+printedWidth*.5+1);
         string axis=request.Horizontal?"H":"V";
         string source="DETAIL:"+c.Name+"/"+axis+"/"+
-            (request.Overall?"OVERALL":
+            (request.PlateEnvelope?"PLATE_"+request.SourceKey:
+             request.Overall?"OVERALL":
                 request.TerminalRemainder?
                     "TERMINAL_REMAINDER_"+request.SourceKey:
                 request.LocalBounds.HasValue?
                     "MEMBER_"+request.SourceKey:
                     "CHAIN_"+request.Index);
-        string provenance=request.Overall?
+        string provenance=request.PlateEnvelope?
+            "NATIVE_STRUCTURE_PLATE_PROJECTED_ENVELOPE_NOT_CUT_LENGTH":
+            request.Overall?
             "REFERENCE_PROJECTED_OVERALL_NOT_CUT_LENGTH":
             request.TerminalRemainder?
                 "REFERENCE_TERMINAL_NATIVE_MEMBER_REMAINDER_NOT_CUT_LENGTH":
@@ -1442,7 +1530,8 @@ public static class SupportOrthoReferenceDimPlan47
         double bX=request.Horizontal?request.To:endWitness.Value;
         double bY=request.Horizontal?endWitness.Value:request.To;
         var dim=new SupportOrthoDimLinearPlan41.Dimension(
-            c.Name,source,"STRUCTURE",request.Horizontal,
+            c.Name,source,request.PlateEnvelope?"PLATE":"STRUCTURE",
+            request.Horizontal,
             aX,aY,bX,bY,request.Horizontal?center:line,
             request.Horizontal?line:center,request.Measurement,
             provenance,tx,ty,request.PaperToModelMm);
@@ -1601,7 +1690,8 @@ public static class SupportOrthoReferenceDimPlan47
     private static bool ValidMember(
         SupportOrthoAllViewDimPlan44.Member m)=>
         !string.IsNullOrWhiteSpace(m.Key)&&
-        (m.Kind=="STRUCTURE"||m.Kind=="SUPPORT")&&
+        (m.Kind=="STRUCTURE"||m.Kind=="SUPPORT"||
+         m.Kind=="PLATE")&&
         new[]{m.MinX,m.MinY,m.MinZ,m.MaxX,m.MaxY,m.MaxZ}
             .All(double.IsFinite)&&
         m.MinX<=m.MaxX&&m.MinY<=m.MaxY&&m.MinZ<=m.MaxZ;
