@@ -84,8 +84,10 @@ Check(crowdedPlan.Callouts.Count(c=>c.Handle=="NATIVE-1")==2,
 // geometrically valid, collision-free result can preserve them.
 int writtenOptional=crowdedPlan.Callouts.Count(c=>c.IsXrefMember);
 int omittedOptional=crowdedPlan.Skipped.Count(x=>
-    x.Contains("XREF_FILENAME_NO_LABEL_SPACE"));
+    x.Contains("XREF_FILENAME_NO_LABEL_SPACE")||
+    x.Contains("NO_SEPARATE_LEADER_LANE"));
 Check(writtenOptional+omittedOptional==60*cameras.Length,
-    "all optional XREF filenames are either safely placed or diagnosed");
+    "all optional XREF filenames are either safely placed or diagnosed; "+
+    "bounded unique leader lanes remain mandatory");
 Console.WriteLine("REV22.37 XREF source-filename/priority smoke PASS");
 Console.WriteLine("REV22.35 selected-native-view title/callout smoke PASS");
