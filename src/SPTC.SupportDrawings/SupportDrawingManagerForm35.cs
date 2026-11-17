@@ -486,6 +486,111 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         UpdateOutputModeUi();
     }
 
+    // REV77: section headers reflow inside the existing Ortho-tab's
+    // AutoScroll viewport. Reparenting existing WinForms controls leaves
+    // their handlers, input state, settings and command contracts intact.
+    private void BuildCollapsibleSections(TabPage tab,
+        Control[] sourceFields,Control[] nativeViews,
+        Control[] outputFields,Control[] qaFields,
+        Control[] dimensions,Control[] annotations,
+        Control[] preferences)
+    {
+        // Compact each independent group without touching its values.
+        outputFields[0].SetBounds(18,8,316,24);
+        outputFields[1].SetBounds(18,40,333,29);
+        outputFields[2].SetBounds(368,30,352,63);
+        outputFields[3].SetBounds(18,91,330,45);
+        outputFields[4].SetBounds(368,99,350,31);
+        dimensions[0].SetBounds(18,8,390,27);
+        dimensions[1].SetBounds(18,43,415,31);
+        annotations[0].SetBounds(18,8,306,24);
+        for(int i=1;i<=4;i++)
+            annotations[i].SetBounds(18,11+i*28,370,24);
+        annotations[5].SetBounds(18,151,427,29);
+        preferences[0].SetBounds(18,8,520,24);
+        preferences[1].SetBounds(18,40,130,30);
+        preferences[2].SetBounds(158,40,120,30);
+        preferences[3].SetBounds(289,40,108,30);
+        preferences[4].SetBounds(409,40,220,30);
+        preferences[5].SetBounds(18,84,700,24);
+
+        AddCollapsibleSection(tab,"Source & OrthoCube",true,sourceFields);
+        AddCollapsibleSection(tab,"Native Views & Scale",true,nativeViews);
+        AddCollapsibleSection(tab,"Drawing Output",true,outputFields);
+        AddCollapsibleSection(tab,"Generation History & QA",true,qaFields);
+        AddCollapsibleSection(tab,"Dimensions",false,dimensions);
+        AddCollapsibleSection(tab,"Annotations & XREF",false,annotations);
+        AddCollapsibleSection(tab,"Project Settings",false,preferences);
+        ReflowSections(tab);
+    }
+
+    private void AddCollapsibleSection(TabPage tab,string name,
+        bool expanded,params Control[] children)
+    {
+        var section=new CollapsibleSection{Expanded=expanded};
+        int left=children.Min(c=>c.Left);
+        int top=children.Min(c=>c.Top);
+        section.BodyHeight=children.Max(c=>c.Bottom)-top+14;
+        section.Frame.Width=737;
+        section.Frame.BackColor=Color.White;
+        section.Frame.BorderStyle=BorderStyle.FixedSingle;
+        section.Header.FlatStyle=FlatStyle.Flat;
+        section.Header.FlatAppearance.BorderSize=0;
+        section.Header.Font=new Font("Segoe UI",9f,FontStyle.Bold);
+        section.Header.TextAlign=ContentAlignment.MiddleLeft;
+        section.Header.BackColor=Color.FromArgb(236,242,248);
+        section.Header.SetBounds(0,0,734,33);
+        section.Body.SetBounds(0,35,734,section.BodyHeight);
+        section.Body.BackColor=Color.White;
+        foreach(Control child in children)
+        {
+            int dx=child.Left-left+9;
+            int dy=child.Top-top+5;
+            section.Body.Controls.Add(child);
+            child.Location=new Point(dx,dy);
+        }
+        section.Frame.Controls.Add(section.Header);
+        section.Frame.Controls.Add(section.Body);
+        section.Header.Click+=(_,_)=>{
+            if(IsRunning)return;
+            section.Expanded=!section.Expanded;
+            ReflowSections(tab);
+        };
+        uiSections.Add(section);
+        tab.Controls.Add(section.Frame);
+        section.Header.Tag=name;
+    }
+
+    private void ReflowSections(TabPage tab)
+    {
+        tab.SuspendLayout();
+        try
+        {
+            int y=10;
+            foreach(var section in uiSections)
+            {
+                string name=section.Header.Tag?.ToString()??"Settings";
+                section.Header.Text=(section.Expanded?"[-]  ":"[+]  ")+name;
+                section.Body.Visible=section.Expanded;
+                section.Frame.Height=section.Expanded?
+                    35+section.BodyHeight:34;
+                section.Frame.Location=new Point(8,y);
+                y+=section.Frame.Height+9;
+            }
+            tab.AutoScrollMinSize=new Size(755,y+10);
+        }
+        finally{tab.ResumeLayout();}
+    }
+
+    private void ArrangeStickyFooter()
+    {
+        int w=stickyFooter.ClientSize.Width;
+        int right=Math.Max(140,w-126);
+        preview.SetBounds(12,29,Math.Max(120,right-25),73);
+        preflightButton.SetBounds(right,30,112,29);
+        runButton.SetBounds(right,69,112,30);
+    }
+
     // Never clear user options on another drawing run. Refresh source context
     // only when the command is explicitly opened for that project.
     internal void UpdateProjectContext(string sourceDwg,string root,string folder)
