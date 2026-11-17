@@ -79,7 +79,13 @@ var crowdedPlan=SupportOrthoMemberCalloutPlan27.Build(cameras,titles,
     crowd,594,841,true);
 Check(crowdedPlan.Callouts.Count(c=>c.Handle=="NATIVE-1")==2,
     "optional XREF notes must not crowd out native member callouts");
-Check(crowdedPlan.Skipped.Any(x=>x.Contains("XREF_FILENAME_NO_LABEL_SPACE")),
-    "overflow XREF labels are explicitly diagnosed");
+// REV71: a genuine free paper-height band may fit every optional
+// XREF filename. Do not require an artificial omission when the
+// geometrically valid, collision-free result can preserve them.
+int writtenOptional=crowdedPlan.Callouts.Count(c=>c.IsXrefMember);
+int omittedOptional=crowdedPlan.Skipped.Count(x=>
+    x.Contains("XREF_FILENAME_NO_LABEL_SPACE"));
+Check(writtenOptional+omittedOptional==60*cameras.Length,
+    "all optional XREF filenames are either safely placed or diagnosed");
 Console.WriteLine("REV22.37 XREF source-filename/priority smoke PASS");
 Console.WriteLine("REV22.35 selected-native-view title/callout smoke PASS");
