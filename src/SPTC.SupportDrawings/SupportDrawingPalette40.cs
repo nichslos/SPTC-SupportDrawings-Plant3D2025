@@ -166,6 +166,14 @@ internal static class SupportDrawingPalette40
         Finish(command+" "+outcome+". Review the exported drawings/logs.");
     }
 
+    // REV76: presentation-only event from a DWG that the native
+    // generator already wrote. It never guesses a report or writes CAD.
+    internal static void RecordGeneratedOrthoDwg(string path)
+    {
+        if(busy&&manager!=null&&!manager.IsDisposed)
+            manager.RecordGeneratedDwg(path);
+    }
+
     internal static void Finish(string message)
     {
         pendingOrtho=null;
