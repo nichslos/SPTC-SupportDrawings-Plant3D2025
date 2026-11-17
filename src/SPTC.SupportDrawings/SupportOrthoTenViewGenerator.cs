@@ -2009,18 +2009,17 @@ public sealed class SupportOrthoTenViewGenerator
                             Log("STEP8_"+label+"_NATIVE_REQUESTED_PAPER_FRAME="+
                                 Point(item.Width,item.Height,0));
                             Log("STEP8_"+label+"_PRIVATE_GENERATEORTHOS_ENTERED");
-                            // REV83: apply the requested appearance only
-                            // during native Plant GenerateOrthos. The scope
-                            // restores the original host settings even if
-                            // the private native generator throws. Do not
-                            // synthesize dashed or insulated geometry.
-                            using (NativeOrthoAppearance83.Begin(
-                                new NativeOrthoAppearanceAutoCAD83(targetDoc),
-                                options.HiddenLineMode,options.InsulationMode,
-                                message=>Log("REV83_"+label+"_"+message)))
-                            {
-                                generate.Invoke(nativeView,args);
-                            }
+                            // REV85: the actual user test proved that
+                            // hidden-mode calibration fails in this
+                            // native GenerateOrthos context, aborting
+                            // TOP and preventing all ten views and
+                            // dimensions. Appearance is OPTIONAL and
+                            // MUST NOT enter this geometry-critical path.
+                            // Defer native host sync until all views and
+                            // essential dimensions have completed.
+                            Log("REV85_"+label+
+                                "_APPEARANCE=DEFERRED_NO_NATIVE_HOST_MUTATION");
+                            generate.Invoke(nativeView,args);
                             Log("STEP8_"+label+"_PRIVATE_GENERATEORTHOS_RETURNED");
                             if(NativeOrthoAxialEditorPreset.IsAxial(label))
                             {
@@ -3129,44 +3128,58 @@ public sealed class SupportOrthoTenViewGenerator
                     Log("PRODUCTION_TITLEBLOCK_ERROR="+ex);
                 }
             }
-            // REV84: REV83 restored the native host appearance after
-            // every GenerateOrthos call, leaving the ribbon at "No"
-            // despite the user's explicit All Hidden/Insulation choices.
-            // Keep the native host in sync with the selected appearance
-            // ONLY after successful generation, with the exact native
-            // hidden command/readback verified by the host adapter.
-            // Plant notes that shared model refreshes may propagate
-            // appearance; do not change any settings in Default mode.
-            if(succeeded&&(
-                options.HiddenLineMode!=NativeOrthoAppearance83.ProjectDefault||
-                options.InsulationMode!=NativeOrthoAppearance83.ProjectDefault))
+            // REV85: only after COMPLETE native view and dimension
+            // generation, attempt host-session appearance on a best-
+            // effort basis. A missing native Editor command must never
+            // poison the registered DWG, zero view count, dimension
+            // QA or downstream publisher. Hidden and insulation are
+            // independent; unsupported hidden calibration cannot
+            // prevent the separate documented insulation setting.
+            // No verified native ViewDef style API is available here,
+            // so report session readback separately from actual saved
+            // viewport output (requires manual Edit View verification).
+            if(succeeded)
             {
                 try
                 {
-                    using var nativeRibbon84=NativeOrthoAppearance83.Begin(
-                        new NativeOrthoAppearanceAutoCAD83(targetDoc),
-                        options.HiddenLineMode,options.InsulationMode,
-                        message=>Log("REV84_FINAL_NATIVE_RIBBON_"+message));
-                    nativeRibbon84.KeepForNativeRibbonOnSuccess();
-                    Log("REV84_FINAL_NATIVE_RIBBON_SYNC=PASS"+
-                        " SCOPE=ACTIVE_PLANT_SESSION"+
-                        " UI_EDIT_VIEW_CONFIRMATION_REQUIRED=TRUE");
+                    var appearance85=
+                        NativeOrthoAppearanceRecovery85.TryAfterSuccessfulGeneration(
+                            new NativeOrthoAppearanceAutoCAD83(targetDoc),
+                            options.HiddenLineMode,options.InsulationMode,
+                            Log);
+                    Log("REV85_HIDDEN_LINE_STATUS="+
+                        appearance85.HiddenLineStatus);
+                    Log("REV85_INSULATION_STATUS="+
+                        appearance85.InsulationStatus);
+                    Log("REV85_NATIVE_VIEW_APPEARANCE_VERIFIED="+
+                        appearance85.SavedViewAppearanceVerified);
+                    if(appearance85.Summary.Contains(
+                        "MANUAL_EDITOR_ACTION_REQUIRED",
+                        StringComparison.Ordinal))
+                        SafeWriteToActiveEditor(
+                            "SPTC: Native Ortho views and dimensions were "+
+                            "generated. Appearance override was not fully "+
+                            "verified; use Edit View > Output Appearance "+
+                            "to set the unsupported native mode.");
                 }
-                catch(System.Exception appearanceError)
+                catch(System.Exception diagnosticError)
                 {
-                    Log("REV84_FINAL_NATIVE_RIBBON_SYNC=FAILED:"+ 
-                        appearanceError.GetType().Name+":"+
-                        appearanceError.Message);
+                    // Never claim PASS or convert the already successful
+                    // native DWG into GENERATION_FAILED over appearance.
+                    Log("REV85_POST_GENERATION_APPEARANCE="+
+                        "UNVERIFIED_MANUAL_EDITOR_ACTION_REQUIRED "+
+                        "ERROR="+diagnosticError.GetType().Name+":"+
+                        diagnosticError.Message);
                     SafeWriteToActiveEditor(
-                        "SPTC appearance warning: the requested native "+
-                        "Ortho Editor ribbon mode could not be verified. "+
-                        "Check the ribbon manually before issuing a drawing.");
+                        "SPTC: Generated native views. Review native "+
+                        "Ortho Editor output appearance manually.");
                 }
             }
             else
-                Log("REV84_FINAL_NATIVE_RIBBON_SYNC="+
-                    (succeeded?"DEFAULT_NO_CHANGES":
-                        "SKIPPED_UNSUCCESSFUL_GENERATION"));
+            {
+                Log("REV85_POST_GENERATION_APPEARANCE="+
+                    "SKIPPED_UNSUCCESSFUL_GENERATION");
+            }
             SafeWriteToActiveEditor(
                 "SPTC: "+options.Views.Count+" native views and titles created. "+
                 annotated+" per-member leader annotations; "+
