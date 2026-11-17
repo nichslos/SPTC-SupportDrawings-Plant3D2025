@@ -1111,28 +1111,36 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         }
         string[] chosen=views.CheckedItems.Cast<object>()
             .Select(v=>v.ToString() ?? "").Where(v=>v.Length>0).ToArray();
-        preview.Text = "Read-only configuration preflight: " +
-            Path.GetFileName(source) + "\r\n" +
-            "Project Ortho folder: " + orthoFolder + "\r\n" +
-            "Seed: " + (autoSeed.Checked ? "Auto (registered / empty)" : seed.Text) +
-            "   |   Views ("+chosen.Length+"): " + string.Join(",",chosen) +
-            "   |   Scale: " + SupportDrawingPaperScale39.Display(
-                SupportDrawingPaperScale39.Resolve(scale.Text,(int)customScale.Value)) +
-            "   |   XREF member names: " + (xrefNames.Checked?"On":"Off") +
-            "   |   Auto DIMLINEAR: " + (autoDimLinear.Checked?"On":"Off") +
-            "   |   Detail style: " +
-            (referenceDimensions.Checked?"Chain + overall":"All member H/V")+
-            "   |   Batch Ortho: "+(batch.Checked?"Sequential":"Off")+
-            "   |   Output: "+outputMode.Text+
-            "   |   Annotations: Line="+line.Checked+
-            " BOP="+bop.Checked+" TOS="+tos.Checked+
-            " Description="+description.Checked+
-            "   |   Prefix: "+(prefix.Text.Length==0?
-                "Automatic unique name":prefix.Text)+
-            "\r\n"+SupportDrawingOutputMode76.Explanation(
-                SelectedOutputMode())+
-            "\r\nConfiguration preview only. Actual paper fit and QA "+
-            "are verified by the Plant 3D generator after Run.";
+        var selectedMode=SelectedOutputMode();
+        int d=SupportDrawingPaperScale39.Resolve(
+            scale.Text,(int)customScale.Value);
+        bool eligible=SupportDrawingOutputMode76.Eligible(
+            selectedMode,chosen.Length,d,batch.Checked);
+        preview.Text =
+            "READ-ONLY CONFIGURATION PREFLIGHT\r\n"+
+            "Source: "+Path.GetFileName(source)+"\r\n"+
+            "1. VIEWS: "+chosen.Length+" / 10 | "+
+                string.Join(", ",chosen)+"\r\n"+
+            "2. SCALE: "+SupportDrawingPaperScale39.Display(d)+"\r\n"+
+            "3. OUTPUT: "+outputMode.Text+"\r\n"+
+            "4. SEED: "+(autoSeed.Checked?
+                "Automatic registered empty Ortho seed":seed.Text)+"\r\n"+
+            "5. ANNOTATIONS: Line="+line.Checked+
+                " | BOP="+bop.Checked+" | TOS="+tos.Checked+
+                " | Description="+description.Checked+
+                " | XREF Names="+xrefNames.Checked+"\r\n"+
+            "6. DIMENSIONS: "+(autoDimLinear.Checked?
+                (referenceDimensions.Checked?
+                    "Native H/V chain + overall":"Native H/V all members"):"OFF")+
+                " | Batch: "+(batch.Checked?"ON":"OFF")+"\r\n"+
+            "PREFIX: "+(prefix.Text.Length==0?
+                "Automatic":prefix.Text)+"\r\n"+
+            (eligible?
+                "READY FOR NATIVE VALIDATION. ":
+                "CHECK SETTINGS: Draft/Split need All 10, 1:N, Batch OFF. ")+
+            SupportDrawingOutputMode76.Explanation(selectedMode)+
+            "\r\nNote: this checks UI settings only. Actual paper fit, "+
+            "source geometry and QA are verified during generation.";
     }
 
     private void RunSelected()
