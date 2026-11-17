@@ -29,6 +29,8 @@
              Link="SupportOrthoDimensionReflow.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoReferenceDimPlan47.cs"
              Link="SupportOrthoReferenceDimPlan47.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDimensionCollisionRecovery.cs"
+             Link="SupportOrthoDimensionCollisionRecovery.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoReferenceDatum56.cs"
              Link="SupportOrthoReferenceDatum56.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoManualDetailStyle57.cs"
