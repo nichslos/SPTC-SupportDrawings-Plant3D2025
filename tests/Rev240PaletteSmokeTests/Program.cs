@@ -60,6 +60,7 @@ internal static class Program
         Rev83OrthoAppearanceTests.Run();
         Rev84AppearanceSyncTests.Run();
         Rev85NonblockingAppearanceTests.Run();
+        Rev86AppearanceProbeTests.Run();
         TestBatchProgressReporting();
         TestProductionPackageCheckboxSaveRoundTrip();
         var surface=manager.Controls.Find(
