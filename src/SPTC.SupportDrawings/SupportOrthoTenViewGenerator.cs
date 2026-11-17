@@ -303,9 +303,15 @@ public sealed class SupportOrthoTenViewGenerator
                         var subOptions=options with {
                             Views=subset,BypassOneSheetLimit=false
                         };
+                        // Use the existing validated native -Snn package
+                        // identifier so separate sheets never share one
+                        // project drawing number in the production register.
+                        string partSuffix="-S"+(completedSheets+1)
+                            .ToString("00",CultureInfo.InvariantCulture);
                         bool generated=await GenerateOne(
                             sourceDoc,singleSourceIds,subOptions,progress,
                             productionEntries.Add,
+                            sheetDrawingSuffix:partSuffix,
                             onPaperFitFailure:()=>childPageNoFit=true);
                         if(generated)
                         {
