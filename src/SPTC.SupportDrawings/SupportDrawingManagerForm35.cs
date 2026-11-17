@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
@@ -49,8 +50,11 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly TabControl tabs = new();
     private readonly ComboBox cubeMode = new();
     private readonly CheckBox autoSeed = new();
-    private readonly CheckBox bypassOneSheetLimit = new();
-    private readonly CheckBox allowDraftOverflow = new();
+    // REV76: one unambiguous UI choice maps to the existing two
+    // generator flags. Neither the generator nor its defaults change.
+    private readonly ComboBox outputMode = new();
+    private readonly Label outputHint = new();
+    private readonly Label selectedViewCount = new();
     private readonly TextBox seed = new();
     private readonly TextBox prefix = new();
     private readonly ComboBox scale = new();
@@ -65,6 +69,12 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly CheckBox autoDimLinear = new();
     private readonly CheckBox referenceDimensions = new();
     private readonly TextBox preview = new();
+    private readonly TextBox lastQa = new();
+    private readonly Button openDwgFolder = new();
+    private readonly Button openResult = new();
+    private string? lastOutputDwg;
+    private string? lastResultTxt;
+    private int completedOutputCount;
     private readonly Button runButton = new();
     private readonly Button preflightButton = new();
     private readonly Label sourceLabel = new();
@@ -135,7 +145,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // The settings area extends below the original tab viewport.
         // Explicit scroll extent makes the save/load/default controls
         // reachable at narrow palette sizes and higher Windows DPI.
-        orthoTab.AutoScrollMinSize = new Size(735,600);
+        orthoTab.AutoScrollMinSize = new Size(735,850);
         tabs.TabPages.Add(orthoTab);
         tabs.TabPages.Add(MakeInfoTab("export", "Support Export",
             "Export ONE selected support as an independent DWG.\r\n" +
@@ -201,22 +211,25 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         autoSeed.Text = "Automatically select a verified empty Ortho seed";
         autoSeed.Checked = true;
         orthoTab.Controls.Add(autoSeed);
-        // REV74: opt-in safe fallback, not a bypass of native viewport
-        // borders, exact scale, collisions or sheet metadata.
-        bypassOneSheetLimit.SetBounds(395, 120, 338, 26);
-        bypassOneSheetLimit.Text = "If All 10 won't fit, split across sheets";
-        bypassOneSheetLimit.Checked = false;
-        orthoTab.Controls.Add(bypassOneSheetLimit);
-        allowDraftOverflow.SetBounds(407, 469, 320, 27);
-        allowDraftOverflow.Text = "All 10 on one DWG, outside paper (DRAFT)";
-        allowDraftOverflow.Checked = false;
-        allowDraftOverflow.CheckedChanged+=(_,_)=>{
-            if(allowDraftOverflow.Checked)bypassOneSheetLimit.Checked=false;
-        };
-        bypassOneSheetLimit.CheckedChanged+=(_,_)=>{
-            if(bypassOneSheetLimit.Checked)allowDraftOverflow.Checked=false;
-        };
-        orthoTab.Controls.Add(allowDraftOverflow);
+        // REV76: mutually exclusive output modes. The default remains
+        // the original one-sheet fit; REV74/75 flags are calculated
+        // from the selection, not duplicated or persisted separately.
+        Label outputLabel=L("Drawing output mode",407,442,300);
+        outputLabel.Font=new Font("Segoe UI",9f,FontStyle.Bold);
+        orthoTab.Controls.Add(outputLabel);
+        outputMode.SetBounds(407,469,315,29);
+        outputMode.DropDownStyle=ComboBoxStyle.DropDownList;
+        outputMode.Items.AddRange(new object[]{
+            SupportDrawingOutputMode76.Physical,
+            SupportDrawingOutputMode76.Draft,
+            SupportDrawingOutputMode76.Split
+        });
+        outputMode.SelectedIndex=0;
+        orthoTab.Controls.Add(outputMode);
+        outputHint.SetBounds(407,502,318,50);
+        outputHint.AutoEllipsis=false;
+        outputHint.ForeColor=Color.DimGray;
+        orthoTab.Controls.Add(outputHint);
         seed.SetBounds(18, 152, 568, 27);
         seed.PlaceholderText = "Auto: select a registered empty project Ortho DWG";
         seed.Enabled = false;
@@ -249,6 +262,11 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         foreach(string name in SupportDrawingUiOptions.AllViews)
             views.Items.Add(name, true);
         orthoTab.Controls.Add(views);
+        selectedViewCount.SetBounds(205,195,166,24);
+        selectedViewCount.TextAlign=ContentAlignment.MiddleRight;
+        selectedViewCount.ForeColor=Color.DimGray;
+        orthoTab.Controls.Add(selectedViewCount);
+        views.ItemCheck+=(_,_)=>BeginInvoke(new Action(UpdateOutputModeUi));
         // Presets are UI-only: the native camera selection contract
         // remains the unchanged 10-element checked list. Individual
         // checkboxes remain editable after choosing any preset.
@@ -308,17 +326,17 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // Explicit local, per-project preferences: safe from accidental
         // project-switch propagation and no write occurs on Run.
         Label settingsCaption = L(
-            "Project settings (local to this Windows user)",18,496,535);
+            "Project settings (local to this Windows user)",18,560,535);
         settingsCaption.Font = new Font("Segoe UI",9f,FontStyle.Bold);
         orthoTab.Controls.Add(settingsCaption);
         Button saveSettings = new() {
-            Text="Save settings",Location=new Point(18,525),
+            Text="Save settings",Location=new Point(18,589),
             Size=new Size(130,30)};
         Button loadSettings = new() {
-            Text="Load saved",Location=new Point(158,525),
+            Text="Load saved",Location=new Point(158,589),
             Size=new Size(120,30)};
         Button resetSettings = new() {
-            Text="Defaults",Location=new Point(289,525),
+            Text="Defaults",Location=new Point(289,589),
             Size=new Size(108,30)};
         saveSettings.Click+=(_,_)=>SaveProjectPreferences();
         loadSettings.Click+=(_,_)=>LoadProjectPreferences(showFeedback:true);
@@ -330,7 +348,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             saveSettings,loadSettings,resetSettings});
         Label privacy = L(
             "Manual Ortho seed paths are never saved. Existing export dialogs are unchanged.",
-            18,563,690);
+            18,632,690);
         privacy.ForeColor=Color.DimGray;
         orthoTab.Controls.Add(privacy);
 
@@ -339,7 +357,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // Native view geometry/dimensions remain unchanged.
         Button productionSettings=new() {
             Text="Production package...",
-            Location=new Point(409,525),Size=new Size(220,30)};
+            Location=new Point(409,589),Size=new Size(220,30)};
         productionSettings.Click+=(_,_)=>{
             if(IsRunning)return;
             using var editor=new SupportProductionPackageDialog(projectRoot);
@@ -357,6 +375,34 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             }
         };
         orthoTab.Controls.Add(productionSettings);
+
+        // REV76: show only the actual completed output's RESULT.txt, never
+        // guess counts from the selected view checkboxes or saved settings.
+        Label qaHeader=L("Last generated DWG / QA",18,671,430);
+        qaHeader.Font=new Font("Segoe UI",9f,FontStyle.Bold);
+        orthoTab.Controls.Add(qaHeader);
+        lastQa.SetBounds(18,699,704,77);
+        lastQa.Multiline=true;
+        lastQa.ReadOnly=true;
+        lastQa.ScrollBars=ScrollBars.Vertical;
+        lastQa.Text="No completed Ortho drawing in this session.";
+        orthoTab.Controls.Add(lastQa);
+        openDwgFolder.Text="Open DWG folder";
+        openDwgFolder.SetBounds(18,787,160,30);
+        openDwgFolder.Enabled=false;
+        openDwgFolder.Click+=(_,_)=>OpenGeneratedOutput(false);
+        orthoTab.Controls.Add(openDwgFolder);
+        openResult.Text="Open RESULT.txt";
+        openResult.SetBounds(190,787,160,30);
+        openResult.Enabled=false;
+        openResult.Click+=(_,_)=>OpenGeneratedOutput(true);
+        orthoTab.Controls.Add(openResult);
+
+        outputMode.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
+        batch.CheckedChanged+=(_,_)=>UpdateOutputModeUi();
+        scale.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
+        customScale.ValueChanged+=(_,_)=>UpdateOutputModeUi();
+        tabs.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
 
         Label previewLabel = L("Preflight / configuration summary", 22, 630, 420);
         previewLabel.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
@@ -387,6 +433,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // saved for this Plant 3D project. No persisted queued command
         // or source geometry can be replayed.
         LoadProjectPreferences(showFeedback:false);
+        UpdateOutputModeUi();
     }
 
     // Never clear user options on another drawing run. Refresh source context
