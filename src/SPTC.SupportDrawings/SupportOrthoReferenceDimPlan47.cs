@@ -696,6 +696,10 @@ public static class SupportOrthoReferenceDimPlan47
                 // fabricated 50/100 value. Limit to two different local
                 // widths per view direction to avoid duplicate clutter.
                 var localCandidates=projectedMembers
+                    // StructurePlate uses its dedicated REV82 projected
+                    // envelope groups, never double-count a plate as
+                    // an ordinary StructureMember profile width.
+                    .Where(m=>m.Member.Kind!="PLATE")
                     .Select(m=>new {
                         m.Member,
                         m.Bounds,
