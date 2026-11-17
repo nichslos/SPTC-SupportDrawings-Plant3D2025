@@ -541,6 +541,36 @@ public sealed class SupportOrthoTenViewGenerator
             ed.WriteMessage("\nREV22.29: Invalid support OrthoCube: " + ex.Message);
             return false;
         }
+        // REV73: compare EVERY verified source XREF pipe (including excluded
+        // pipes) against support, unchanged scan envelope and final OrthoCube.
+        // Read-only diagnostics; never expand geometry, alter pipe inclusion,
+        // change metadata logic or modify the source/XREF DWGs.
+        var rev73XrefGeometryNotes=new List<string>();
+        if(pipeDiscovery.ScanRegion is BoundingBox3 actualScan)
+        {
+            var allVerified=pipeDiscovery.VerifiedXrefGeometry ??
+                Array.Empty<SupportOrthoPipeDiscovery28.VerifiedXrefPipe>();
+            int insideCube=allVerified.Count(p=>
+                SupportOrthoXrefProximity73.Intersects(
+                    p.WorldBounds,layout.PaddedCube));
+            rev73XrefGeometryNotes.Add(
+                "REV73_XREF_PIPE_GEOMETRY_SUMMARY=VERIFIED_NATIVE_TYPES "+
+                pipeDiscovery.VerifiedXrefPipeEntities+
+                " VALID_TRANSFORMED_WCS="+allVerified.Count+
+                " INSIDE_SCAN="+allVerified.Count(p=>p.InsideScan)+
+                " INSIDE_ORTHOCUBE="+insideCube+
+                " ACTION=DIAGNOSTIC_ONLY");
+            foreach(var pipe in allVerified)
+                rev73XrefGeometryNotes.Add(
+                    SupportOrthoXrefProximity73.Describe(
+                        pipe.Key,pipe.SourceFile,pipe.WorldBounds,
+                        geometry.Value,actualScan,layout.PaddedCube,units));
+        }
+        else
+            rev73XrefGeometryNotes.Add(
+                "REV73_XREF_PIPE_GEOMETRY_SUMMARY=SCAN_REGION_UNAVAILABLE");
+        foreach(string diagnostic in rev73XrefGeometryNotes)
+            ed.WriteMessage("\nSPTC "+diagnostic);
         // REV22.29: source-authenticated pipe metadata only.
         // XREF source ObjectIds and nested transforms come from loaded XREF DBs.
         var nativeRead=SupportOrthoPlantPipe27.Read(
@@ -1084,6 +1114,8 @@ public sealed class SupportOrthoTenViewGenerator
             Log("REV22_29_PIPE_CANDIDATES="+pipeRead.Candidates);
             Log("REV22_29_PIPE_PNP_LINKED_ROWS="+pipeRead.LinkedRows);
             Log("REV22_29_PIPE_ANNOTATION_SOURCES="+pipeRead.Pipes.Count);
+            foreach(string diagnostic in rev73XrefGeometryNotes)
+                Log(diagnostic);
             Log("REV72_XREF_PIPE_DETECTION_MODE="+
                 "LOADED_SOURCE_NATIVE_RX_DXF_AND_INHERITANCE");
             Log("REV72_XREF_MEMBER_CHECKBOX_PIPE_RELATION="+
