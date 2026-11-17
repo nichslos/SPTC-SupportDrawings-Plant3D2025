@@ -157,7 +157,7 @@ internal static class NativeOrthoVersionHandshake80
                 UnderFolder(path,projectRoot)&&isValidNative(path);
             results.Add(new NativeOrthoVersionPolicy80.Drawing(id,
                 path,FirstField(row,"PnPDrawingGUID","PnPDrawingGuid",
-                    "PnPGuid","DrawingGUID"),
+                    "DrawingGUID"),
                 Field(row,"DwgVersion"),verified));
         }
         return new Snapshot(dlm,results);
@@ -197,8 +197,12 @@ internal static class NativeOrthoVersionHandshake80
         string root,string orthoFolder)
     {
         // These are Plant schema field names, not user/project paths.
-        foreach(string column in new[]{"AbsoluteFilePath","FilePath",
-            "RelativeFilePath","DwgPath","DrawingPath","DwgFile",
+        // PnPRelativePath and Path / Dwg Name are native Autodesk
+        // PnPDrawings columns. Source type/name/version values come
+        // from the active project and are NEVER hard-coded here.
+        foreach(string column in new[]{"PnPRelativePath",
+            "AbsoluteFilePath","FilePath","RelativeFilePath",
+            "PnPUnc","DwgPath","DrawingPath","DwgFile",
             "DrawingFile","FileName"})
         {
             string? value=Field(row,column);
@@ -219,6 +223,33 @@ internal static class NativeOrthoVersionHandshake80
                 }
                 catch(ArgumentException){/* Invalid row path. */}
                 catch(NotSupportedException){/* Invalid row path. */}
+            }
+        }
+        // Older Ortho schemas may split drawing folder and Dwg Name.
+        // Use both native fields as data; accept only an existing DWG
+        // under the active project. Never match by basename alone.
+        string? folderValue=Field(row,"Path");
+        string? name=FirstField(row,"Dwg Name","DwgName","Name");
+        if(!string.IsNullOrWhiteSpace(folderValue)&&
+           !string.IsNullOrWhiteSpace(name))
+        {
+            string filename=name.EndsWith(".dwg",
+                StringComparison.OrdinalIgnoreCase)?name:name+".dwg";
+            string candidate=Path.Combine(folderValue,filename);
+            string[] paths=Path.IsPathRooted(candidate)?
+                new[]{candidate}:
+                new[]{Path.Combine(root,candidate),
+                    Path.Combine(orthoFolder,candidate)};
+            foreach(string p in paths)
+            {
+                try
+                {
+                    string full=Path.GetFullPath(p);
+                    if(File.Exists(full)&&UnderFolder(full,root))
+                        return full;
+                }
+                catch(ArgumentException){}
+                catch(NotSupportedException){}
             }
         }
         return null;
