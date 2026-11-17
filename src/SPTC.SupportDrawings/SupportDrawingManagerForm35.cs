@@ -913,17 +913,29 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         arrangingStickyFooter=true;
         try
         {
-            // Use the actual DPI-scaled button dimensions, not their
-            // original 96-DPI values. No CAD/paper measurements used.
-            int buttonWidth=Math.Max(runButton.Width,preflightButton.Width);
-            int right=Math.Max(128,w-buttonWidth-12);
-            int top=Math.Max(10,(h-runButton.Height-
-                preflightButton.Height-9)/2);
+            // The fixed footer always reserves a separate right column
+            // for actions, including at 125/150% DPI.
+            int buttonWidth=Math.Max(fixSettings.Width,
+                Math.Max(runButton.Width,preflightButton.Width));
+            int right=Math.Max(125,w-buttonWidth-12);
+            int gap=Math.Max(5,h/30);
+            int total=runButton.Height+preflightButton.Height+gap;
+            if(fixSettings.Visible)total+=fixSettings.Height+gap;
+            int top=Math.Max(5,(h-total)/2);
+            if(fixSettings.Visible)
+            {
+                fixSettings.Location=new Point(right,top);
+                top+=fixSettings.Height+gap;
+            }
             preflightButton.Location=new Point(right,top);
             runButton.Location=new Point(right,
-                top+preflightButton.Height+9);
-            preview.SetBounds(12,Math.Max(24,top),
-                Math.Max(100,right-25),Math.Max(35,h-Math.Max(24,top)-12));
+                top+preflightButton.Height+gap);
+            int textWidth=Math.Max(95,right-24);
+            stickySummary.SetBounds(12,4,textWidth,
+                Math.Max(20,stickySummary.Height));
+            int textTop=Math.Max(29,stickySummary.Bottom+4);
+            preview.SetBounds(12,textTop,textWidth,
+                Math.Max(35,h-textTop-8));
         }
         finally{arrangingStickyFooter=false;}
     }
@@ -1145,6 +1157,60 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 Color.DarkGoldenrod:Color.DarkGreen;
         if(runButton!=null)
             runButton.Enabled=!IsRunning&&(!isOrtho||count>0&&valid);
+    }
+
+    // REV79 explicit validation navigation, based solely on selected
+    // WinForms options, never native model/Ortho checks.
+    private Control? RequiredSetting(int count,int denominator,
+        SupportDrawingOutputMode76.Mode mode,bool isOrtho)
+    {
+        if(!isOrtho)return null;
+        if(count==0||mode!=SupportDrawingOutputMode76.Mode.Physical&&
+            count!=10)return views;
+        if(mode!=SupportDrawingOutputMode76.Mode.Physical&&
+           denominator<=0)return scale;
+        if(mode!=SupportDrawingOutputMode76.Mode.Physical&&
+           batch.Checked)return batch;
+        if(!autoSeed.Checked&&!File.Exists(seed.Text.Trim()))return seed;
+        if(!ValidDrawingPrefix())return prefix;
+        return null;
+    }
+
+    private bool ValidDrawingPrefix() =>
+        prefix.Text.Trim().Length<=48&&
+        prefix.Text.IndexOfAny(Path.GetInvalidFileNameChars())<0&&
+        !prefix.Text.Contains("..",StringComparison.Ordinal)&&
+        !prefix.Text.EndsWith(".",StringComparison.Ordinal);
+
+    private string RequiredAction(Control? field)
+    {
+        if(field==views)return "Select the required native views.";
+        if(field==scale)return "Choose an exact 1:N scale (Automatic cannot be used).";
+        if(field==batch)return "Turn Batch Ortho OFF for Draft or Split.";
+        if(field==seed)return "Select an existing registered EMPTY native Ortho seed.";
+        if(field==prefix)return "Correct the drawing prefix (48 characters max).";
+        return "Ready for native validation.";
+    }
+
+    private void FocusRequiredSetting()
+    {
+        if(IsRunning||tabs.SelectedTab?.Name!="ortho")return;
+        int denominator=0;
+        try{denominator=SupportDrawingPaperScale39.Resolve(
+            scale.Text,(int)customScale.Value);}
+        catch(ArgumentException){/* exact scale validated before Run */}
+        Control? target=RequiredSetting(views.CheckedItems.Count,
+            denominator,SelectedOutputMode(),true);
+        if(target==null)return;
+        int section=target==views?1:target==batch?2:0;
+        var page=tabs.TabPages.Cast<TabPage>()
+            .First(p=>p.Name=="ortho");
+        if(!uiSections[section].Expanded)
+            uiSections[section].Expanded=true;
+        ReflowSections(page);
+        page.ScrollControlIntoView(target);
+        target.Focus();
+        SetStatus("Fix setting: "+RequiredAction(target));
     }
 
     private void ClearGeneratedOutput()
