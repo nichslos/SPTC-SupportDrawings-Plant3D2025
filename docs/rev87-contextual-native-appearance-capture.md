@@ -26,11 +26,12 @@ did not produce verifiable results in the user's REV84/85 builds.
    likely hidden-line/insulation mode controller names. Strict cap
    100 members; no unknown native method, getter, command or
    property setter is invoked.
-3. Optional new read-only command
-   `SPTC_ORTHOMODECAPTURE87`: inside the **native Ortho Editor**
-   after manually selecting a ribbon mode, record the corresponding
-   `PLANTORTHOHIDDENLINEMODE` and `PLANTORTHOINSULATIONMODE`
-   readbacks. It appends to
+3. In the existing Support Drawing Manager, click
+   **Capture Native Editor Mode (REV87)** and select the label that
+   matches the mode the operator has just chosen in the native
+   Ortho Editor ribbon. This read-only WinForms event is handled by
+   the existing palette, **not by a new AutoCAD command**. The
+   sidecar is appended as
    `<ActiveOrthoDrawingName>_REV87_APPEARANCE_CAPTURE.txt` next
    to the active copied test drawing.
 
@@ -47,18 +48,14 @@ before actual runtime verification.
 3. In that generated native Ortho DWG, select **Edit View** on TOP
    and enter native Ortho Editor.
 4. In **Output Appearance**, select **No Hidden Lines**.
-   Run `SPTC_ORTHOMODECAPTURE87`; choose the matching label
-   `NoHidden`.
+   In the persistent Support Drawing Manager, click **Capture Native Editor Mode (REV87)**, then choose **No Hidden Lines**.
 5. While still in the native Ortho Editor, switch to
-   **Hidden Line Piping**. Run the same command; choose `PipingOnly`.
-6. Switch to **All Hidden Lines**. Run the command again; choose
-   `AllHidden`.
+   **Hidden Line Piping**. Click the same Manager button and choose **Hidden Line Piping**.
+6. Switch to **All Hidden Lines**. Click the Manager button again and choose **All Hidden Lines**.
 7. Exit via the native **OK**, save drawing and reopen TOP Edit View.
    Confirm which mode persisted. Send the capture TXT.
 
-If Plant 3D disallows running custom commands while the contextual
-Ortho Editor is active, **do not attempt to bypass native controls**.
-Report that fact and provide screenshots showing the three modes.
+If the Manager is inaccessible during the native Ortho Editor session,\n**do not bypass native controls**. Report this limitation and send\nscreenshots of each selected mode. The four production commands\nremain exactly unchanged.
 
 ## Acceptance / known limitation
 
