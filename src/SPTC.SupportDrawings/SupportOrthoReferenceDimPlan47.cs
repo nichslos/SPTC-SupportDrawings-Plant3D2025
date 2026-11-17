@@ -42,7 +42,9 @@ public static class SupportOrthoReferenceDimPlan47
         int VerifiedAxisStationCandidatesTested=0,
         int VerifiedAxisStationDimensionsRecovered=0,
         int Rev68SupplementaryGeometryCandidatesTested=0,
-        int Rev68SupplementaryGeometryDimensionsRecovered=0);
+        int Rev68SupplementaryGeometryDimensionsRecovered=0,
+        int PostAuditOptionalDetailsOmitted=0,
+        IReadOnlyList<string>? FinalCollisionDiagnostics=null);
 
     // Revision-independent paper-space search policy. Rank indices
     // reorder existing candidate lanes; they never prescribe geometry,
@@ -103,6 +105,8 @@ public static class SupportOrthoReferenceDimPlan47
             throw new ArgumentException("REV22.47 invalid drafting inputs.");
         var dimensions=new List<SupportOrthoDimLinearPlan41.Dimension>();
         var skipped=new List<string>();
+        var collisionDiagnostics=new List<string>();
+        int omittedAfterAudit=0;
         int views=0,chain=0,overall=0,localCount=0,
             priorityOverallCount=0,midpointNative=0,
             midpointBounds=0,terminalRemainders=0,
@@ -195,6 +199,13 @@ public static class SupportOrthoReferenceDimPlan47
                 blocks.AddRange(additionalKeepouts.Where(x=>x.IsFinite)
                     .Select(x=>new Obstacle(x,"RESERVED_PAPER_AREA")));
             var placed=new List<Placed>();
+            int dimensionsAtViewStart=dimensions.Count;
+            // Only the coordinated optional native profile details are
+            // eligible for removal in the final witness audit. Required
+            // overall and verified chain dimensions are never sacrificed.
+            var optionalEvidence=new Dictionary<int,(
+                bool Exact,bool NativeAxis,bool Compact,bool Adaptive,
+                bool AxisStation,bool Supplementary)>();
 
             // REV22.53: ONE projection pass for actual, vetted native
             // Plant Start/End points. Cache these paper coordinates for
@@ -1119,8 +1130,13 @@ public static class SupportOrthoReferenceDimPlan47
                 foreach(var choice in coordinated.Chosen)
                 {
                     var picked=profileOptions[choice.AlternativeId];
+                    int indexInView=placed.Count;
                     dimensions.Add(picked.D);
                     placed.Add(picked.P);
+                    optionalEvidence[indexInView]=(
+                        picked.Exact,picked.NativeAxis,picked.Compact,
+                        picked.Adaptive,picked.AxisStation,
+                        supplementaryOptionIds.Contains(choice.AlternativeId));
                     localCount++;
                     coordinatedPlaced++;
                     if(picked.Exact)exactProfiles++;
@@ -1138,16 +1154,55 @@ public static class SupportOrthoReferenceDimPlan47
                         ":REV22_60_OPTIONAL_PROFILE_NO_COMPATIBLE_LAYOUT");
             }
 
-            // Every accepted dimension has been checked against the
-            // baseline AND both witness lines of previously accepted
-            // dimensions. Keep an independently audited final count
-            // for the actual saved view, not just the rejection count.
-            for(int later=1;later<placed.Count;later++)
-                for(int earlier=0;earlier<later;earlier++)
-                    if(SupportOrthoDimIntersections58.Conflict(
-                        placed[later].Geometry,
-                        placed[earlier].Geometry)!=null)
-                        acceptedIntersections++;
+            // Source-verified, paper-space final audit. Older profile
+            // coordination optimizes candidate groups independently; the
+            // complete saved view must be pairwise checked after EVERY
+            // dimension is committed. Salvage valid mandatory dimensions
+            // by omitting only a colliding OPTIONAL profile, if possible.
+            // Mandatory overall/chain dimensions cannot be removed.
+            if(dimensions.Count-dimensionsAtViewStart!=placed.Count)
+                throw new InvalidOperationException(
+                    "Native dimensions and paper-space audit shapes lost "+
+                    "their one-to-one correspondence.");
+            var auditEntries=placed.Select((p,i)=>
+                new SupportOrthoDimensionCollisionRecovery.Entry(
+                    camera.Name,dimensions[dimensionsAtViewStart+i].Source,
+                    !optionalEvidence.ContainsKey(i),
+                    optionalEvidence.TryGetValue(i,out var evidence)?
+                        (evidence.Exact?3:evidence.NativeAxis?2:1):100,
+                    p.Geometry)).ToArray();
+            var audit=SupportOrthoDimensionCollisionRecovery.Resolve(
+                auditEntries);
+            collisionDiagnostics.AddRange(audit.Diagnostics);
+            foreach(int index in audit.RemovedOptionalIndexes
+                .OrderByDescending(x=>x))
+            {
+                if(!optionalEvidence.TryGetValue(index,out var evidence))
+                    throw new InvalidOperationException(
+                        "Final native dimension audit attempted to omit "+
+                        "an essential chain or overall dimension.");
+                var removedDimension=dimensions[dimensionsAtViewStart+index];
+                skipped.Add(camera.Name+"/"+removedDimension.Source+
+                    ":POST_AUDIT_OPTIONAL_PROFILE_COLLISION_OMITTED");
+                dimensions.RemoveAt(dimensionsAtViewStart+index);
+                placed.RemoveAt(index);
+                omittedAfterAudit++;
+                localCount--;
+                coordinatedPlaced--;
+                coordinatedOmitted++;
+                if(evidence.Exact)exactProfiles--;
+                else approxProfiles--;
+                if(evidence.NativeAxis)midpointNative--;
+                else midpointBounds--;
+                if(evidence.Compact)compactLocalRecovered--;
+                if(evidence.Adaptive)adaptiveLocalRecovered--;
+                if(evidence.AxisStation)verifiedStationRecovered--;
+                if(evidence.Supplementary)
+                    supplementaryGeometryRecovered--;
+            }
+            // A nonzero number here means essential dimensions still
+            // collide; the existing writer guard MUST stop generation.
+            acceptedIntersections+=audit.RemainingConflicts;
         }
         return new Result(dimensions,skipped,views,chain,overall,rejected,
             requested,localCount,priorityOverallCount,
@@ -1159,7 +1214,8 @@ public static class SupportOrthoReferenceDimPlan47
             intermediateChainRecovered,
             adaptiveLocalRecovered,
             verifiedStationTested,verifiedStationRecovered,
-            supplementaryGeometryTested,supplementaryGeometryRecovered);
+            supplementaryGeometryTested,supplementaryGeometryRecovered,
+            omittedAfterAudit,collisionDiagnostics);
     }
 
     private static Request MakeRequest(bool horizontal,double from,
