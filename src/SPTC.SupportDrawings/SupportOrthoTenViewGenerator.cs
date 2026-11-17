@@ -1483,8 +1483,7 @@ public sealed class SupportOrthoTenViewGenerator
             }
             if (targetDoc.Database.TileMode)
                 throw new InvalidOperationException("AutoCAD remains in model space after paper layout selection.");
-            var physicalSheet=CurrentPaperDetails(
-                targetDoc.Database,paperLayout);
+            var physicalSheet=CurrentPaperDetails(targetDoc.Database,paperLayout);
             var effectiveSheet=physicalSheet;
             (double paperWidth,double paperHeight)=
                 (effectiveSheet.WidthMm,effectiveSheet.HeightMm);
