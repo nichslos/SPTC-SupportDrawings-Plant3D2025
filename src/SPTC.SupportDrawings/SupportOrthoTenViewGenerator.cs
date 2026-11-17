@@ -1796,8 +1796,10 @@ public sealed class SupportOrthoTenViewGenerator
                         t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
                 requireTen:options.Views.Count==10,
                 bypassTitleBlock:bypassTitleBlock69);
-            Log("REV59_PREFLIGHT_ALL_TEN_INSIDE_EFFECTIVE_SHEET="+
-                (draftOverflow75?"VIRTUAL_DRAFT_ONLY":"PASS"));
+            if(draftOverflow75)
+                Log("REV59_PREFLIGHT_ALL_TEN_INSIDE_EFFECTIVE_SHEET=VIRTUAL_DRAFT_ONLY");
+            else
+                Log("REV59_PREFLIGHT_ALL_TEN_INSIDE_EFFECTIVE_SHEET=PASS");
             if(bypassTitleBlock69)
                 Log("REV69_TITLEBLOCK_OVERPRINT_POSSIBLE="+
                     NativeOrthoTitleBlockBypass69.EntersOldTitleBlockZone(
@@ -2167,8 +2169,10 @@ public sealed class SupportOrthoTenViewGenerator
                         v.Handle,v.X,v.Y,v.W,v.H)).ToArray(),
                 requireTen:options.Views.Count==10,
                 bypassTitleBlock:bypassTitleBlock69);
-            Log("REV59_ACTUAL_NATIVE_VIEWPORTS_IN_SAFE_SHEET="+
-                (draftOverflow75?"VIRTUAL_DRAFT_ONLY":"PASS"));
+            if(draftOverflow75)
+                Log("REV59_ACTUAL_NATIVE_VIEWPORTS_IN_SAFE_SHEET=VIRTUAL_DRAFT_ONLY");
+            else
+                Log("REV59_ACTUAL_NATIVE_VIEWPORTS_IN_SAFE_SHEET=PASS");
             bool overlaps=false,possibleTitleBlock=false;
             for(int i=0;i<newFrames.Count;i++)
             {
@@ -2215,8 +2219,10 @@ public sealed class SupportOrthoTenViewGenerator
                         t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
                 requireTen:options.Views.Count==10,
                 bypassTitleBlock:bypassTitleBlock69);
-            Log("REV59_ACTUAL_NATIVE_TITLES_IN_SAFE_SHEET="+
-                (draftOverflow75?"VIRTUAL_DRAFT_ONLY":"PASS"));
+            if(draftOverflow75)
+                Log("REV59_ACTUAL_NATIVE_TITLES_IN_SAFE_SHEET=VIRTUAL_DRAFT_ONLY");
+            else
+                Log("REV59_ACTUAL_NATIVE_TITLES_IN_SAFE_SHEET=PASS");
             Log("STEP10_TITLE_LAYER="+NativeOrthoViewTitlePlan.TitleLayer);
             var titleHandles=CreateNativePaperTitles(
                 targetDoc.Database,paperLayout,titles,
