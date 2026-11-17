@@ -712,23 +712,194 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         section.Header.Tag=name;
     }
 
+    // REV79: responsive WinForms layout. Each Ortho group stacks its
+    // existing controls when the PaletteSet is docked narrowly.
+    // No new rendering of native view geometry or model measurements.
+    private void ResizeResponsivePalette()
+    {
+        if(IsDisposed||arrangingWorkspace||uiSections.Count!=7)return;
+        int available=scrollingWorkspace.ClientSize.Width;
+        if(available<=0||available==lastWorkspaceWidth)return;
+        arrangingWorkspace=true;
+        try
+        {
+            lastWorkspaceWidth=available;
+            int canvasW=Math.Max(352,available-3);
+            layoutSurface.Width=canvasW;
+            bool narrow=canvasW<735;
+            if(brandingLogo!=null)
+                brandingLogo.SetBounds(narrow?12:18,10,
+                    narrow?111:184,narrow?74:118);
+            headingTitle.SetBounds(narrow?135:222,narrow?17:21,
+                Math.Max(160,canvasW-(narrow?146:237)),33);
+            brandSubtitle.SetBounds(narrow?135:222,narrow?54:57,
+                Math.Max(160,canvasW-(narrow?146:237)),25);
+            sourceLabel.SetBounds(narrow?135:222,narrow?83:94,
+                Math.Max(160,canvasW-(narrow?146:237)),26);
+            tabs.Left=narrow?8:18;
+            tabs.Top=narrow?119:140;
+            tabs.Width=Math.Max(320,canvasW-(narrow?16:36));
+            tabs.Height=layoutSurface.Height-tabs.Top-15;
+            ReflowSections(tabs.TabPages[0]);
+        }
+        finally{arrangingWorkspace=false;}
+    }
+
+    // Restores wide layout after docking/undocking. Wide positions are
+    // captured from actual WinForms controls to retain DPI scaling.
+    private void LayoutSectionFields(int index,CollapsibleSection section,
+        int frameWidth)
+    {
+        int bodyW=Math.Max(280,frameWidth-4);
+        section.Frame.Width=frameWidth;
+        section.Header.Width=frameWidth-2;
+        section.Body.Width=bodyW;
+        bool narrow=frameWidth<720;
+        if(!narrow)
+        {
+            if(section.Narrow)
+            {
+                foreach(Control control in section.Fields)
+                    if(section.WideBounds.TryGetValue(control,
+                        out Rectangle rectangle))
+                        control.Bounds=rectangle;
+            }
+            else
+                foreach(Control control in section.Fields)
+                    section.WideBounds[control]=control.Bounds;
+            section.Narrow=false;
+            section.BodyHeight=section.Fields.Max(c=>c.Bottom)+14;
+            section.Body.Height=section.BodyHeight;
+            return;
+        }
+        if(!section.Narrow)
+            foreach(Control control in section.Fields)
+                section.WideBounds[control]=control.Bounds;
+        section.Narrow=true;
+        int contentW=Math.Max(240,bodyW-24);
+        int y=9;
+        Control[] f=section.Fields;
+        void Stack(int i,int h)
+        {
+            f[i].SetBounds(9,y,contentW,h);
+            y+=h+7;
+        }
+        void Pair(int a,int b,int h)
+        {
+            int leftW=(contentW-10)/2;
+            int rightW=contentW-leftW-10;
+            f[a].SetBounds(9,y,leftW,h);
+            f[b].SetBounds(9+leftW+10,y,rightW,h);
+            y+=h+8;
+        }
+        switch(index)
+        {
+            case 0:
+                Stack(0,23);Stack(1,29);
+                Stack(2,23);Stack(3,29);
+                if(scale.Text==SupportDrawingPaperScale39.Custom)
+                {
+                    Stack(4,23);Stack(5,29);
+                }
+                Stack(6,23);Stack(7,29);
+                Stack(8,42);Stack(9,29);Stack(10,30);
+                break;
+            case 1:
+                Stack(0,23);Stack(2,23);Stack(1,172);
+                Pair(3,4,31);Pair(5,6,31);
+                break;
+            case 2:
+                Stack(0,23);Stack(1,30);Stack(2,78);
+                Stack(3,53);Stack(4,34);
+                Pair(5,6,32);Stack(7,55);
+                break;
+            case 3:
+                Stack(0,24);Stack(1,92);Stack(2,30);
+                Stack(3,117);Pair(4,5,31);Pair(6,7,31);
+                break;
+            case 4:
+                Stack(0,34);Stack(1,44);
+                break;
+            case 5:
+                Stack(0,23);
+                for(int i=1;i<f.Length;i++)Stack(i,34);
+                break;
+            case 6:
+                Stack(0,24);Pair(1,2,32);Pair(3,4,32);
+                Stack(5,58);
+                break;
+        }
+        section.BodyHeight=y+7;
+        section.Body.Height=section.BodyHeight;
+    }
+
+    private string SectionSummary(int index)
+    {
+        int selected=views.CheckedItems.Count;
+        string scaled=scale.SelectedIndex>=0?
+            scale.Text==SupportDrawingPaperScale39.Custom?
+                "1:"+customScale.Value.ToString("0") :scale.Text:"Automatic";
+        return index switch
+        {
+            0=>(cubeMode.SelectedIndex==0?"SupportFocus":"Original")+
+                " · "+scaled+(autoSeed.Checked?" · Auto seed":" · Manual seed"),
+            1=>selected+"/10 views",
+            2=>SelectedOutputMode() switch {
+                SupportDrawingOutputMode76.Mode.Draft=>"One DWG · Draft / No PDF",
+                SupportDrawingOutputMode76.Mode.Split=>"Multiple sheets · Exact scale",
+                _=>"Single sheet · Fit to paper"},
+            3=>outputHistory.Count==0?
+                "No results":outputHistory.Count+" generated DWG(s)",
+            4=>autoDimLinear.Checked?
+                "H/V ON · "+(referenceDimensions.Checked?
+                    "Chain + overall":"Per-member"):"H/V OFF",
+            5=>"Line "+(line.Checked?"ON":"OFF")+
+                " · BOP "+(bop.Checked?"ON":"OFF")+
+                " · XREF "+(xrefNames.Checked?"ON":"OFF"),
+            6=>"Local project options",
+            _=>""
+        };
+    }
+
+    private void UpdateSectionSummaries()
+    {
+        for(int i=0;i<uiSections.Count;i++)
+        {
+            var section=uiSections[i];
+            string name=section.Header.Tag?.ToString()??"Settings";
+            string summary=SectionSummary(i);
+            string display=section.Frame.Width<530?
+                name+" · "+(i==2?
+                    SelectedOutputMode()==SupportDrawingOutputMode76.Mode.Draft?
+                        "DRAFT / NO PDF":summary:summary):name+"     |     "+summary;
+            section.Header.Text=(section.Expanded?"[-]  ":"[+]  ")+display;
+            uiTips.SetToolTip(section.Header,name+" — "+summary+
+                ". Click to "+(section.Expanded?"collapse":"expand")+".");
+        }
+    }
+
     private void ReflowSections(TabPage tab)
     {
+        if(uiSections.Count!=7)return;
         tab.SuspendLayout();
         try
         {
+            int frameWidth=Math.Max(300,Math.Min(737,tabs.Width-28));
             int y=47;
-            foreach(var section in uiSections)
+            for(int i=0;i<uiSections.Count;i++)
             {
-                string name=section.Header.Tag?.ToString()??"Settings";
-                section.Header.Text=(section.Expanded?"[-]  ":"[+]  ")+name;
+                var section=uiSections[i];
+                LayoutSectionFields(i,section,frameWidth);
                 section.Body.Visible=section.Expanded;
                 section.Frame.Height=section.Expanded?
                     35+section.BodyHeight:34;
                 section.Frame.Location=new Point(8,y);
                 y+=section.Frame.Height+9;
             }
-            tab.AutoScrollMinSize=new Size(755,y+10);
+            // Width adapts to actual panel, preventing unnecessary
+            // horizontal scrolling for narrow docked palettes.
+            tab.AutoScrollMinSize=new Size(frameWidth+14,y+10);
+            UpdateSectionSummaries();
         }
         finally{tab.ResumeLayout();}
     }
