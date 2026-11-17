@@ -17,6 +17,10 @@ internal sealed class NativeOrthoAppearanceAutoCAD83 :
     private const string HiddenSystem="PLANTORTHOHIDDENLINEMODE";
     private const string InsulationSystem="PLANTORTHOINSULATIONMODE";
     private readonly Document document;
+    // Learned through the installed native Plant command. Never use a
+    // guessed hidden-line integer enum or 2025-specific numeric value.
+    private static System.Collections.Generic.IReadOnlyDictionary<string,int>?
+        nativeHiddenReadbacks84;
 
     internal NativeOrthoAppearanceAutoCAD83(Document document)
     {
@@ -42,30 +46,38 @@ internal sealed class NativeOrthoAppearanceAutoCAD83 :
     {
         if(string.IsNullOrWhiteSpace(keyword))
             throw new ArgumentException("Native hidden-line command keyword missing.");
-        // Plant 3D exposes PLANTORTHOHIDDENLINEMODE as an Ortho
-        // Editor command in some installations, as a system variable
-        // in others. Use its documented keyword in either case.
-        try
+        // REV83 passed a text keyword directly to an integer-backed
+        // system variable. AutoCAD could coerce it to zero (No Hidden),
+        // while returning success. That explains HOST_READBACK=0
+        // for the user's explicit All Hidden Lines request.
+        //
+        // The native Ortho command is the authority. Calibrate the
+        // currently installed command/readback mapping once per session
+        // without assuming 0/1/2 or any fixed numeric order.
+        if(nativeHiddenReadbacks84==null)
         {
-            AcadApp.SetSystemVariable(HiddenSystem,keyword);
-        }
-        catch(System.Exception setError)
-        {
+            object original=ReadHidden();
             try
             {
-                document.Editor.Command(
-                    "_.PLANTORTHOHIDDENLINEMODE",keyword);
+                nativeHiddenReadbacks84=
+                    NativeOrthoHiddenCalibration84.Observe(
+                        requested=>document.Editor.Command(
+                            "_.PLANTORTHOHIDDENLINEMODE",requested),
+                        ReadHidden);
             }
-            catch(System.Exception commandError)
+            finally
             {
-                throw new InvalidOperationException(
-                    "Neither native PLANTORTHOHIDDENLINEMODE system "+
-                    "variable assignment nor its documented Ortho "+
-                    "Editor command was available in this context. "+
-                    "No replacement drawing linework was generated.",
-                    new AggregateException(setError,commandError));
+                // Restore exact original native value, not a guessed
+                // ordinal or the string spelling of a ribbon label.
+                AcadApp.SetSystemVariable(HiddenSystem,original);
             }
         }
+        // Set exclusively through the documented native command.
+        // No fallback to setting a string on a numeric variable.
+        document.Editor.Command(
+            "_.PLANTORTHOHIDDENLINEMODE",keyword);
+        NativeOrthoHiddenCalibration84.Verify(
+            nativeHiddenReadbacks84,keyword,ReadHidden());
     }
 
     public void SetInsulationValue(int value)
