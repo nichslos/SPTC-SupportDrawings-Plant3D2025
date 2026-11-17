@@ -20,11 +20,18 @@ internal static class SupportOrthoPipeDiscovery28
     internal sealed record Candidate(ObjectId Id, string Key, string Source,
         bool FromXref, Matrix3d ToHost, BoundingBox3 WorldBounds);
 
+    // All verified native XREF pipes, including those rejected by the
+    // existing proximity filter. Read-only, transformed host WCS evidence.
+    internal sealed record VerifiedXrefPipe(string Key,string SourceFile,
+        BoundingBox3 WorldBounds,bool InsideScan);
+
     internal sealed record Result(IReadOnlyList<Candidate> Candidates,
         int NativeCount,int XrefCount,IReadOnlyList<string> Diagnostics,
         int ResolvedXrefReferences=0,int UnresolvedXrefReferences=0,
         int VerifiedXrefPipeEntities=0,int XrefPipesOutsideProximity=0,
-        int XrefInspectedEntities=0);
+        int XrefInspectedEntities=0,
+        IReadOnlyList<VerifiedXrefPipe>? VerifiedXrefGeometry=null,
+        BoundingBox3? ScanRegion=null);
 
     private sealed class SourceAudit
     {
@@ -47,6 +54,7 @@ internal static class SupportOrthoPipeDiscovery28
     private sealed class ScanAudit
     {
         internal int Resolved,Unresolved,Verified,Nearby,Outside,Visited;
+        internal readonly List<VerifiedXrefPipe> VerifiedGeometry=new();
         internal readonly Dictionary<string,SourceAudit> Sources=
             new(StringComparer.OrdinalIgnoreCase);
         internal SourceAudit ForSource(string? source)
@@ -123,7 +131,8 @@ internal static class SupportOrthoPipeDiscovery28
         return new Result(found.OrderBy(x=>x.Key,
             StringComparer.OrdinalIgnoreCase).ToArray(),
             native,xref,diagnostics,audit.Resolved,audit.Unresolved,
-            audit.Verified,audit.Outside,audit.Visited);
+            audit.Verified,audit.Outside,audit.Visited,
+            audit.VerifiedGeometry.ToArray(),region);
     }
 
     private static void Walk(Database db,Transaction tr,
@@ -243,6 +252,11 @@ internal static class SupportOrthoPipeDiscovery28
                 bool near=Intersects(world,region);
                 if(fromXref)
                 {
+                    // REV73: preserve the transformed bounds and rejection
+                    // evidence even for authentic source pipes outside scan.
+                    // Do NOT add excluded objects to production Candidates.
+                    audit.VerifiedGeometry.Add(new VerifiedXrefPipe(
+                        "XREF:"+path+"/"+id.Handle,db.Filename,world,near));
                     if(near)audit.Nearby++;else audit.Outside++;
                     audit.ForSource(db.Filename).Observe(
                         rx.Length>0?rx:cls,true,near,false);
