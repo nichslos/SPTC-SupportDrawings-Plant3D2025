@@ -41,6 +41,8 @@ internal static class SupportOrthoXrefPipeEvidence72
         if(c.ScanFailed)return "SCAN_FAILED";
         if(c.UnresolvedReferences>0&&c.ResolvedReferences==0)
             return "XREF_NOT_LOADED";
+        if(c.UnresolvedReferences>0)
+            return "XREF_REFERENCES_PARTIALLY_UNRESOLVED";
         if(c.ResolvedReferences==0)
             return "NO_RESOLVED_XREF_SOURCE";
         if(c.VerifiedPipeEntities==0)
@@ -60,7 +62,8 @@ internal static class SupportOrthoXrefPipeEvidence72
         Coverage(c)=="XREF_PIPE_METADATA_COVERAGE_VERIFIED";
 
     internal static bool NeedsReview(Counts c,bool xrefNamesEnabled)=>
-        xrefNamesEnabled && c.ResolvedReferences>0 &&
+        xrefNamesEnabled &&
+        (c.ResolvedReferences>0||c.UnresolvedReferences>0) &&
         !FullyVerified(c);
 
     internal static string Explanation(Counts c)
@@ -71,6 +74,8 @@ internal static class SupportOrthoXrefPipeEvidence72
                 "XREF pipe source scan failed; treat pipe coverage as unknown",
             "XREF_NOT_LOADED" =>
                 "XREF references are unresolved/unloaded; reload the source DWGs",
+            "XREF_REFERENCES_PARTIALLY_UNRESOLVED" =>
+                "Some XREF sources were not loaded or could not be traversed; complete XREF pipe coverage is unknown",
             "NO_RESOLVED_XREF_SOURCE" =>
                 "No loaded XREF source was traversed; check External References",
             "NO_VERIFIED_NATIVE_PIPE_ENTITIES" =>
