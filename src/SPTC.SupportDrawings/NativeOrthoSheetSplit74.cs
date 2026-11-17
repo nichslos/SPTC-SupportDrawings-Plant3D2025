@@ -19,9 +19,7 @@ internal static class NativeOrthoSheetSplit74
     {
         if(names==null || names.Count<2 || names.Count>10 ||
            names.Any(string.IsNullOrWhiteSpace) ||
-           names.Distinct(StringComparer.OrdinalIgnoreCase).Count()!=names.Count ||
-           names.Except(SupportDrawingUiOptions.AllViews,
-               StringComparer.OrdinalIgnoreCase).Any())
+           names.Distinct(StringComparer.OrdinalIgnoreCase).Count()!=names.Count)
             throw new ArgumentException(
                 "REV74 requires two or more unique standard native Ortho view names.");
         int half=(names.Count+1)/2;
