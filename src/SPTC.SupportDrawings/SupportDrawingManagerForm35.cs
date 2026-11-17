@@ -453,6 +453,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             // project's prefix, manual seed or batch selection.
             ApplyPreferences(SupportDrawingUiPreferences.Defaults);
             LoadProjectPreferences(showFeedback:false);
+            ClearGeneratedOutput();
         }
         SetStatus("Source: "+Path.GetFileName(sourceDwg)+
             " | Ready (persistent palette; project settings retained).");
@@ -465,9 +466,14 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         preflightButton.Enabled=!running;
         tabs.Enabled=!running;
         if(running)
+        {
+            ClearGeneratedOutput();
+            lastQa.Text="Generating... QA is available only after the native DWG report is written.";
             SetStatus("Operation queued / in progress. Select CAD entities when prompted.");
+        }
         else
             SetStatus("Ready for another operation. Settings retained.");
+        UpdateOutputModeUi();
     }
 
     internal void SetStatus(string message)
@@ -505,6 +511,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             views.SetItemChecked(i,chosen.Contains(
                 views.Items[i]?.ToString()??"",
                 StringComparer.OrdinalIgnoreCase));
+        UpdateOutputModeUi();
         SetStatus("View preset: "+preset+" ("+chosen.Length+
             " selected). Individual views remain editable.");
     }
@@ -529,13 +536,13 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         autoDimLinear.Checked=v.AutoDimLinear;
         referenceDimensions.Checked=v.ReferenceDetailDimensions;
         batch.Checked=v.BatchOrtho;
-        // Deliberately NOT persisted: overflow fallback needs fresh opt-in
-        // after project change, Load settings or Restore defaults.
-        bypassOneSheetLimit.Checked=false;
-        allowDraftOverflow.Checked=false;
+        // Deliberately NOT persisted: opt-in overflow/splitting resets
+        // on project change, Load settings or Restore defaults.
+        outputMode.SelectedIndex=0;
         // Never persist manual DWG/seed paths.
         autoSeed.Checked=true;
         seed.Text="";
+        UpdateOutputModeUi();
     }
 
     private SupportDrawingUiPreferences.Values CapturePreferences()
@@ -589,6 +596,112 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         }
     }
 
+    private SupportDrawingOutputMode76.Mode SelectedOutputMode() =>
+        SupportDrawingOutputMode76.FromIndex(
+            Math.Max(0,outputMode.SelectedIndex));
+
+    // REV76: UI-only eligibility. An incompatible 10-view output choice
+    // disables Run before AutoCAD selection, without silently substituting
+    // automatic scale or changing the user's view selections.
+    private void UpdateOutputModeUi()
+    {
+        if(IsDisposed)return;
+        int count=views.CheckedItems.Count;
+        selectedViewCount.Text=count+" of 10 selected";
+        var mode=SelectedOutputMode();
+        int denominator=0;
+        try
+        {
+            if(scale.SelectedIndex>=0)
+                denominator=SupportDrawingPaperScale39.Resolve(
+                    scale.Text,(int)customScale.Value);
+        }
+        catch(ArgumentException){denominator=0;}
+        bool valid=SupportDrawingOutputMode76.Eligible(
+            mode,count,denominator,batch.Checked);
+        bool isOrtho=tabs.SelectedTab?.Name=="ortho";
+        outputHint.Text=SupportDrawingOutputMode76.Explanation(mode)+
+            (!valid?"  Requires All 10, exact 1:N, Batch OFF.":"");
+        outputHint.ForeColor=!valid?Color.Firebrick:
+            mode==SupportDrawingOutputMode76.Mode.Draft?
+                Color.DarkGoldenrod:Color.DimGray;
+        if(runButton!=null)
+            runButton.Enabled=!IsRunning&&(!isOrtho||count>0&&valid);
+    }
+
+    private void ClearGeneratedOutput()
+    {
+        lastOutputDwg=null;
+        lastResultTxt=null;
+        completedOutputCount=0;
+        openDwgFolder.Enabled=false;
+        openResult.Enabled=false;
+        lastQa.Text="No completed Ortho drawing in this session.";
+    }
+
+    // Called only with a DWG actually emitted by GenerateOne, never with
+    // an inferred name or a guessed output path.
+    internal void RecordGeneratedDwg(string dwg)
+    {
+        if(IsDisposed)return;
+        if(InvokeRequired)
+        {
+            BeginInvoke(new Action<string>(RecordGeneratedDwg),dwg);
+            return;
+        }
+        if(string.IsNullOrWhiteSpace(dwg)||!File.Exists(dwg))
+            return;
+        lastOutputDwg=Path.GetFullPath(dwg);
+        completedOutputCount++;
+        string folder=Path.GetDirectoryName(lastOutputDwg)??"";
+        lastResultTxt=Path.Combine(folder,
+            Path.GetFileNameWithoutExtension(lastOutputDwg)+"_RESULT.txt");
+        openDwgFolder.Enabled=Directory.Exists(folder);
+        openResult.Enabled=File.Exists(lastResultTxt);
+        string report=Path.GetFileName(lastOutputDwg)+
+            " ("+completedOutputCount+" generated DWG(s) in this run)";
+        if(openResult.Enabled)
+        {
+            try
+            {
+                report+="\r\n"+SupportDrawingQaSummary76.Format(
+                    SupportDrawingQaSummary76.Read(
+                        File.ReadAllText(lastResultTxt)));
+            }
+            catch(System.Exception ex) when (ex is IOException or
+                UnauthorizedAccessException)
+            {
+                report+="\r\nRESULT.txt unavailable: "+ex.Message;
+            }
+        }
+        else
+            report+="\r\nRESULT.txt not written. QA unverified.";
+        lastQa.Text=report;
+    }
+
+    private void OpenGeneratedOutput(bool reportFile)
+    {
+        string? path=reportFile?lastResultTxt:
+            Path.GetDirectoryName(lastOutputDwg??"");
+        if(string.IsNullOrWhiteSpace(path)||
+           (reportFile?!File.Exists(path):!Directory.Exists(path)))
+        {
+            SetStatus("Generated output is unavailable. Check the Ortho folder.");
+            return;
+        }
+        try
+        {
+            Process.Start(new ProcessStartInfo {
+                FileName=path,UseShellExecute=true
+            });
+        }
+        catch(System.Exception ex) when (ex is System.ComponentModel.Win32Exception or
+            IOException or UnauthorizedAccessException)
+        {
+            SetStatus("Could not open output: "+ex.Message);
+        }
+    }
+
     private void ShowPreflight()
     {
         string selected = tabs.SelectedTab?.Name ?? "ortho";
@@ -612,20 +725,16 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             "   |   Detail style: " +
             (referenceDimensions.Checked?"Chain + overall":"All member H/V")+
             "   |   Batch Ortho: "+(batch.Checked?"Sequential":"Off")+
-            "   |   One-sheet bypass: "+
-            (bypassOneSheetLimit.Checked?"Multi-sheet at exact scale":"Off")+
-            "   |   Draft overflow: "+allowDraftOverflow.Checked+
+            "   |   Output: "+outputMode.Text+
             "   |   Annotations: Line="+line.Checked+
             " BOP="+bop.Checked+" TOS="+tos.Checked+
             " Description="+description.Checked+
             "   |   Prefix: "+(prefix.Text.Length==0?
                 "Automatic unique name":prefix.Text)+
-            "\r\nREV74: All 10 prefer ONE native sheet at exact 1:N. "+
-            "Opt-in fallback splits only when sheet-fit preflight fails; "+
-            "each resulting native sheet must still pass its own page checks."+
-            "\r\nREV75: Draft overflow makes ONE native DWG with "+
-            "all ten views at exact scale, possibly outside the actual "+
-            "printable page. Never issue or publish an off-sheet draft PDF.";
+            "\r\n"+SupportDrawingOutputMode76.Explanation(
+                SelectedOutputMode())+
+            "\r\nConfiguration preview only. Actual paper fit and QA "+
+            "are verified by the Plant 3D generator after Run.";
     }
 
     private void RunSelected()
@@ -673,16 +782,17 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 return;
             }
         }
-        // A virtual paper canvas is a drafting aid, not a plotted
-        // paper format or an automatically scaled multi-sheet run.
-        if(allowDraftOverflow.Checked &&
-           (tab!="ortho"||selected.Length!=10||
-            denominator<=0||batch.Checked))
+        // REV76: same existing REV74/75 constraints, now applying to
+        // either non-default output mode. No automatic silent downgrade.
+        var chosenOutput=SelectedOutputMode();
+        if(tab=="ortho"&&!SupportDrawingOutputMode76.Eligible(
+            chosenOutput,selected.Length,denominator,batch.Checked))
         {
             MessageBox.Show(this,
-                "Draft overflow requires All 10, an explicit 1:N scale, "+
-                "and Batch Ortho OFF. Real sheet / PDF publishing will be blocked.",
-                "REV75 draft-only virtual sheet",
+                "This output mode requires All 10, an explicit 1:N scale, "+
+                "and Batch Ortho OFF. Choose Single Sheet or correct the "+
+                "selection before running.",
+                "REV76 output-mode preflight",
                 MessageBoxButtons.OK,MessageBoxIcon.Warning);
             return;
         }
@@ -692,7 +802,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             selected, line.Checked,bop.Checked,tos.Checked,
             description.Checked,batch.Checked,xrefNames.Checked,
             autoDimLinear.Checked,referenceDimensions.Checked,
-            bypassOneSheetLimit.Checked,allowDraftOverflow.Checked);
+            SupportDrawingOutputMode76.BypassOneSheetLimit(chosenOutput),
+            SupportDrawingOutputMode76.AllowDraftOverflow(chosenOutput));
         // Modeless palette remains open; dispatch in a fresh AutoCAD
         // command context rather than accessing Editor from this UI callback.
         RunRequested?.Invoke(Settings);
