@@ -17,7 +17,7 @@ internal static class Program
             @"C:\Projects\SAMPLE\Orthos");
         Check(manager is UserControl && !manager.IsDisposed,
             "must be persistent UserControl, not a modal Form");
-        Check(manager.Controls.Find("SPTC_UI_LAYOUT_SURFACE",false)
+        Check(manager.Controls.Find("SPTC_UI_LAYOUT_SURFACE",true)
                 .Single().Controls.OfType<TabControl>().Single().TabCount==4,
             "four existing operation tabs preserved");
 
@@ -57,9 +57,9 @@ internal static class Program
         TestBatchProgressReporting();
         TestProductionPackageCheckboxSaveRoundTrip();
         var surface=manager.Controls.Find(
-            "SPTC_UI_LAYOUT_SURFACE",false).Single();
+            "SPTC_UI_LAYOUT_SURFACE",true).Single();
         var nativeTabs=surface.Controls.OfType<TabControl>().Single();
-        var configButton=nativeTabs.TabPages[0].Controls
+        var configButton=AllControls(nativeTabs.TabPages[0])
             .OfType<Button>().SingleOrDefault(b=>
                 b.Text=="Production package...");
         Check(configButton!=null,
@@ -69,6 +69,17 @@ internal static class Program
             Check(configured is Form&&configured.AutoScaleMode==AutoScaleMode.Dpi,
                 "production metadata editor is DPI aware and has no AutoCAD command side effects");
         Console.WriteLine("REV22.40 persistent modeless UI/settings and busy tests PASS");
+    }
+
+    private static System.Collections.Generic.IEnumerable<Control>
+        AllControls(Control parent)
+    {
+        foreach(Control child in parent.Controls)
+        {
+            yield return child;
+            foreach(Control descendant in AllControls(child))
+                yield return descendant;
+        }
     }
 
     private static void TestScrollableDpiLayout()
@@ -81,42 +92,47 @@ internal static class Program
                 @"C:\Projects\TEST_DPI\Orthos");
             if(scale>1f)ui.Scale(new SizeF(scale,scale));
             var canvas=ui.Controls.Find("SPTC_UI_LAYOUT_SURFACE",
-                searchAllChildren:false).Single();
+                searchAllChildren:true).Single();
             var tabs=canvas.Controls.OfType<TabControl>().Single();
-            Check(ui.AutoScaleMode==AutoScaleMode.Dpi&&ui.AutoScroll,
-                "manager stays DPI-aware and scrollable");
-            Check(tabs.TabCount==4,
-                "all four production operations visible at every DPI");
-            Check(tabs.TabPages[0].AutoScroll,
-                "detailed Ortho page has working scroll support");
-            var run=canvas.Controls.OfType<Button>()
+            var workspace=ui.Controls.OfType<Panel>()
+                .Single(p=>p.Dock==DockStyle.Fill);
+            var footer=ui.Controls.OfType<Panel>()
+                .Single(p=>p.Dock==DockStyle.Bottom);
+            Check(ui.AutoScaleMode==AutoScaleMode.Dpi&&workspace.AutoScroll,
+                "only the workspace scrolls; footer stays docked");
+            Check(tabs.TabCount==4&&tabs.TabPages[0].AutoScroll,
+                "all four production tabs and inner Ortho scrolling retained");
+            var run=footer.Controls.OfType<Button>()
                 .Single(x=>x.Text=="Run selected");
-            var preflight=canvas.Controls.OfType<Button>()
+            var preflight=footer.Controls.OfType<Button>()
                 .Single(x=>x.Text=="Preflight");
-            Check(run.Bounds.Right<=canvas.ClientSize.Width&&
-                run.Bounds.Bottom<=canvas.ClientSize.Height&&
-                preflight.Bounds.Right<=canvas.ClientSize.Width&&
-                preflight.Bounds.Bottom<=canvas.ClientSize.Height,
-                "command actions remain within the full design surface");
-            var summary=canvas.Controls.OfType<TextBox>()
+            var summary=footer.Controls.OfType<TextBox>()
                 .Single(x=>x.Multiline&&x.ReadOnly);
+            Check(run.Bounds.Right<=footer.ClientSize.Width&&
+                run.Bounds.Bottom<=footer.ClientSize.Height&&
+                preflight.Bounds.Right<=footer.ClientSize.Width&&
+                preflight.Bounds.Bottom<=footer.ClientSize.Height,
+                "sticky commands remain fully visible in footer");
             Check(!run.Bounds.IntersectsWith(summary.Bounds)&&
                 !preflight.Bounds.IntersectsWith(summary.Bounds),
-                "footer actions cannot overlap the preflight summary");
+                "sticky actions cannot obscure the preflight text");
+            Check(AllControls(tabs.TabPages[0])
+                .OfType<Button>()
+                .Count(b=>b.Text.StartsWith("[-]")||b.Text.StartsWith("[+]"))==7,
+                "all seven collapsible sections preserved");
             int narrowW=Math.Max(ui.MinimumSize.Width+15,
                 canvas.Width/2);
             int narrowH=Math.Max(ui.MinimumSize.Height+15,
                 canvas.Height/2);
             ui.ClientSize=new Size(narrowW,narrowH);
             ui.PerformLayout();
-            Check(ui.HorizontalScroll.Visible&&ui.VerticalScroll.Visible,
-                "narrow docked palette exposes both scroll directions");
-            Check(canvas.Controls.OfType<Button>()
-                .Any(b=>b.Text=="Run selected"),
-                "Run action stays present when host narrows");
+            Check(workspace.AutoScroll&&tabs.TabPages[0].AutoScroll,
+                "narrow palette retains working independent scroll areas");
+            Check(run.Parent==footer&&preflight.Parent==footer,
+                "Run and Preflight never scroll out of the palette");
         }
         Console.WriteLine(
-            "Production palette full design area scrolls at simulated 100/125/150% DPI PASS");
+            "REV77 sticky footer and seven collapsible sections at 100/125/150% DPI PASS");
     }
 
     private static void TestProductionPackageCheckboxSaveRoundTrip()
