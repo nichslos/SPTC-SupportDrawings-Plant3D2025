@@ -333,7 +333,8 @@ public static class SupportOrthoSmartDimPlan46
 
     private static bool Valid(SupportOrthoAllViewDimPlan44.Member m)=>
         !string.IsNullOrWhiteSpace(m.Key)&&
-        (m.Kind=="STRUCTURE"||m.Kind=="SUPPORT")&&
+        (m.Kind=="STRUCTURE"||m.Kind=="SUPPORT"||
+         m.Kind=="PLATE")&&
         double.IsFinite(m.MinX)&&double.IsFinite(m.MinY)&&
         double.IsFinite(m.MinZ)&&double.IsFinite(m.MaxX)&&
         double.IsFinite(m.MaxY)&&double.IsFinite(m.MaxZ)&&
