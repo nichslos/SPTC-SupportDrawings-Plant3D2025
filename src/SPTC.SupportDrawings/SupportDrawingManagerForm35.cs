@@ -470,6 +470,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         autoDimLinear.Checked=v.AutoDimLinear;
         referenceDimensions.Checked=v.ReferenceDetailDimensions;
         batch.Checked=v.BatchOrtho;
+        // Deliberately NOT persisted: overflow fallback needs fresh opt-in
+        // after project change, Load settings or Restore defaults.
+        bypassOneSheetLimit.Checked=false;
         // Never persist manual DWG/seed paths.
         autoSeed.Checked=true;
         seed.Text="";
