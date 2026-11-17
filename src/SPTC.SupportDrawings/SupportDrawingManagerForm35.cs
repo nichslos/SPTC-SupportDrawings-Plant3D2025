@@ -47,7 +47,19 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     // docked narrow or Windows display scaling is 125%/150%.
     // Geometry and commands are untouched; only WinForms layout changes.
     private readonly Panel layoutSurface = new();
+    private readonly Panel scrollingWorkspace = new();
+    private readonly Panel stickyFooter = new();
+    private bool arrangingStickyFooter;
+    private readonly List<CollapsibleSection> uiSections = new();
     private readonly TabControl tabs = new();
+    private sealed class CollapsibleSection
+    {
+        internal readonly Panel Frame=new();
+        internal readonly Panel Body=new();
+        internal readonly Button Header=new();
+        internal int BodyHeight;
+        internal bool Expanded;
+    }
     private readonly ComboBox cubeMode = new();
     private readonly CheckBox autoSeed = new();
     // REV76: one unambiguous UI choice maps to the existing two
@@ -70,11 +82,16 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly CheckBox referenceDimensions = new();
     private readonly TextBox preview = new();
     private readonly TextBox lastQa = new();
+    private readonly ListBox generatedHistory = new();
     private readonly Button openDwgFolder = new();
     private readonly Button openResult = new();
+    private readonly Button copyQa = new();
+    private readonly Label qaIndicator = new();
+    private sealed record GeneratedDwg(string Path,string ResultPath);
+    private readonly List<GeneratedDwg> outputHistory = new();
     private string? lastOutputDwg;
     private string? lastResultTxt;
-    private int completedOutputCount;
+    private string lastCopiedSummary = "";
     private readonly Button runButton = new();
     private readonly Button preflightButton = new();
     private readonly Label sourceLabel = new();
@@ -97,15 +114,22 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         MinimumSize = new Size(360, 420);
         BackColor = Color.White;
         AutoScaleMode = AutoScaleMode.Dpi;
-        AutoScroll = true;
-        // The scrollable reference canvas retains the established 805px
-        // layout, including all four operation tabs and footer controls.
-        // Docking below its width exposes horizontal/vertical scrollbars
-        // rather than overlapping columns or hiding action buttons.
+        AutoScroll = false;
+        // REV77: only the workspace scrolls. Run, Preflight and status
+        // belong to the separate docked footer and remain visible.
+        scrollingWorkspace.Dock=DockStyle.Fill;
+        scrollingWorkspace.AutoScroll=true;
+        scrollingWorkspace.BackColor=Color.White;
+        stickyFooter.Dock=DockStyle.Bottom;
+        stickyFooter.Height=116;
+        stickyFooter.BackColor=Color.FromArgb(239,244,249);
         layoutSurface.Name = "SPTC_UI_LAYOUT_SURFACE";
-        layoutSurface.SetBounds(0,0,805,765);
+        layoutSurface.SetBounds(0,0,805,630);
         layoutSurface.BackColor = Color.White;
-        Controls.Add(layoutSurface);
+        scrollingWorkspace.Controls.Add(layoutSurface);
+        Controls.Add(scrollingWorkspace);
+        Controls.Add(stickyFooter);
+        stickyFooter.BringToFront();
         // REV22.40: Hosted permanently as a modeless AutoCAD PaletteSet
         // UserControl. No WinForms DialogResult or Close() on Run.
 
@@ -145,7 +169,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // The settings area extends below the original tab viewport.
         // Explicit scroll extent makes the save/load/default controls
         // reachable at narrow palette sizes and higher Windows DPI.
-        orthoTab.AutoScrollMinSize = new Size(735,850);
+        orthoTab.AutoScrollMinSize = new Size(755,850);
         tabs.TabPages.Add(orthoTab);
         tabs.TabPages.Add(MakeInfoTab("export", "Support Export",
             "Export ONE selected support as an independent DWG.\r\n" +
@@ -382,27 +406,40 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         };
         orthoTab.Controls.Add(productionSettings);
 
-        // REV76: show only the actual completed output's RESULT.txt, never
-        // guess counts from the selected view checkboxes or saved settings.
-        Label qaHeader=L("Last generated DWG / QA",18,671,430);
+        // REV77: one actual-result entry per generated output. Selection
+        // is always backed by a real DWG path, never by a guessed name.
+        Label qaHeader=L("Session DWG history / measured QA",18,8,460);
         qaHeader.Font=new Font("Segoe UI",9f,FontStyle.Bold);
         orthoTab.Controls.Add(qaHeader);
-        lastQa.SetBounds(18,699,704,77);
+        generatedHistory.SetBounds(18,35,704,91);
+        generatedHistory.HorizontalScrollbar=true;
+        generatedHistory.SelectedIndexChanged+=(_,_)=>RefreshSelectedQa();
+        orthoTab.Controls.Add(generatedHistory);
+        qaIndicator.SetBounds(18,135,700,24);
+        qaIndicator.ForeColor=Color.DimGray;
+        qaIndicator.Text="QA status: UNVERIFIED";
+        orthoTab.Controls.Add(qaIndicator);
+        lastQa.SetBounds(18,165,704,113);
         lastQa.Multiline=true;
         lastQa.ReadOnly=true;
         lastQa.ScrollBars=ScrollBars.Vertical;
         lastQa.Text="No completed Ortho drawing in this session.";
         orthoTab.Controls.Add(lastQa);
         openDwgFolder.Text="Open DWG folder";
-        openDwgFolder.SetBounds(18,787,160,30);
+        openDwgFolder.SetBounds(18,287,151,30);
         openDwgFolder.Enabled=false;
         openDwgFolder.Click+=(_,_)=>OpenGeneratedOutput(false);
         orthoTab.Controls.Add(openDwgFolder);
         openResult.Text="Open RESULT.txt";
-        openResult.SetBounds(190,787,160,30);
+        openResult.SetBounds(179,287,151,30);
         openResult.Enabled=false;
         openResult.Click+=(_,_)=>OpenGeneratedOutput(true);
         orthoTab.Controls.Add(openResult);
+        copyQa.Text="Copy QA summary";
+        copyQa.SetBounds(340,287,165,30);
+        copyQa.Enabled=false;
+        copyQa.Click+=(_,_)=>CopySelectedQa();
+        orthoTab.Controls.Add(copyQa);
 
         outputMode.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
         batch.CheckedChanged+=(_,_)=>UpdateOutputModeUi();
@@ -410,36 +447,168 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         customScale.ValueChanged+=(_,_)=>UpdateOutputModeUi();
         tabs.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
 
-        Label previewLabel = L("Preflight / configuration summary", 22, 630, 420);
-        previewLabel.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-        layoutSurface.Controls.Add(previewLabel);
-        preview.SetBounds(20, 652, 600, 73);
-        preview.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        preview.Multiline = true;
-        preview.ReadOnly = true;
-        preview.ScrollBars = ScrollBars.Vertical;
-        preview.Text = "Project: " + projectRoot +
+        // REV77: all settings scroll in their own Ortho tab. The user
+        // can collapse any section without losing its values.
+        BuildCollapsibleSections(orthoTab,
+            new Control[]{modeLabel,cubeMode,scaleLabel,scale,
+                customLabel,customScale,prefixLabel,prefix,
+                autoSeed,seed,browse},
+            new Control[]{vLabel,views,selectedViewCount,all,six,four,none},
+            new Control[]{outputLabel,outputMode,outputHint,batch,notice},
+            new Control[]{qaHeader,generatedHistory,qaIndicator,lastQa,
+                openDwgFolder,openResult,copyQa},
+            new Control[]{autoDimLinear,referenceDimensions},
+            new Control[]{aLabel,line,bop,tos,description,xrefNames},
+            new Control[]{settingsCaption,saveSettings,loadSettings,
+                resetSettings,productionSettings,privacy});
+
+        Label previewLabel = L("Preflight / configuration summary",12,6,390);
+        stickyFooter.Controls.Add(previewLabel);
+        preview.Multiline=true;
+        preview.ReadOnly=true;
+        preview.ScrollBars=ScrollBars.Vertical;
+        preview.Text="Project: "+projectRoot+
             "\r\nNo drawing writes occur until validation has passed.";
-        layoutSurface.Controls.Add(preview);
-
-        preflightButton.Text = "Preflight";
-        preflightButton.Size = new Size(110, 29);
-        preflightButton.Location = new Point(637, 652);
-        preflightButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-        preflightButton.Click += (_,_) => ShowPreflight();
-        layoutSurface.Controls.Add(preflightButton);
-
-        runButton.Text = "Run selected";
-        runButton.Size = new Size(112, 30);
-        runButton.Location = new Point(637, 689);
-        runButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-        runButton.Click += (_,_) => RunSelected();
-        layoutSurface.Controls.Add(runButton);
+        stickyFooter.Controls.Add(preview);
+        preflightButton.Text="Preflight";
+        preflightButton.Size=new Size(110,29);
+        preflightButton.Click+=(_,_)=>ShowPreflight();
+        stickyFooter.Controls.Add(preflightButton);
+        runButton.Text="Run selected";
+        runButton.Size=new Size(112,30);
+        runButton.Click+=(_,_)=>RunSelected();
+        stickyFooter.Controls.Add(runButton);
+        stickyFooter.Resize+=(_,_)=>ArrangeStickyFooter();
+        // AutoScale may resize the footer before scaling its children.
+        // A post-scale Layout event is also needed to restore true
+        // right-docking after simulated or actual 125%/150% DPI.
+        stickyFooter.Layout+=(_,_)=>ArrangeStickyFooter();
+        ArrangeStickyFooter();
         // A newly opened palette restores only settings explicitly
         // saved for this Plant 3D project. No persisted queued command
         // or source geometry can be replayed.
         LoadProjectPreferences(showFeedback:false);
         UpdateOutputModeUi();
+    }
+
+    // REV77: section headers reflow inside the existing Ortho-tab's
+    // AutoScroll viewport. Reparenting existing WinForms controls leaves
+    // their handlers, input state, settings and command contracts intact.
+    private void BuildCollapsibleSections(TabPage tab,
+        Control[] sourceFields,Control[] nativeViews,
+        Control[] outputFields,Control[] qaFields,
+        Control[] dimensions,Control[] annotations,
+        Control[] preferences)
+    {
+        // Compact each independent group without touching its values.
+        outputFields[0].SetBounds(18,8,316,24);
+        outputFields[1].SetBounds(18,40,333,29);
+        outputFields[2].SetBounds(368,30,352,63);
+        outputFields[3].SetBounds(18,91,330,45);
+        outputFields[4].SetBounds(368,99,350,31);
+        dimensions[0].SetBounds(18,8,390,27);
+        dimensions[1].SetBounds(18,43,415,31);
+        annotations[0].SetBounds(18,8,306,24);
+        for(int i=1;i<=4;i++)
+            annotations[i].SetBounds(18,11+i*28,370,24);
+        annotations[5].SetBounds(18,151,427,29);
+        preferences[0].SetBounds(18,8,520,24);
+        preferences[1].SetBounds(18,40,130,30);
+        preferences[2].SetBounds(158,40,120,30);
+        preferences[3].SetBounds(289,40,108,30);
+        preferences[4].SetBounds(409,40,220,30);
+        preferences[5].SetBounds(18,84,700,24);
+
+        AddCollapsibleSection(tab,"Source & OrthoCube",true,sourceFields);
+        AddCollapsibleSection(tab,"Native Views & Scale",true,nativeViews);
+        AddCollapsibleSection(tab,"Drawing Output",true,outputFields);
+        AddCollapsibleSection(tab,"Generation History & QA",true,qaFields);
+        AddCollapsibleSection(tab,"Dimensions",false,dimensions);
+        AddCollapsibleSection(tab,"Annotations & XREF",false,annotations);
+        AddCollapsibleSection(tab,"Project Settings",false,preferences);
+        ReflowSections(tab);
+    }
+
+    private void AddCollapsibleSection(TabPage tab,string name,
+        bool expanded,params Control[] children)
+    {
+        var section=new CollapsibleSection{Expanded=expanded};
+        int left=children.Min(c=>c.Left);
+        int top=children.Min(c=>c.Top);
+        section.BodyHeight=children.Max(c=>c.Bottom)-top+14;
+        section.Frame.Width=737;
+        section.Frame.BackColor=Color.White;
+        section.Frame.BorderStyle=BorderStyle.FixedSingle;
+        section.Header.FlatStyle=FlatStyle.Flat;
+        section.Header.FlatAppearance.BorderSize=0;
+        section.Header.Font=new Font("Segoe UI",9f,FontStyle.Bold);
+        section.Header.TextAlign=ContentAlignment.MiddleLeft;
+        section.Header.BackColor=Color.FromArgb(236,242,248);
+        section.Header.SetBounds(0,0,734,33);
+        section.Body.SetBounds(0,35,734,section.BodyHeight);
+        section.Body.BackColor=Color.White;
+        foreach(Control child in children)
+        {
+            int dx=child.Left-left+9;
+            int dy=child.Top-top+5;
+            section.Body.Controls.Add(child);
+            child.Location=new Point(dx,dy);
+        }
+        section.Frame.Controls.Add(section.Header);
+        section.Frame.Controls.Add(section.Body);
+        section.Header.Click+=(_,_)=>{
+            if(IsRunning)return;
+            section.Expanded=!section.Expanded;
+            ReflowSections(tab);
+        };
+        uiSections.Add(section);
+        tab.Controls.Add(section.Frame);
+        section.Header.Tag=name;
+    }
+
+    private void ReflowSections(TabPage tab)
+    {
+        tab.SuspendLayout();
+        try
+        {
+            int y=10;
+            foreach(var section in uiSections)
+            {
+                string name=section.Header.Tag?.ToString()??"Settings";
+                section.Header.Text=(section.Expanded?"[-]  ":"[+]  ")+name;
+                section.Body.Visible=section.Expanded;
+                section.Frame.Height=section.Expanded?
+                    35+section.BodyHeight:34;
+                section.Frame.Location=new Point(8,y);
+                y+=section.Frame.Height+9;
+            }
+            tab.AutoScrollMinSize=new Size(755,y+10);
+        }
+        finally{tab.ResumeLayout();}
+    }
+
+    private void ArrangeStickyFooter()
+    {
+        if(arrangingStickyFooter||stickyFooter.IsDisposed)return;
+        int w=stickyFooter.ClientSize.Width;
+        int h=stickyFooter.ClientSize.Height;
+        if(w<=0||h<=0)return;
+        arrangingStickyFooter=true;
+        try
+        {
+            // Use the actual DPI-scaled button dimensions, not their
+            // original 96-DPI values. No CAD/paper measurements used.
+            int buttonWidth=Math.Max(runButton.Width,preflightButton.Width);
+            int right=Math.Max(128,w-buttonWidth-12);
+            int top=Math.Max(10,(h-runButton.Height-
+                preflightButton.Height-9)/2);
+            preflightButton.Location=new Point(right,top);
+            runButton.Location=new Point(right,
+                top+preflightButton.Height+9);
+            preview.SetBounds(12,Math.Max(24,top),
+                Math.Max(100,right-25),Math.Max(35,h-Math.Max(24,top)-12));
+        }
+        finally{arrangingStickyFooter=false;}
     }
 
     // Never clear user options on another drawing run. Refresh source context
@@ -473,9 +642,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         tabs.Enabled=!running;
         if(running)
         {
-            ClearGeneratedOutput();
-            lastQa.Text="Generating... QA is available only after the native DWG report is written.";
-            SetStatus("Operation queued / in progress. Select CAD entities when prompted.");
+            // REV77: history persists across runs within this project.
+            // New output is appended only when GenerateOne actually
+            // completes; an aborted run cannot fabricate QA results.
+            SetStatus("Generating... previous DWGs remain in session history.");
         }
         else
             SetStatus("Ready for another operation. Settings retained.");
@@ -637,16 +807,22 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 
     private void ClearGeneratedOutput()
     {
+        outputHistory.Clear();
+        generatedHistory.Items.Clear();
         lastOutputDwg=null;
         lastResultTxt=null;
-        completedOutputCount=0;
+        lastCopiedSummary="";
         openDwgFolder.Enabled=false;
         openResult.Enabled=false;
-        lastQa.Text="No completed Ortho drawing in this session.";
+        copyQa.Enabled=false;
+        qaIndicator.Text="QA status: UNVERIFIED";
+        qaIndicator.ForeColor=Color.DimGray;
+        lastQa.Text="No generated Ortho drawings in this project session.";
     }
 
     // Called only with a DWG actually emitted by GenerateOne, never with
-    // an inferred name or a guessed output path.
+    // a guessed output name or arbitrary report path. All history entries
+    // are scoped to the current project and the current palette session.
     internal void RecordGeneratedDwg(string dwg)
     {
         if(IsDisposed)return;
@@ -657,32 +833,95 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         }
         if(string.IsNullOrWhiteSpace(dwg)||!File.Exists(dwg))
             return;
-        lastOutputDwg=Path.GetFullPath(dwg);
-        completedOutputCount++;
-        string folder=Path.GetDirectoryName(lastOutputDwg)??"";
-        lastResultTxt=Path.Combine(folder,
-            Path.GetFileNameWithoutExtension(lastOutputDwg)+"_RESULT.txt");
-        openDwgFolder.Enabled=Directory.Exists(folder);
-        openResult.Enabled=File.Exists(lastResultTxt);
-        string report=Path.GetFileName(lastOutputDwg)+
-            " ("+completedOutputCount+" generated DWG(s) in this run)";
-        if(openResult.Enabled)
+        string full=Path.GetFullPath(dwg);
+        // Avoid reusing an output from another project if a callback
+        // reaches this palette after its source project was switched.
+        string relative=Path.GetRelativePath(projectRoot,full);
+        if(Path.IsPathRooted(relative)||
+           relative==".."||
+           relative.StartsWith(".."+Path.DirectorySeparatorChar,
+               StringComparison.Ordinal)||
+           relative.StartsWith(".."+Path.AltDirectorySeparatorChar,
+               StringComparison.Ordinal))
+            return;
+        string report=Path.Combine(Path.GetDirectoryName(full)??"",
+            Path.GetFileNameWithoutExtension(full)+"_RESULT.txt");
+        int existing=outputHistory.FindIndex(x=>
+            x.Path.Equals(full,StringComparison.OrdinalIgnoreCase));
+        if(existing>=0)
         {
-            try
+            // A regenerated file has fresh real evidence. Re-select it.
+            outputHistory.RemoveAt(existing);
+            generatedHistory.Items.RemoveAt(existing);
+        }
+        outputHistory.Add(new GeneratedDwg(full,report));
+        generatedHistory.Items.Add(
+            outputHistory.Count.ToString("00")+"  "+Path.GetFileName(full));
+        generatedHistory.SelectedIndex=outputHistory.Count-1;
+    }
+
+    // Selection-only read; no mutation of a DWG, source file, project
+    // registration, PDF sidecar or a result TXT.
+    private void RefreshSelectedQa()
+    {
+        int index=generatedHistory.SelectedIndex;
+        bool has=index>=0&&index<outputHistory.Count;
+        lastOutputDwg=has?outputHistory[index].Path:null;
+        lastResultTxt=has?outputHistory[index].ResultPath:null;
+        openDwgFolder.Enabled=has&&Directory.Exists(
+            Path.GetDirectoryName(lastOutputDwg??""));
+        openResult.Enabled=has&&File.Exists(lastResultTxt);
+        copyQa.Enabled=false;
+        if(!has)
+        {
+            lastQa.Text="Select a generated DWG to review its recorded QA.";
+            qaIndicator.Text="QA status: UNVERIFIED";
+            qaIndicator.ForeColor=Color.DimGray;
+            return;
+        }
+        string name=Path.GetFileName(lastOutputDwg)??"(unavailable)";
+        string risk="UNVERIFIED";
+        string detail="No matching RESULT.txt. Actual QA cannot be verified.";
+        try
+        {
+            if(openResult.Enabled)
             {
-                report+="\r\n"+SupportDrawingQaSummary76.Format(
-                    SupportDrawingQaSummary76.Read(
-                        File.ReadAllText(lastResultTxt)));
-            }
-            catch(System.Exception ex) when (ex is IOException or
-                UnauthorizedAccessException)
-            {
-                report+="\r\nRESULT.txt unavailable: "+ex.Message;
+                string raw=File.ReadAllText(lastResultTxt!);
+                var summary=SupportDrawingQaSummary76.Read(raw);
+                risk=SupportDrawingQaStatus77.Assess(raw,summary);
+                detail=SupportDrawingQaSummary76.Format(summary);
             }
         }
-        else
-            report+="\r\nRESULT.txt not written. QA unverified.";
-        lastQa.Text=report;
+        catch(System.Exception ex) when(ex is IOException or
+            UnauthorizedAccessException)
+        {
+            detail="RESULT.txt could not be read: "+ex.Message;
+        }
+        qaIndicator.Text="QA status: "+risk;
+        qaIndicator.ForeColor=risk.StartsWith("FAIL",
+            StringComparison.Ordinal)?Color.Firebrick:
+            risk.StartsWith("PASS",StringComparison.Ordinal)?
+                Color.DarkGreen:risk=="REVIEW"?
+                    Color.DarkGoldenrod:Color.DimGray;
+        lastCopiedSummary=name+"\r\n"+qaIndicator.Text+"\r\n"+detail;
+        lastQa.Text=lastCopiedSummary;
+        copyQa.Enabled=openResult.Enabled;
+    }
+
+    private void CopySelectedQa()
+    {
+        if(!copyQa.Enabled||lastCopiedSummary.Length==0)return;
+        try
+        {
+            Clipboard.SetText(lastCopiedSummary);
+            SetStatus("Copied the selected DWG's report-derived QA summary.");
+        }
+        catch(System.Exception ex) when(ex is
+            System.Runtime.InteropServices.ExternalException or
+            System.Threading.ThreadStateException)
+        {
+            SetStatus("Clipboard unavailable: "+ex.Message);
+        }
     }
 
     private void OpenGeneratedOutput(bool reportFile)

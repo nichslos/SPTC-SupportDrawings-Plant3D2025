@@ -59,6 +59,20 @@ internal static class Rev76ProductionUiTests
         Need(absent.NativeViews=="Unknown"&&
              absent.Dimensions=="Unknown"&&!absent.DraftOnly,
              "missing reports never fabricate QA PASS");
+        Need(SupportDrawingQaStatus77.Assess(report,summary)=="REVIEW",
+            "offsheet draft is REVIEW even if native view results say PASS");
+        Need(SupportDrawingQaStatus77.Assess("",null)=="UNVERIFIED",
+            "missing source report must never present fabricated pass");
+        string failReport="FINAL_STATUS=FAIL\\n";
+        var failure=SupportDrawingQaSummary76.Read(failReport);
+        Need(SupportDrawingQaStatus77.Assess(failReport,failure)=="FAIL (reported)",
+            "explicit generation failures take priority in the UI");
+        string xrefReview="REV72_XREF_PIPE_COVERAGE=SOURCE NEARBY=0 NEEDS_REVIEW=True\\n"+
+            "STEP10_ACTUAL_VIEWPORT_OVERLAP_DETECTED=False\\n"+
+            "FINAL_STATUS=TEN_NATIVE_VIEWS_AND_TITLES_MEMBER_LEADERS_PASS";
+        Need(SupportDrawingQaStatus77.Assess(xrefReview,
+                SupportDrawingQaSummary76.Read(xrefReview))=="REVIEW",
+            "unverified XREF coverage is never shown as fully approved");
         Console.WriteLine("REV76 UI output mapping, eligibility, nonpersisted "+
             "defaults and source-verified QA formatting PASS");
     }
