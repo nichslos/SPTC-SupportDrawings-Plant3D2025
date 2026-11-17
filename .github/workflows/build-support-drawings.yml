@@ -1736,9 +1736,16 @@ jobs:
           # remain mandatory even with an additional, non-persisted checkbox.
           foreach($token in @('If All 10 won''t fit, split across sheets',
               'bypassOneSheetLimit.Checked = false',
-              'bypassOneSheetLimit.Checked);')) {
+              'bypassOneSheetLimit.Checked,allowDraftOverflow.Checked);')) {
             if(-not $ui.Contains($token)) {
               throw "REV74 opt-in native page split UI option missing: $token"
+            }
+          }
+          foreach($token in @('All 10 on one DWG, outside paper (DRAFT)',
+              'allowDraftOverflow.Checked = false',
+              'allowDraftOverflow.Checked);')) {
+            if(-not $ui.Contains($token)) {
+              throw "REV75 opt-in offsheet DRAFT mode missing: $token"
             }
           }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
