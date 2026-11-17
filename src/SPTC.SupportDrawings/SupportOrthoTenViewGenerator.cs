@@ -139,7 +139,8 @@ public sealed class SupportOrthoTenViewGenerator
                         AcadApp.DocumentManager.MdiActiveDocument=sourceDoc;
                         progress.Report("Starting support handle "+id.Handle);
                         bool ok=await GenerateOne(sourceDoc,new[]{id},options,progress,
-                            productionEntries.Add);
+                            productionEntries.Add,
+                            onOutputDwg:SupportDrawingPalette40.RecordGeneratedOrthoDwg);
                         bool pdfOk=!packageForRun.Enabled||
                             !packageForRun.PublishPdf;
                         if(productionEntries.Count>beforeEntries)
@@ -272,6 +273,7 @@ public sealed class SupportOrthoTenViewGenerator
                 bool actualDraftOverflow75=false;
                 bool ok=await GenerateOne(sourceDoc,singleSourceIds,options,
                     progress,productionEntries.Add,
+                    onOutputDwg:SupportDrawingPalette40.RecordGeneratedOrthoDwg,
                     onPaperFitFailure:()=>initialPageNoFit=true,
                     onDraftOverflowUsed:()=>actualDraftOverflow75=true);
 
@@ -315,6 +317,7 @@ public sealed class SupportOrthoTenViewGenerator
                             sourceDoc,singleSourceIds,subOptions,progress,
                             productionEntries.Add,
                             sheetDrawingSuffix:partSuffix,
+                            onOutputDwg:SupportDrawingPalette40.RecordGeneratedOrthoDwg,
                             onPaperFitFailure:()=>childPageNoFit=true);
                         if(generated)
                         {
