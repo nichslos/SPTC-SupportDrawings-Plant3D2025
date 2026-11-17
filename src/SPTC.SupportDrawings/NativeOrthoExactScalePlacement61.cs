@@ -222,7 +222,10 @@ internal static class NativeOrthoExactScalePlacement61
                 // the next exact-scale grid on insufficient capacity.
                 if(mandatoryAnnotationHeightMm>0&&
                    !SupportOrthoAnnotationCapacity71.TryPreflight(
-                       frames,titles,paperWidth,paperHeight,
+                       frames.Select(v=>new NativeOrthoViewTitlePlan.Frame(
+                           v.Name,v.CenterX,v.CenterY,
+                           v.PaperFrameWidth,v.PaperFrameHeight)).ToArray(),
+                       titles,paperWidth,paperHeight,
                        bypassTitleBlock,mandatoryAnnotationHeightMm,
                        out string capacityReason))
                 {
