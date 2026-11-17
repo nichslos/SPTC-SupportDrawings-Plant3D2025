@@ -2021,6 +2021,21 @@ public sealed class SupportOrthoTenViewGenerator
                                 "_APPEARANCE=DEFERRED_NO_NATIVE_HOST_MUTATION");
                             generate.Invoke(nativeView,args);
                             Log("STEP8_"+label+"_PRIVATE_GENERATEORTHOS_RETURNED");
+                            // REV86: inspect TOP's actual saved native ViewDef
+                            // after generation, with no appearance/geometry writes.
+                            // The REV84/85 command returned indistinguishable
+                            // hidden-line values on the user's workstation.
+                            // Discover native properties before attempting
+                            // another unverified appearance override.
+                            if(string.Equals(label,"TOP",
+                                StringComparison.OrdinalIgnoreCase))
+                            {
+                                Log("REV86_APPEARANCE_REQUEST_HIDDEN="+
+                                    options.HiddenLineMode+
+                                    " INSULATION="+options.InsulationMode);
+                                NativeOrthoAppearanceProbe86.Inspect(
+                                    nativeView,viewName,Log);
+                            }
                             if(NativeOrthoAxialEditorPreset.IsAxial(label))
                             {
                                 // REV22.29 ISOLATED AXIAL HALF-TURN experiment:
