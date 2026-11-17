@@ -450,6 +450,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         generatedHistory.SetBounds(18,35,704,91);
         generatedHistory.HorizontalScrollbar=true;
         generatedHistory.SelectedIndexChanged+=(_,_)=>RefreshSelectedQa();
+        generatedHistory.DoubleClick+=(_,_)=>OpenSelectedDwg();
         orthoTab.Controls.Add(generatedHistory);
         qaIndicator.SetBounds(18,135,700,24);
         qaIndicator.ForeColor=Color.DimGray;
@@ -1254,6 +1255,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         lastResultTxt=null;
         lastCopiedSummary="";
         openDwgFolder.Enabled=false;
+        openDwg.Enabled=false;
         openResult.Enabled=false;
         copyQa.Enabled=false;
         qaIndicator.Text="QA status: UNVERIFIED";
@@ -1296,8 +1298,25 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             generatedHistory.Items.RemoveAt(existing);
         }
         outputHistory.Add(new GeneratedDwg(full,report));
-        generatedHistory.Items.Add(
-            outputHistory.Count.ToString("00")+"  "+Path.GetFileName(full));
+        string kind="REPORT PENDING";
+        try
+        {
+            if(File.Exists(report))
+            {
+                var measured=SupportDrawingQaSummary76.Read(
+                    File.ReadAllText(report));
+                kind=measured.DraftOnly?"DRAFT · NO PDF":"NATIVE SHEET";
+            }
+        }
+        catch(System.Exception ex) when(ex is IOException or
+            UnauthorizedAccessException)
+        {
+            kind="QA UNAVAILABLE";
+        }
+        string savedAt=File.GetLastWriteTime(full).ToString(
+            "MM-dd HH:mm",System.Globalization.CultureInfo.InvariantCulture);
+        generatedHistory.Items.Add(savedAt+"  |  "+
+            Path.GetFileName(full)+"  |  "+kind);
         generatedHistory.SelectedIndex=outputHistory.Count-1;
         // Surface the actual result immediately, even if the QA section
         // was hidden in the simpler essentials-only layout.
@@ -1320,6 +1339,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         lastResultTxt=has?outputHistory[index].ResultPath:null;
         openDwgFolder.Enabled=has&&Directory.Exists(
             Path.GetDirectoryName(lastOutputDwg??""));
+        openDwg.Enabled=has&&File.Exists(lastOutputDwg);
         openResult.Enabled=has&&File.Exists(lastResultTxt);
         copyQa.Enabled=false;
         if(!has)
@@ -1371,6 +1391,29 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             System.Threading.ThreadStateException)
         {
             SetStatus("Clipboard unavailable: "+ex.Message);
+        }
+    }
+
+    // This is explicitly Windows Shell file association; it does not
+    // inject AutoCAD commands or mutate any DWG/project from the palette.
+    private void OpenSelectedDwg()
+    {
+        string? selected=lastOutputDwg;
+        if(string.IsNullOrWhiteSpace(selected)||!File.Exists(selected))
+        {
+            SetStatus("Selected DWG was moved or deleted. Choose another result.");
+            return;
+        }
+        try
+        {
+            Process.Start(new ProcessStartInfo {
+                FileName=selected,UseShellExecute=true
+            });
+        }
+        catch(System.Exception ex) when(ex is System.ComponentModel.Win32Exception or
+            IOException or UnauthorizedAccessException)
+        {
+            SetStatus("Windows could not open the selected DWG: "+ex.Message);
         }
     }
 
