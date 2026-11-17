@@ -68,7 +68,9 @@ internal static class Rev80OrthoNativeVersionTests
     {
         var r=new FakeRow();
         r["PnPID"]=id;
-        r["FilePath"]=path;
+        // Use the actual Autodesk Ortho schema's PnPRelativePath
+        // to check that a registered native drawing can be resolved.
+        r["PnPRelativePath"]=Path.GetFileName(path);
         r["PnPDrawingGUID"]=guid.ToString("D");
         r["DwgVersion"]=version;
         return r;
