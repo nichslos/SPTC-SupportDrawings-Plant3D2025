@@ -18,7 +18,8 @@ public static class SupportOrthoNativeDimensionPolicy48
     public static bool AcceptMember(
         SupportOrthoAllViewDimPlan44.Member member) =>
         IsNativeKey(member.Key)&&
-        (member.Kind=="STRUCTURE"||member.Kind=="SUPPORT");
+        (member.Kind=="STRUCTURE"||member.Kind=="SUPPORT"||
+         member.Kind=="PLATE");
 
     public static bool AcceptSegment(
         SupportOrthoDimLinearPlan41.Segment segment) =>
