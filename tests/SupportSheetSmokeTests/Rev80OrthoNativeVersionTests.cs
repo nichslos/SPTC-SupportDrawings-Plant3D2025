@@ -121,6 +121,8 @@ internal static class Rev80OrthoNativeVersionTests
             Need(badGuid,"different native registration GUID fails closed");
             part.DataLinksManager.Db.Tables.PnPDrawings.Rows[0]
                 ["DwgVersion"]=null;
+            part.DataLinksManager.Db.Tables.PnPDrawings.Rows[1]
+                ["DwgVersion"]=null;
             bool noReference=false;
             try
             {
