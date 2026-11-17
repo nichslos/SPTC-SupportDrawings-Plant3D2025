@@ -581,6 +581,13 @@ public sealed class SupportOrthoTenViewGenerator
         // otherwise labeled approximate from geometric upper elevation.
         var plantSupports=SupportOrthoPlantSupport25.Read(
             sourceDoc.Database,selectedSupportIds);
+        // REV82: PLANTSTEELPLATE is a separate native StructurePlate
+        // object, not a StructureMember or piping Support. Read only
+        // selected host entities and actual native WCS geometry.
+        var nativePlates82=SupportOrthoPlantPlateSource82.Read(
+            sourceDoc.Database,selectedSupportIds);
+        ed.WriteMessage("\nSPTC native Plant Steel Plate/Grating: "+
+            nativePlates82.Plates.Count+" verified.");
         var sourceAnnotations=horizontalSteel.Members.Select(m=>
             new SupportOrthoMemberCalloutPlan27.Member(
                 m.Handle,m.Size,m.X,m.Y,m.Z,m.IsHorizontal,
@@ -590,6 +597,10 @@ public sealed class SupportOrthoTenViewGenerator
                     s.Handle,s.Description,s.X,s.Y,s.Z,true,
                     string.IsNullOrWhiteSpace(s.TosText)?null:s.TosText,
                     s.TosSource)))
+            .Concat(nativePlates82.Plates.Select(p=>
+                new SupportOrthoMemberCalloutPlan27.Member(
+                    p.Handle,p.Description,p.X,p.Y,p.Z,
+                    false,null,"STRUCTURE_PLATE_NO_TOS_ASSUMED")))
             .ToArray();
         if(sourceAnnotations.Select(m=>m.Handle).Distinct(
             StringComparer.OrdinalIgnoreCase).Count()!=sourceAnnotations.Length)
@@ -798,7 +809,7 @@ public sealed class SupportOrthoTenViewGenerator
         // REV22.44: dedicated source list for OVERALL VIEW-PROJECTED
         // horizontal/vertical dimensions on EVERY selected orthographic view.
         // Extents are source model WCS, XREF extents transformed into host WCS.
-        var everyViewMembers=options.AutoDimLinear
+        var existingMemberExtents=options.AutoDimLinear
             ? SupportOrthoAllMemberExtent44.Read(
                 sourceDoc.Database,selectedSupportIds,
                 horizontalSteel.Members.Select(x=>x.Handle),
@@ -808,6 +819,27 @@ public sealed class SupportOrthoTenViewGenerator
             : new SupportOrthoAllMemberExtent44.Result(
                 Array.Empty<SupportOrthoAllViewDimPlan44.Member>(),
                 Array.Empty<string>());
+        // Native plate envelope dimensions use only the exact selected
+        // StructurePlate entity geometry (no catalog sizes or XREF).
+        // Preserve all existing member and support geometry unchanged.
+        var includedPlates82=options.AutoDimLinear
+            ? nativePlates82.Plates.Where(p=>
+                SupportOrthoXrefMemberDiscovery37.Intersects(
+                    new BoundingBox3(
+                        p.Geometry.MinX,p.Geometry.MinY,p.Geometry.MinZ,
+                        p.Geometry.MaxX,p.Geometry.MaxY,p.Geometry.MaxZ),
+                    layout.PaddedCube)).ToArray()
+            : Array.Empty<SupportOrthoPlantPlateSource82.Plate>();
+        var everyViewMembers=new SupportOrthoAllMemberExtent44.Result(
+            existingMemberExtents.Members
+                .Concat(includedPlates82.Select(p=>p.Geometry))
+                .GroupBy(m=>m.Key,StringComparer.OrdinalIgnoreCase)
+                .Select(g=>g.First()).ToArray(),
+            existingMemberExtents.Diagnostics.Concat(
+                nativePlates82.Diagnostics).Concat(new[]{
+                "PLATE82_NATIVE_DIMENSION_SOURCES="+includedPlates82.Length,
+                "PLATE82_MEASUREMENT_SCOPE=PROJECTED_NATIVE_WCS_ENVELOPE_NOT_FABRICATION"
+            }).ToArray());
 
         // REV22.59: inspect only the already-vetted native steel and
         // support members. This is a read-only bounded extraction; no
