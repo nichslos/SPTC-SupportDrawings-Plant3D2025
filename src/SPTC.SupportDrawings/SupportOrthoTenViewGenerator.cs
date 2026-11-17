@@ -90,6 +90,17 @@ public sealed class SupportOrthoTenViewGenerator
         Editor ed=sourceDoc.Editor;
         string source=sourceDoc.Database.Filename??"";
         var progress=new SupportDrawingProgressForm35();
+        var productionEntries=new List<SupportProductionPackagePlan.Entry>();
+        // Read optional project settings once for the whole batch.
+        // A damaged or absent production config does not affect Ortho.
+        var packageForRun=SupportProductionPackagePlan.Defaults;
+        try
+        {
+            var project=CurrentOrthoProject();
+            SupportProductionPackageSettingsStore.TryLoad(
+                project.ProjectRoot,out packageForRun,out _);
+        }
+        catch(System.Exception) { /* Opt-in publishing disabled. */ }
         try
         {
             if(options.BatchOrtho)
@@ -111,31 +122,115 @@ public sealed class SupportOrthoTenViewGenerator
                     ed.WriteMessage("\nSPTC batch: no support block references were selected.");
                     return;
                 }
+                progress.SetWorkload(ids.Count);
                 progress.Show();
                 int passed=0,failed=0;
+                int pdfPassed=0,pdfFailed=0;
                 var report=new StringBuilder();
                 report.AppendLine("SPTC_REV22_35_BATCH_REPORT");
                 report.AppendLine("SOURCE="+source);
                 report.AppendLine("SUPPORT_COUNT="+ids.Count);
                 foreach(ObjectId id in ids)
                 {
+                    bool supportSucceeded=false;
+                    int beforeEntries=productionEntries.Count;
                     try
                     {
                         AcadApp.DocumentManager.MdiActiveDocument=sourceDoc;
                         progress.Report("Starting support handle "+id.Handle);
-                        bool ok=await GenerateOne(sourceDoc,new[]{id},options,progress);
-                        if(ok)passed++; else failed++;
-                        report.AppendLine("HANDLE="+id.Handle+" STATUS="+(ok?"PASS":"FAIL"));
-                        progress.Report("Support "+id.Handle+": "+(ok?"PASS":"FAIL"));
+                        bool ok=await GenerateOne(sourceDoc,new[]{id},options,progress,
+                            productionEntries.Add);
+                        bool pdfOk=!packageForRun.Enabled||
+                            !packageForRun.PublishPdf;
+                        if(productionEntries.Count>beforeEntries)
+                        {
+                            var entry=productionEntries[^1];
+                            if(packageForRun.Enabled&&packageForRun.PublishPdf)
+                            {
+                                var published=await SupportProductionNativePdfPublisher.PublishAsync(
+                                    sourceDoc,packageForRun,entry,progress.Report);
+                                productionEntries[^1]=published;
+                                pdfOk=published.PdfStatus=="PDF_PUBLISHED_VERIFIED";
+                                if(pdfOk)pdfPassed++; else pdfFailed++;
+                                try {SupportProductionPackagePlan.SaveEntry(published);}
+                                catch(System.Exception ex)
+                                {
+                                    progress.Report("PDF register sidecar error: "+ex.Message);
+                                }
+                                report.AppendLine("HANDLE="+id.Handle+
+                                    " PDF_STATUS="+published.PdfStatus+
+                                    " PDF_PATH="+(published.PdfPath??""));
+                            }
+                        }
+                        else if(packageForRun.Enabled)
+                        {
+                            // A preflight failure has no output DWG. Record it
+                            // in the run CSV without fabricating a PDF path.
+                            productionEntries.Add(
+                                SupportProductionPackagePlan.FailedEntry(
+                                    packageForRun,source,
+                                    new[]{id.Handle.ToString()},
+                                    "GENERATION_DID_NOT_CREATE_DWG"));
+                            if(packageForRun.PublishPdf)pdfFailed++;
+                        }
+                        supportSucceeded=ok&&pdfOk;
+                        if(supportSucceeded)passed++; else failed++;
+                        report.AppendLine("HANDLE="+id.Handle+
+                            " DWG_STATUS="+(ok?"PASS":"FAIL")+
+                            " STATUS="+(supportSucceeded?"PASS":"FAIL"));
+                        progress.Report("Support "+id.Handle+": "+
+                            (supportSucceeded?"PASS":"FAIL / SEE DRAWING REGISTER"));
                     }
                     catch(System.Exception ex)
                     {
                         failed++;
                         report.AppendLine("HANDLE="+id.Handle+" STATUS=FAIL ERROR="+ex.Message);
                         progress.Report("Support "+id.Handle+" FAILED: "+ex.Message);
+                        if(packageForRun.Enabled&&
+                           productionEntries.Count==beforeEntries)
+                        {
+                            try{productionEntries.Add(
+                                SupportProductionPackagePlan.FailedEntry(
+                                    packageForRun,source,
+                                    new[]{id.Handle.ToString()},
+                                    ex.GetType().Name));}
+                            catch(System.Exception) { /* TXT still records failure */ }
+                        }
+                    }
+                    finally
+                    {
+                        // A completed item advances the batch progress
+                        // even when its own generation fails. Progress is
+                        // not a count of successful drawings.
+                        progress.AdvanceWorkload(supportSucceeded);
                     }
                 }
                 report.AppendLine("PASS="+passed+" FAIL="+failed);
+                if(packageForRun.Enabled&&packageForRun.PublishPdf)
+                    report.AppendLine("PDF_PUBLISHED="+pdfPassed+
+                        " PDF_FAILED_OR_BLOCKED="+pdfFailed);
+                if(productionEntries.Count>0)
+                {
+                    try
+                    {
+                        // Project-local run register, not a global
+                        // mutable register shared by unrelated projects.
+                        string index=Path.Combine(Path.GetDirectoryName(source)!,
+                            "SPTC_DRAWING_REGISTER_"+
+                            DateTime.UtcNow.ToString("yyyyMMdd_HHmmss",
+                                CultureInfo.InvariantCulture)+".csv");
+                        SupportProductionPackagePlan.SaveRegister(index,
+                            productionEntries);
+                        report.AppendLine("DRAWING_REGISTER="+index);
+                        progress.Report("Production drawing register: "+index);
+                    }
+                    catch(System.Exception ex)
+                    {
+                        report.AppendLine("DRAWING_REGISTER_ERROR="+
+                            ex.GetType().Name+":"+ex.Message);
+                        progress.Report("Production register not written: "+ex.Message);
+                    }
+                }
                 try
                 {
                     string output=Path.Combine(Path.GetDirectoryName(source)!,
@@ -152,8 +247,64 @@ public sealed class SupportOrthoTenViewGenerator
             }
             else
             {
-                bool ok=await GenerateOne(sourceDoc,null,options,progress);
-                progress.Report("Single Ortho result: "+(ok?"PASS":"FAIL / SEE TXT"));
+                progress.SetWorkload(1);
+                // Show the existing non-modal progress window during
+                // a single run as well as sequential batch runs.
+                progress.Show();
+                // REV64: ALL 10 manual 1:N must stay ONE native Ortho
+                // DWG / ONE PDF. Read the host selection only once.
+                // GenerateOne chooses the smallest verified registered
+                // empty sheet at exact scale; if no sheet fits, NO DWG
+                // or PDF is created and no multiple-sheet fallback runs.
+                ObjectId[]? singleSourceIds=null;
+                if(options.ScaleDenominator>0&&options.Views.Count==10)
+                {
+                    var supportSelection=ed.GetSelection(
+                        new PromptSelectionOptions {
+                            MessageForAdding=options.SupportFocus
+                                ? "\nSPTC: Select STRUCTURE MEMBERS and/or Plant 3D SUPPORT objects: "
+                                : "\nSPTC: Select support entities for Original OrthoCube mode: "
+                        });
+                    if(supportSelection.Status!=PromptStatus.OK)return;
+                    singleSourceIds=supportSelection.Value.GetObjectIds();
+                }
+                bool ok=await GenerateOne(sourceDoc,singleSourceIds,options,
+                    progress,productionEntries.Add);
+                bool pdfOk=!packageForRun.Enabled||
+                    !packageForRun.PublishPdf;
+                if(productionEntries.Count>0&&packageForRun.Enabled&&
+                   packageForRun.PublishPdf)
+                {
+                    var published=await SupportProductionNativePdfPublisher.PublishAsync(
+                        sourceDoc,packageForRun,productionEntries[0],progress.Report);
+                    productionEntries[0]=published;
+                    pdfOk=published.PdfStatus=="PDF_PUBLISHED_VERIFIED";
+                    try {SupportProductionPackagePlan.SaveEntry(published);}
+                    catch(System.Exception ex)
+                    {progress.Report("PDF sidecar update error: "+ex.Message);}
+                }
+                progress.AdvanceWorkload(ok&&pdfOk);
+                if(productionEntries.Count>0)
+                {
+                    try
+                    {
+                        var entry=productionEntries[0];
+                        string index=Path.ChangeExtension(entry.ReportPath,
+                            ".register.csv");
+                        SupportProductionPackagePlan.SaveRegister(index,
+                            productionEntries);
+                        progress.Report("Draft drawing register: "+index);
+                    }
+                    catch(System.Exception ex)
+                    {
+                        progress.Report("Register not written: "+ex.Message);
+                    }
+                }
+                progress.Report("Single Ortho result: "+
+                    (ok?"DWG PASS":"DWG FAILED")+
+                    (packageForRun.Enabled&&packageForRun.PublishPdf?
+                        " | PDF "+(pdfOk?"PASS":"FAILED / BLOCKED"):
+                        " | PDF NOT REQUESTED"));
             }
         }
         catch(System.Exception ex)
@@ -170,7 +321,11 @@ public sealed class SupportOrthoTenViewGenerator
 
     private async Task<bool> GenerateOne(Document sourceDoc,
         ObjectId[]? selectedOverride,SupportDrawingUiOptions options,
-        SupportDrawingProgressForm35 progress)
+        SupportDrawingProgressForm35 progress,
+        Action<SupportProductionPackagePlan.Entry>? onProductionEntry=null,
+        Action<IReadOnlyList<NativeOrthoMultiSheetPlan63.Sheet>>? onSheetSet=null,
+        string sheetDrawingSuffix="",
+        Action<string>? onOutputDwg=null)
     {
         Editor ed=sourceDoc.Editor;
         bool succeeded=false;
@@ -335,10 +490,19 @@ public sealed class SupportOrthoTenViewGenerator
             pipeDiscovery.XrefCount+" XREF pipes near the selected support.");
         foreach(string note in pipeDiscovery.Diagnostics)
             ed.WriteMessage("\nREV22.29 SOURCE: "+note);
+        // REV72: scanner reports REV22_28_SCAN_FAILED, not REV22_29.
+        // The old mismatch silently converted a scanner failure into
+        // "no pipes found", allowing false pipe-coverage conclusions.
         if(pipeDiscovery.Diagnostics.Any(s=>
+            s.StartsWith("REV22_28_SCAN_FAILED=",StringComparison.Ordinal)||
             s.StartsWith("REV22_29_SCAN_FAILED=",StringComparison.Ordinal)))
         {
-            ed.WriteMessage("\nREV22.29: Pipe scan failed. No files changed.");
+            ed.WriteMessage("\nREV72: Native/XREF pipe scan failed. "+
+                "Do not generate an Ortho drawing with unverified pipe "+
+                "coverage. Inspect the source diagnostics.");
+            foreach(string note in pipeDiscovery.Diagnostics.Where(s=>
+                s.Contains("SCAN_FAILED",StringComparison.Ordinal)))
+                ed.WriteMessage("\nREV72 SOURCE: "+note);
             return false;
         }
 
@@ -377,6 +541,36 @@ public sealed class SupportOrthoTenViewGenerator
             ed.WriteMessage("\nREV22.29: Invalid support OrthoCube: " + ex.Message);
             return false;
         }
+        // REV73: compare EVERY verified source XREF pipe (including excluded
+        // pipes) against support, unchanged scan envelope and final OrthoCube.
+        // Read-only diagnostics; never expand geometry, alter pipe inclusion,
+        // change metadata logic or modify the source/XREF DWGs.
+        var rev73XrefGeometryNotes=new List<string>();
+        if(pipeDiscovery.ScanRegion is BoundingBox3 actualScan)
+        {
+            var allVerified=pipeDiscovery.VerifiedXrefGeometry ??
+                Array.Empty<SupportOrthoPipeDiscovery28.VerifiedXrefPipe>();
+            int insideCube=allVerified.Count(p=>
+                SupportOrthoXrefProximity73.Intersects(
+                    p.WorldBounds,layout.PaddedCube));
+            rev73XrefGeometryNotes.Add(
+                "REV73_XREF_PIPE_GEOMETRY_SUMMARY=VERIFIED_NATIVE_TYPES "+
+                pipeDiscovery.VerifiedXrefPipeEntities+
+                " VALID_TRANSFORMED_WCS="+allVerified.Count+
+                " INSIDE_SCAN="+allVerified.Count(p=>p.InsideScan)+
+                " INSIDE_ORTHOCUBE="+insideCube+
+                " ACTION=DIAGNOSTIC_ONLY");
+            foreach(var pipe in allVerified)
+                rev73XrefGeometryNotes.Add(
+                    SupportOrthoXrefProximity73.Describe(
+                        pipe.Key,pipe.SourceFile,pipe.WorldBounds,
+                        geometry.Value,actualScan,layout.PaddedCube,units));
+        }
+        else
+            rev73XrefGeometryNotes.Add(
+                "REV73_XREF_PIPE_GEOMETRY_SUMMARY=SCAN_REGION_UNAVAILABLE");
+        foreach(string diagnostic in rev73XrefGeometryNotes)
+            ed.WriteMessage("\nSPTC "+diagnostic);
         // REV22.29: source-authenticated pipe metadata only.
         // XREF source ObjectIds and nested transforms come from loaded XREF DBs.
         var nativeRead=SupportOrthoPlantPipe27.Read(
@@ -398,6 +592,31 @@ public sealed class SupportOrthoTenViewGenerator
             nativeRead.LinkedRows+xrefRead.LinkedRows,
             pipeDiscovery.Diagnostics.Concat(nativeRead.Diagnostics)
                 .Concat(xrefRead.Diagnostics).ToArray());
+        // REV72: source XREF visibility, real Plant pipe identity, cube
+        // inclusion, metadata and actual plotted geometry are distinct.
+        // Zero discovered XREF pipes must not inherit a structural QA
+        // PASS as evidence that pipe coverage was verified.
+        var pipeCoverage72=new SupportOrthoXrefPipeEvidence72.Counts(
+            pipeDiscovery.ResolvedXrefReferences,
+            pipeDiscovery.UnresolvedXrefReferences,
+            pipeDiscovery.VerifiedXrefPipeEntities,
+            pipeDiscovery.XrefCount,
+            xrefRead.Candidates,
+            xrefRead.Pipes.Count,
+            Math.Max(0,xrefRead.Candidates-xrefRead.Pipes.Count),
+            pipeDiscovery.XrefPipesOutsideProximity,
+            false);
+        ed.WriteMessage("\nSPTC "+
+            SupportOrthoXrefPipeEvidence72.Diagnostic(
+                pipeCoverage72,options.XrefMemberNames));
+        if(SupportOrthoXrefPipeEvidence72.NeedsReview(
+            pipeCoverage72,options.XrefMemberNames))
+            ed.WriteMessage("\nSPTC REV72: Nearby XREF Member is enabled "+
+                "but XREF pipe coverage is NOT verified. "+
+                SupportOrthoXrefPipeEvidence72.Explanation(pipeCoverage72)+
+                ". The drawing may pass structural QA without "+
+                "containing all expected XREF pipe geometry or BOP tags; "+
+                "review the XREF source and PDF before issue.");
         var pipeAnnotations=pipeRead.Pipes.Select(p=>
             new SupportOrthoMemberCalloutPlan27.Member(
                 p.Handle,"Line Number Tag: "+p.LineTag,p.X,p.Y,p.Z,
@@ -429,7 +648,8 @@ public sealed class SupportOrthoTenViewGenerator
         // never presented as a fabricated member cut length.
         var dimSource=options.AutoDimLinear
             ? SupportOrthoDimensionSource41.Read(
-                sourceDoc.Database,selectedSupportIds,xrefNearCube,units,
+                sourceDoc.Database,selectedSupportIds,
+                Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),units,
                 horizontalSteel.Members.Select(x=>x.Handle),
                 plantSupports.Members.Select(x=>x.Handle))
             : new SupportOrthoDimensionSource41.Result(
@@ -444,9 +664,22 @@ public sealed class SupportOrthoTenViewGenerator
                 sourceDoc.Database,selectedSupportIds,
                 horizontalSteel.Members.Select(x=>x.Handle),
                 plantSupports.Members.Select(x=>x.Handle),
-                xrefNearCube,layout.PaddedCube)
+                Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),
+                layout.PaddedCube)
             : new SupportOrthoAllMemberExtent44.Result(
                 Array.Empty<SupportOrthoAllViewDimPlan44.Member>(),
+                Array.Empty<string>());
+
+        // REV22.59: inspect only the already-vetted native steel and
+        // support members. This is a read-only bounded extraction; no
+        // source DWG edits and absolutely no XREF geometry dimensions.
+        var nativeEdges59=options.AutoDimLinear&&
+            options.ReferenceDetailDimensions
+            ?SupportOrthoNativeEdgeSource59.Read(
+                sourceDoc.Database,selectedSupportIds,
+                everyViewMembers.Members)
+            :new SupportOrthoNativeEdgeSource59.Result(
+                Array.Empty<SupportOrthoNativeEdgeGeometry59.Edge>(),
                 Array.Empty<string>());
 
         ProjectPart part;
@@ -457,9 +690,43 @@ public sealed class SupportOrthoTenViewGenerator
             return false;
         }
 
+        // Production package generation is strictly opt-in per project.
+        // Invalid or absent settings fail closed without changing native
+        // Ortho geometry, model files or the current SPTC drawing workflow.
+        SupportProductionPackageSettingsStore.TryLoad(
+            part.ProjectRoot,out var packageSettings,out string packageConfigStatus);
+        string? explicitSupportTag=null;
+        if(packageSettings.Enabled&&
+           !string.IsNullOrWhiteSpace(packageSettings.SupportTagAttribute))
+        {
+            try
+            {
+                explicitSupportTag=SupportProductionSupportTagReader.Read(
+                    sourceDoc.Database,selectedSupportIds.ToArray(),
+                    packageSettings.SupportTagAttribute);
+            }
+            catch(System.Exception)
+            {
+                // Ambiguous/nonexistent selected block tag: retain unique
+                // verified source-handle identity, never guess a tag.
+                explicitSupportTag=null;
+            }
+        }
+        string titleBlockStatus="NOT_CONFIGURED";
+
         // REV22.35: discover only native, project-registered and EMPTY seeds.
         // Never treat a previous generated Ortho or an arbitrary DWG as a seed.
         string seed="";
+        bool exactTenOnOneSheet64=options.ScaleDenominator>0&&
+            options.Views.Count==10;
+        // REV70: original strict registered sheet behavior always wins.
+        // Check EVERY existing registered EMPTY native Ortho paper size,
+        // portrait/landscape/custom, rather than hard-coding A0. Only
+        // when explicit All10 1:N fails the original title-block-
+        // reserved layout, retry the actual oriented physical sheet.
+        // The title-block BLOCK/TEXT/PDF seed remains unchanged and
+        // may be visibly overprinted; this is DRAFT-only mode.
+        bool bypassTitleBlock69=false;
         if(options.AutoSeed)
         {
             try
@@ -471,7 +738,141 @@ public sealed class SupportOrthoTenViewGenerator
                     .OrderByDescending(p=>Path.GetFileName(p).Contains(
                         "SEED",StringComparison.OrdinalIgnoreCase))
                     .ThenBy(p=>p,StringComparer.OrdinalIgnoreCase);
-                foreach(string path in candidates)
+                // REV64 selects the SMALLEST registered EMPTY native
+                // Ortho media that demonstrably fits the full ten-view
+                // EXACT manual scale, never the first arbitrary A1 seed.
+                // Only this explicit All10 case scans additional seeds;
+                // AUTO 1:25 keeps the existing fast first-seed policy.
+                if(exactTenOnOneSheet64)
+                {
+                    var validMedia=new List<NativeOrthoSingleSheet64.Seed>();
+                    var bypassMedia69=new List<NativeOrthoSingleSheet64.Seed>();
+                    var reviews=new List<NativeOrthoSeedDiagnostics65.Result>();
+                    int checkedEmpty=0;
+                    foreach(string path in candidates)
+                    {
+                        // Only the Project Manager's registered EMPTY native
+                        // Ortho drawing is a valid source; generated Ortho
+                        // drawings or arbitrary copied DWGs stay excluded.
+                        string catalog=ViewCatalog(part.OrthoPart,path);
+                        if(catalog!="EMPTY_REGISTERED_ORTHO")continue;
+                        checkedEmpty++;
+                        string name=Path.GetFileName(path);
+                        try
+                        {
+                            if(!IsNativeOrthoValid(part.OrthoPart,path))
+                            {
+                                reviews.Add(new NativeOrthoSeedDiagnostics65.Result(
+                                    name,"NATIVE_INVALID",0,0,
+                                    "OrthoDocUtils rejected this registered drawing"));
+                                continue;
+                            }
+                            using var previewDb=new Database(false,true);
+                            previewDb.ReadDwgFile(path,
+                                FileOpenMode.OpenForReadAndAllShare,true,null);
+                            previewDb.CloseInput(true);
+                            var previewSheet=CurrentPaperDetails(previewDb,
+                                FindPaperLayout(previewDb));
+                            double requiredLabels71=
+                                SupportOrthoAnnotationCapacity71.RequiredHeight(
+                                    sourceAnnotations,
+                                    previewSheet.WidthMm,previewSheet.HeightMm);
+                            bool fits=NativeOrthoSingleSheet64.TryExactTenFit(
+                                layout,options.Views,options.ScaleDenominator,
+                                previewSheet.WidthMm,previewSheet.HeightMm,
+                                out string reason,
+                                mandatoryAnnotationHeightMm:requiredLabels71);
+                            bool relaxed69=false;
+                            string bypassReason="";
+                            if(!fits&&NativeOrthoTitleBlockBypass69.Eligible(
+                                previewSheet.WidthMm,previewSheet.HeightMm,
+                                options.ScaleDenominator,options.Views.Count))
+                                relaxed69=NativeOrthoSingleSheet64.TryExactTenFit(
+                                    layout,options.Views,options.ScaleDenominator,
+                                    previewSheet.WidthMm,previewSheet.HeightMm,
+                                    out bypassReason,bypassTitleBlock:true,
+                                    mandatoryAnnotationHeightMm:requiredLabels71);
+                            reviews.Add(new NativeOrthoSeedDiagnostics65.Result(
+                                name,fits?"PASS":relaxed69?"REV69_BYPASS_FIT":"NO_FIT",
+                                previewSheet.WidthMm,previewSheet.HeightMm,
+                                fits?"Ten native frames, captions and right "+
+                                    "title-block clearance verified at exact 1:"+
+                                    options.ScaleDenominator:
+                                relaxed69?"Project-registered physical paper "+
+                                    "bypass fits exact 1:"+
+                                    options.ScaleDenominator+
+                                    "; EXISTING PRINTED TITLE BLOCK MAY OVERLAP":
+                                    reason+(bypassReason.Length>0?
+                                        "; REV69 bypass reason: "+bypassReason:"")));
+                            if(fits)
+                                validMedia.Add(new NativeOrthoSingleSheet64.Seed(
+                                    Path.GetFullPath(path),
+                                    previewSheet.WidthMm,previewSheet.HeightMm,true));
+                            else if(relaxed69)
+                                bypassMedia69.Add(new NativeOrthoSingleSheet64.Seed(
+                                    Path.GetFullPath(path),
+                                    previewSheet.WidthMm,previewSheet.HeightMm,true));
+                        }
+                        catch(System.Exception ex)
+                        {
+                            // Report rather than silently hide corrupted or
+                            // unplottable registered empty seed problems.
+                            reviews.Add(new NativeOrthoSeedDiagnostics65.Result(
+                                name,"MEDIA_UNREADABLE",0,0,
+                                ex.GetType().Name+": "+ex.Message));
+                        }
+                    }
+                    foreach(string line in NativeOrthoSeedDiagnostics65.Format(
+                        reviews))
+                        ed.WriteMessage("\nSPTC "+line);
+                    var winner=NativeOrthoSingleSheet64.SmallestFitting(
+                        layout,options.Views,options.ScaleDenominator,validMedia);
+                    if(winner==null&&bypassMedia69.Count>0)
+                    {
+                        winner=NativeOrthoSingleSheet64.SmallestFitting(
+                            layout,options.Views,options.ScaleDenominator,
+                            bypassMedia69,bypassTitleBlock:true);
+                        bypassTitleBlock69=winner!=null;
+                    }
+                    if(winner!=null)
+                    {
+                        seed=winner.Path;
+                        ed.WriteMessage("\nSPTC "+
+                            (bypassTitleBlock69?
+                                "REV69: BYPASS TITLE-BLOCK RESERVATION":
+                                "REV65: SMALLEST SAFE SHEET")+
+                            " / 1:"+
+                            options.ScaleDenominator+" / all 10 views. "+
+                            "Registered empty Ortho seed: "+Path.GetFileName(seed)+
+                            "; paper "+
+                            winner.WidthMm.ToString("0.###",CultureInfo.InvariantCulture)+
+                            " x "+
+                            winner.HeightMm.ToString("0.###",CultureInfo.InvariantCulture)+
+                            " mm. No multi-sheet output."+
+                            (bypassTitleBlock69?
+                                " WARNING: printed title-block graphics may "+
+                                "overlap the ten views. DRAFT / REVIEW REQUIRED.":""));
+                    }
+                    else
+                    {
+                        ed.WriteMessage("\nSPTC REV65: ONE SHEET REQUIRED. "+
+                            "See REV65_SEED_CANDIDATE for the exact sheet "+
+                            "media and rejection reason. "+
+                            "Cannot place all ten views at exact 1:"+
+                            options.ScaleDenominator+" in any available "+
+                            "registered EMPTY native Ortho sheet ("+
+                            checkedEmpty+" checked). "+
+                            "No existing registered EMPTY Ortho paper size "+
+                            "can contain this entire native assembly at "+
+                            "the requested scale, even with the title-block "+
+                            "reservation bypass. Add or configure a properly "+
+                            "plotted, project-registered EMPTY Ortho seed "+
+                            "with enough physical printable space. No DWG/PDF "+
+                            "created; scale and view count unchanged.");
+                        return false;
+                    }
+                }
+                else foreach(string path in candidates)
                 {
                     try
                     {
@@ -542,27 +943,98 @@ public sealed class SupportOrthoTenViewGenerator
                     FileOpenMode.OpenForReadAndAllShare,true,null);
                 previewDb.CloseInput(true);
                 string previewLayout=FindPaperLayout(previewDb);
-                (double w,double h)=CurrentPaper(previewDb,previewLayout);
+                var previewSheet=CurrentPaperDetails(previewDb,previewLayout);
+                (double w,double h)=(previewSheet.WidthMm,previewSheet.HeightMm);
                 var fit=NativeOrthoTenViewPlan.Build(layout,w,h);
-                if(options.ScaleDenominator>0 &&
-                   options.ScaleDenominator<fit.Denominator)
-                {
-                    ed.WriteMessage("\nSPTC preflight: Requested 1:"+
-                        options.ScaleDenominator+" cannot fit the ten-view layout. "+
-                        "Minimum safe denominator is "+fit.Denominator+". No drawing created.");
-                    return false;
-                }
+                int autoDenominator=fit.Denominator;
+                bool exactReflow=exactTenOnOneSheet64||
+                    NativeOrthoExactScalePlacement61.NeedsAdaptiveLayout(
+                        options.ScaleDenominator,autoDenominator);
                 if(options.ScaleDenominator>0)
                     fit=fit with {Denominator=options.ScaleDenominator,
                         Scale=1.0/options.ScaleDenominator};
-                // Perform the same exact title/frame collision calculations
-                // read-only, BEFORE cloning/registering the new Ortho DWG.
-                NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
+                // REV61: do not confuse the conservative 10-view automatic
+                // denominator with a physical impossibility. At an explicit
+                // larger 1:N view magnification, first attempt an EXACT
+                // selected-view grid, with native titles and label reserve.
+                // No auto-rescale or native/project writes on failure.
+                NativeOrthoTenViewAutoPlacement26.Result proof;
+                double mandatoryHeight71=
+                    SupportOrthoAnnotationCapacity71.RequiredHeight(
+                        sourceAnnotations,w,h);
+                if(exactReflow)
+                {
+                    try
+                    {
+                        proof=NativeOrthoExactScalePlacement61.Build(
+                            fit,options.Views,w,h,
+                            mandatoryAnnotationHeightMm:mandatoryHeight71);
+                        // The strict planner passed, so all older
+                        // successful drawings on ANY project paper remain identical.
+                        bypassTitleBlock69=false;
+                    }
+                    catch(NativeOrthoExactScalePlacement61.DoesNotFitException)
+                        when(exactTenOnOneSheet64&&
+                            NativeOrthoTitleBlockBypass69.Eligible(
+                                w,h,options.ScaleDenominator,
+                                options.Views.Count))
+                    {
+                        proof=NativeOrthoExactScalePlacement61.Build(
+                            fit,options.Views,w,h,bypassTitleBlock:true,
+                            mandatoryAnnotationHeightMm:mandatoryHeight71);
+                        bypassTitleBlock69=true;
+                        ed.WriteMessage("\nSPTC REV70: Existing registered "+
+                            "Ortho sheet's title-block "+
+                            "reservation bypassed for exact 1:"+
+                            options.ScaleDenominator+
+                            ". Printed title block is unchanged and may "+
+                            "OVERLAP generated views. Inspect PDF before issue.");
+                    }
+                    catch(NativeOrthoExactScalePlacement61.DoesNotFitException)
+                        when(!exactTenOnOneSheet64&&onSheetSet!=null&&
+                            options.Views.Count==10)
+                    {
+                        // REV63: all ten cannot fit ONE exact-scale A1
+                        // drawing. Preflight EVERY proposed sheet before
+                        // cloning or registering any native Ortho DWG.
+                        // If even a singleton cannot fit, the entire
+                        // request is rejected with zero project writes.
+                        var sheetSet=NativeOrthoMultiSheetPlan63.Build(
+                            fit,options.Views,w,h);
+                        onSheetSet(sheetSet);
+                        ed.WriteMessage("\nSPTC REV63: 1:"+
+                            fit.Denominator+" needs "+sheetSet.Count+
+                            " native Ortho sheets. Verified all page "+
+                            "layouts without registering a DWG.");
+                        return false;
+                    }
+                }
+                else
+                    proof=NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
+                NativeOrthoEffectivePaper59.RequireInsideUsableArea(
+                    previewSheet,
+                    proof.Views.Select(v=>
+                        new NativeOrthoEffectivePaper59.ViewFrame(
+                            v.Name,v.CenterX,v.CenterY,
+                            v.PaperFrameWidth,v.PaperFrameHeight)).ToArray(),
+                    proof.Titles.Select(t=>
+                        new NativeOrthoEffectivePaper59.CaptionFrame(
+                            t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
+                    requireTen:options.Views.Count==10,
+                    bypassTitleBlock:bypassTitleBlock69);
             }
         }
         catch(System.Exception ex)
         {
-            ed.WriteMessage("\nSPTC preflight failed before drawing registration: "+ex.Message);
+            ed.WriteMessage("\nSPTC preflight failed before drawing registration: "+ex.Message+
+                (exactTenOnOneSheet64?
+                    " REV64: ALL 10 views must remain in ONE native Ortho DWG "+
+                    "at exact 1:"+options.ScaleDenominator+
+                    ". The manually chosen sheet may be too small; "+
+                    "select a correctly plotted registered EMPTY Ortho "+
+                    "seed with sufficient physical sheet area, of ANY "+
+                    "supported project paper size or orientation. "+
+                    "No multi-sheet fallback.":""));
             return false;
         }
         progress.Report("Preflight PASS. Output: "+Path.GetFileName(dest)+
@@ -581,7 +1053,7 @@ public sealed class SupportOrthoTenViewGenerator
         ed.WriteMessage("\nSPTC: Creating and registering a new 10-view Ortho DWG automatically: " + dest);
 
         string report = Path.Combine(Path.GetDirectoryName(dest)!,
-            Path.GetFileNameWithoutExtension(dest) + "_REV22_29_RESULT.txt");
+            Path.GetFileNameWithoutExtension(dest) + "_RESULT.txt");
         var log = new StringBuilder(6000);
         void Log(string msg)
         {
@@ -604,7 +1076,12 @@ public sealed class SupportOrthoTenViewGenerator
         Document? targetDoc = null;
         try
         {
-            Log("SPTC_REV22_ONE_COMMAND_NATIVE_TOP_TEST");
+            Log("SPTC_SUPPORT_ORTHO_GENERATION");
+            Log("PRODUCTION_PACKAGE_CONFIG="+packageConfigStatus);
+            Log("PRODUCTION_PACKAGE_ENABLED="+packageSettings.Enabled);
+            Log("PRODUCTION_PDF_ENABLED="+packageSettings.PublishPdf);
+            Log("SPTC_BUILD_ID="+SupportBuildIdentity.Id);
+            Log("SPTC_BUILD_ASSEMBLY="+SupportBuildIdentity.AssemblyName);
             Log("PROJECT=" + part.ProjectRoot);
             Log("SOURCE_MODEL=" + source);
             Log("SOURCE_HANDLES=" + string.Join(",", handles));
@@ -637,6 +1114,24 @@ public sealed class SupportOrthoTenViewGenerator
             Log("REV22_29_PIPE_CANDIDATES="+pipeRead.Candidates);
             Log("REV22_29_PIPE_PNP_LINKED_ROWS="+pipeRead.LinkedRows);
             Log("REV22_29_PIPE_ANNOTATION_SOURCES="+pipeRead.Pipes.Count);
+            foreach(string diagnostic in rev73XrefGeometryNotes)
+                Log(diagnostic);
+            Log("REV72_XREF_PIPE_DETECTION_MODE="+
+                "LOADED_SOURCE_NATIVE_RX_DXF_AND_INHERITANCE");
+            Log("REV72_XREF_MEMBER_CHECKBOX_PIPE_RELATION="+
+                "PIPE_DISCOVERY_INDEPENDENT_OF_MEMBER_NAME_TOGGLE");
+            Log("REV72_XREF_PIPE_SOURCE_COVERAGE="+
+                SupportOrthoXrefPipeEvidence72.Coverage(pipeCoverage72));
+            Log(SupportOrthoXrefPipeEvidence72.Diagnostic(
+                pipeCoverage72,options.XrefMemberNames));
+            Log("REV72_XREF_PIPE_VISUAL_NATIVE_ORTHO_VERIFICATION="+
+                (pipeCoverage72.AnnotatedPipeSources>0?
+                    "REQUIRES_PDF_OR_NATIVE_VIEW_INSPECTION":
+                    "NO_VERIFIED_XREF_PIPE_ANNOTATIONS"));
+            Log("REV72_XREF_PIPE_QA_SEPARATE_FROM_STRUCTURE="+
+                (SupportOrthoXrefPipeEvidence72.FullyVerified(pipeCoverage72)?
+                    "SOURCE_METADATA_VERIFIED_VISUAL_PENDING":
+                    "PIPE_COVERAGE_NOT_VERIFIED"));
             foreach(var pipe in pipeRead.Pipes)
                 Log("REV22_29_PIPE_SOURCE="+pipe.Handle+
                     " LINE_TAG="+pipe.LineTag+
@@ -797,9 +1292,15 @@ public sealed class SupportOrthoTenViewGenerator
             }
             if (targetDoc.Database.TileMode)
                 throw new InvalidOperationException("AutoCAD remains in model space after paper layout selection.");
-            (double paperWidth, double paperHeight) = CurrentPaper(targetDoc.Database, paperLayout);
+            var effectiveSheet=CurrentPaperDetails(targetDoc.Database,paperLayout);
+            (double paperWidth,double paperHeight)=
+                (effectiveSheet.WidthMm,effectiveSheet.HeightMm);
             NativeOrthoTenViewPlan.Plan candidate =
                 NativeOrthoTenViewPlan.Build(layout, paperWidth, paperHeight);
+            int autoDenominator61=candidate.Denominator;
+            bool exactReflow61=exactTenOnOneSheet64||
+                NativeOrthoExactScalePlacement61.NeedsAdaptiveLayout(
+                    options.ScaleDenominator,autoDenominator61);
             if(options.ScaleDenominator>0)
                 candidate=candidate with {
                     Denominator=options.ScaleDenominator,
@@ -807,7 +1308,47 @@ public sealed class SupportOrthoTenViewGenerator
                 };
             Log("STEP4_SHEET_LAYOUT=" + paperLayout);
             Log("STEP4_SHEET_MM=" + Point(paperWidth,paperHeight,0));
+            Log("REV59_RAW_MEDIA_MM="+Point(
+                effectiveSheet.MediaWidthMm,effectiveSheet.MediaHeightMm,0));
+            Log("REV59_NATIVE_PLOT_ROTATION_DEG="+
+                effectiveSheet.RotationDegrees);
+            Log("REV59_EFFECTIVE_PAPER_MM="+Point(
+                effectiveSheet.WidthMm,effectiveSheet.HeightMm,0));
+            Log("REV59_TITLE_BLOCK_SAFE_RIGHT_MM="+
+                (paperWidth*NativeOrthoEffectivePaper59
+                    .RightTitleBlockStartRatio).ToString(
+                    "0.###",CultureInfo.InvariantCulture));
+            Log("REV70_PAPER_SIZE_POLICY=ALL_REGISTERED_EMPTY_NATIVE_ORTHO_MEDIA");
+            Log("REV70_EFFECTIVE_REGISTERED_PAPER_MM="+
+                Point(paperWidth,paperHeight,0));
+            Log("REV70_PROJECT_PAPER_BYPASS_ELIGIBLE="+
+                NativeOrthoTitleBlockBypass69.Eligible(
+                    paperWidth,paperHeight,candidate.Denominator,
+                    options.Views.Count));
+            Log("REV69_TITLE_BLOCK_RESERVED_AREA_BYPASSED="+
+                bypassTitleBlock69);
+            Log("REV69_EFFECTIVE_RIGHT_MARGIN_MM="+
+                NativeOrthoTitleBlockBypass69.Right(
+                    paperWidth,bypassTitleBlock69).ToString(
+                        "0.###",CultureInfo.InvariantCulture));
+            Log("REV69_EFFECTIVE_BOTTOM_MARGIN_MM="+
+                NativeOrthoTitleBlockBypass69.Bottom(
+                    paperHeight,bypassTitleBlock69).ToString(
+                        "0.###",CultureInfo.InvariantCulture));
+            if(bypassTitleBlock69)
+                Log("REV69_PRINTED_TITLE_BLOCK_UNMODIFIED=TRUE "+
+                    "WARNING=EXISTING_PRINTED_TITLE_BLOCK_CAN_OVERLAP_VIEWS "+
+                    "ISSUE_STATUS=DRAFT_REQUIRES_PDF_VISUAL_REVIEW");
             Log("STEP4_COMMON_SCALE=1:" + candidate.Denominator);
+            Log("REV64_ONE_NATIVE_SHEET_REQUIRED="+exactTenOnOneSheet64);
+            Log("REV64_SELECTED_REGISTERED_SEED="+
+                Path.GetFileName(seed));
+            Log("REV64_SELECTED_PAPER_MM="+
+                Point(paperWidth,paperHeight,0));
+            Log("REV61_EXACT_SCALE_MODE="+
+                (options.ScaleDenominator>0?"REQUESTED_EXACT":"AUTOMATIC"));
+            Log("REV61_AUTOMATIC_TEN_VIEW_DENOMINATOR="+autoDenominator61);
+            Log("REV61_SELECTED_VIEW_ADAPTIVE_LAYOUT="+exactReflow61);
             foreach(var slot in candidate.Views)
                 Log("PROPOSED_" + slot.Name + "_CENTER=" +
                     Point(slot.CenterX,slot.CenterY,0) +
@@ -1017,9 +1558,44 @@ public sealed class SupportOrthoTenViewGenerator
             // Derive the entire two-column x five-row arrangement from
             // the native ten-view candidate, preserve camera/scale and
             // reserve all ten title bands before ANY native generation.
-            var autoPlacement=NativeOrthoTenViewAutoPlacement26.Build(
-                candidate,paperWidth,paperHeight);
+            double mandatoryHeight71=
+                SupportOrthoAnnotationCapacity71.RequiredHeight(
+                    sourceAnnotations,paperWidth,paperHeight);
+            Log("REV71_MANDATORY_NATIVE_LABEL_STACK_MM="+
+                mandatoryHeight71.ToString("0.###",
+                    CultureInfo.InvariantCulture));
+            var autoPlacement=exactReflow61?
+                NativeOrthoExactScalePlacement61.Build(
+                    candidate,options.Views,paperWidth,paperHeight,
+                    bypassTitleBlock:bypassTitleBlock69,
+                    mandatoryAnnotationHeightMm:mandatoryHeight71):
+                NativeOrthoTenViewAutoPlacement26.Build(
+                    candidate,paperWidth,paperHeight);
             var group=autoPlacement.Views;
+            // Verify all ten frames AND their captions against the real
+            // rotated sheet, before calling internal GenerateOrthos.
+            NativeOrthoEffectivePaper59.RequireInsideUsableArea(
+                effectiveSheet,
+                group.Select(v=>
+                    new NativeOrthoEffectivePaper59.ViewFrame(
+                        v.Name,v.CenterX,v.CenterY,
+                        v.PaperFrameWidth,v.PaperFrameHeight)).ToArray(),
+                autoPlacement.Titles.Select(t=>
+                    new NativeOrthoEffectivePaper59.CaptionFrame(
+                        t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
+                requireTen:options.Views.Count==10,
+                bypassTitleBlock:bypassTitleBlock69);
+            Log("REV59_PREFLIGHT_ALL_TEN_INSIDE_EFFECTIVE_SHEET=PASS");
+            if(bypassTitleBlock69)
+                Log("REV69_TITLEBLOCK_OVERPRINT_POSSIBLE="+
+                    NativeOrthoTitleBlockBypass69.EntersOldTitleBlockZone(
+                        group.Select(v=>v.CenterX+v.PaperFrameWidth/2)
+                            .Concat(autoPlacement.Titles.Select(t=>
+                                t.CenterX+t.Width/2)),
+                        paperWidth)+
+                    " PRINTED_TITLEBLOCK_STAYS_UNCHANGED=TRUE");
+            Log("REV61_NATIVE_SCALE_PRESERVED=1:"+candidate.Denominator);
+            Log("REV61_ADAPTIVE_SELECTED_VIEW_COUNT="+group.Count);
             Log("STEP5_AUTO_PLACEMENT_ENABLED=True");
             Log("STEP5_PAPER_POINT_CLICKS_REQUIRED=0");
             Log("STEP5_AUTO_TOP_SUGGESTED="+
@@ -1034,7 +1610,7 @@ public sealed class SupportOrthoTenViewGenerator
             targetDoc.Editor.WriteMessage(
                 "\nSPTC: Automatically placing "+resolved.Count+" selected native Ortho "+
                 "view(s) and titles. No insertion click required. "+
-                "TOP center: ("+
+                "reference center: ("+
                 autoPlacement.FinalTopX.ToString("0.###",CultureInfo.InvariantCulture)+
                 ", "+autoPlacement.FinalTopY.ToString("0.###",CultureInfo.InvariantCulture)+").");
             var planned=new List<(NativeOrthoTenViewPlan.Slot Slot,
@@ -1092,7 +1668,7 @@ public sealed class SupportOrthoTenViewGenerator
                         if(!(completed.Count==0?
                             before=="EMPTY_REGISTERED_ORTHO":CatalogMatches(before,completed)))
                             throw new InvalidOperationException(label+": unexpected native view catalog: "+before);
-                        string viewName="SPTC_"+label+"_R22_"+stamp;
+                        string viewName=SupportOrthoViewNaming.Name(label,stamp);
                         Log("STEP7_"+label+"_VIEW_NAME="+viewName);
                         Log("STEP7_"+label+"_VIEW_DIRECTION="+
                             Point(item.Slot.Dx,item.Slot.Dy,item.Slot.Dz));
@@ -1280,7 +1856,9 @@ public sealed class SupportOrthoTenViewGenerator
                                 Point(actualFrame.W,actualFrame.H,0)+
                                 " SCALE="+actualFrame.Scale+" VIEW_HEIGHT="+actualFrame.ViewHeight);
                             string frameCheck=NativeOrthoViewportPaperGuard.Validate(
-                                plannedFrame,actualFrame,paperWidth,paperHeight,confirmedFrames);
+                                plannedFrame,actualFrame,paperWidth,paperHeight,
+                                confirmedFrames,
+                                bypassTitleBlock:bypassTitleBlock69);
                             Log("STEP8_"+label+"_ACTUAL_PAPER_LAYOUT_CHECK="+frameCheck);
                             if(frameCheck!="PASS")
                                 throw new InvalidOperationException("REV22.29 "+label+
@@ -1359,9 +1937,25 @@ public sealed class SupportOrthoTenViewGenerator
             Log("STEP10_REV22_GROUP_PLACED_AUTOMATICALLY=True");
             if(completed.Count==10)
                 Log("STEP10_ALL_TEN_NATIVE_VIEWS_REGISTERED=True");
+            EnsureNativeViewportsNoPlot52(
+                targetDoc.Database,nativeMemberViewportIds);
+            Log("REV22_52_VIEWPORT_BORDER_LAYER="+
+                ViewportBorderLayer52+" PLOTTABLE=False COUNT="+
+                nativeMemberViewportIds.Count);
             var newFrames=PaperViewports(targetDoc.Database,paperLayout)
                 .Where(v=>!priorHandles.Contains(v.Handle)).ToList();
             Log("STEP10_NEW_PAPER_VIEWPORT_COUNT="+newFrames.Count);
+            // Native internal API may adjust a requested viewport frame.
+            // Check the REAL created paper-space entities, not only the
+            // planned centers; reject any off-border/title-block result.
+            NativeOrthoEffectivePaper59.RequireInsideUsableArea(
+                effectiveSheet,
+                newFrames.Select(v=>
+                    new NativeOrthoEffectivePaper59.ViewFrame(
+                        v.Handle,v.X,v.Y,v.W,v.H)).ToArray(),
+                requireTen:options.Views.Count==10,
+                bypassTitleBlock:bypassTitleBlock69);
+            Log("REV59_ACTUAL_NATIVE_VIEWPORTS_IN_SAFE_SHEET=PASS");
             bool overlaps=false,possibleTitleBlock=false;
             for(int i=0;i<newFrames.Count;i++)
             {
@@ -1387,7 +1981,8 @@ public sealed class SupportOrthoTenViewGenerator
                 (newFrames.Count>=options.Views.Count?"INSPECTED":"INCONCLUSIVE_VERIFY_VISUALLY"));
             Log("NATIVE_ORTHO_VIEW_COUNT="+completed.Count);
             if(completed.Count!=options.Views.Count||
-               newFrames.Count!=options.Views.Count||overlaps||possibleTitleBlock)
+               newFrames.Count!=options.Views.Count||overlaps||
+               (!bypassTitleBlock69&&possibleTitleBlock))
                 throw new InvalidOperationException(
                     "SPTC: Selected native view frames failed layout checks; titles not created.");
             // Generate paper-space MText independently of native view metadata,
@@ -1395,10 +1990,26 @@ public sealed class SupportOrthoTenViewGenerator
             var titles=NativeOrthoViewTitlePlan.BuildTitles(
                 confirmedFrames.Select(f=>new NativeOrthoViewTitlePlan.Frame(
                     f.Name,f.X,f.Y,f.W,f.H)).ToArray(),
-                paperWidth,paperHeight,allowSubset:options.Views.Count!=10);
+                paperWidth,paperHeight,allowSubset:options.Views.Count!=10,
+                bypassTitleBlock:bypassTitleBlock69);
+            NativeOrthoEffectivePaper59.RequireInsideUsableArea(
+                effectiveSheet,
+                confirmedFrames.Select(f=>
+                    new NativeOrthoEffectivePaper59.ViewFrame(
+                        f.Name,f.X,f.Y,f.W,f.H)).ToArray(),
+                titles.Select(t=>
+                    new NativeOrthoEffectivePaper59.CaptionFrame(
+                        t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
+                requireTen:options.Views.Count==10,
+                bypassTitleBlock:bypassTitleBlock69);
+            Log("REV59_ACTUAL_NATIVE_TITLES_IN_SAFE_SHEET=PASS");
             Log("STEP10_TITLE_LAYER="+NativeOrthoViewTitlePlan.TitleLayer);
             var titleHandles=CreateNativePaperTitles(
-                targetDoc.Database,paperLayout,titles);
+                targetDoc.Database,paperLayout,titles,
+                paperWidth,paperHeight);
+            Log("REV66_VIEW_TITLE_A0_WIDE_BANDS="+
+                SupportOrthoPaperTypography66.IsLargePaper(
+                    paperWidth,paperHeight));
             Log("STEP10_VIEW_TITLE_COUNT="+titleHandles.Count);
             if(titleHandles.Count!=options.Views.Count)
                 throw new InvalidOperationException(
@@ -1417,6 +2028,11 @@ public sealed class SupportOrthoTenViewGenerator
             // No revision to native cube, camera, view registration, or titles.
             string annotationStatus;
             int annotated=0;
+            // REV22.46: share the ACTUAL visible label/leader locations
+            // with the dimension planner; do not reserve hidden UI labels.
+            IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>
+                dimensionCollisionCallouts=
+                    Array.Empty<SupportOrthoMemberCalloutPlan27.Callout>();
             if(sourceAnnotations.Length>0)
             {
                 var memberCameras=ReadNativeMemberCameras(
@@ -1429,7 +2045,15 @@ public sealed class SupportOrthoTenViewGenerator
                         " SCALE="+camera.Scale);
                 var plan=SupportOrthoMemberCalloutPlan27.Build(
                     memberCameras,titles,sourceAnnotations,paperWidth,paperHeight,
-                    allowSubset:options.Views.Count!=10);
+                    allowSubset:options.Views.Count!=10,
+                    bypassTitleBlock:bypassTitleBlock69);
+                Log("REV71_ANNOTATION_CAPACITY_POLICY="+
+                    "GEOMETRY_DERIVED_FREE_PAPER_BANDS");
+                Log("REV71_REQUIRED_MEMBER_ANNOTATIONS="+
+                    (sourceAnnotations.Count(m=>
+                        m.XrefDrawingName==null)*memberCameras.Count));
+                Log("REV71_PLANNED_NATIVE_MEMBER_ANNOTATIONS="+
+                    plan.Callouts.Count(n=>!n.IsXrefMember));
                 // REV22.29: preserve full source XREF key in the diagnostics;
                 // ONLY change the actual visible two-line PIPE annotation.
                 // Structural members and Support TOS retain their REV22.28 text.
@@ -1467,17 +2091,113 @@ public sealed class SupportOrthoTenViewGenerator
                         HasTos=options.Description&&includeSecond&&lines.Length>1};
                 }).Where(note=>note!=null)
                     .Cast<SupportOrthoMemberCalloutPlan27.Callout>().ToArray();
+                // REV22.64: before committing leader entities, jointly
+                // evaluate the approved dimension plan and conservative
+                // alternative paper-space callout rows / dogleg lanes.
+                // Only accept a layout that ADDS native local detail
+                // without relocating/removing ANY previously approved
+                // overall, chain or local DIMLINEAR; otherwise preserve
+                // REV22.63's exact annotations and dimension layout.
+                if(options.AutoDimLinear&&options.ReferenceDetailDimensions)
+                {
+                    try
+                    {
+                        var layoutNativeMembers=everyViewMembers.Members
+                            .Where(SupportOrthoNativeDimensionPolicy48
+                                .AcceptMember).ToArray();
+                        var layoutNativeSegments=dimSource.Segments
+                            .Where(x=>SupportOrthoNativeDimensionPolicy48
+                                .IsNativeKey(x.Key))
+                            .Select(x=>new SupportOrthoDimLinearPlan41.Segment(
+                                x.Key,x.Kind,x.Ax,x.Ay,x.Az,x.Bx,x.By,x.Bz,
+                                x.SourceLength,x.Millimeters,x.Provenance))
+                            .ToArray();
+                        SupportOrthoReferenceDimPlan47.Result PlanFor(
+                            IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>
+                                proposed) =>
+                            SupportOrthoReferenceDimPlan47.Build(
+                                memberCameras,layoutNativeMembers,
+                                paperWidth,paperHeight,units,
+                                layoutNativeSegments,proposed,titles,
+                                nativeEdges:nativeEdges59.Edges,
+                                bypassTitleBlock:bypassTitleBlock69);
+                        int trialBudget=SupportOrthoPaperTypography66.
+                            ExtraDimTrials(paperWidth,paperHeight);
+                        var coordinated64=
+                            SupportOrthoLeaderDimensionLayout64.Coordinate(
+                                memberCameras,titles,visibleCallouts,
+                                paperWidth,paperHeight,PlanFor,
+                                maxTrialsPerView:trialBudget,
+                                bypassTitleBlock:bypassTitleBlock69);
+                        visibleCallouts=coordinated64.Callouts.ToArray();
+                        Log("REV66_SAFE_LEADER_TRIAL_BUDGET="+trialBudget);
+                        Log("REV67_AVAILABLE_LEADER_DIM_TRIALS="+
+                            SupportOrthoLeaderDimensionLayout64.
+                                AvailableTrialCount);
+                        Log("REV67_A0_OPTIONAL_DIMENSION_POLICY="+
+                            "20_TRIALS_ADD_ONLY_PRESERVE_ESSENTIAL_AND_EXISTING");
+                        Log("REV60_SAFE_LEADER_TRIAL_BUDGET="+trialBudget);
+                        Log("REV60_OPTIONAL_DIMENSION_RECOVERY_POLICY="+
+                            "ADD_ONLY_PRESERVE_ALL_ACCEPTED");
+                        Log("REV22_65_LAYOUTS_PROPOSED="+
+                            coordinated64.ProposedLayouts);
+                        Log("REV22_65_PREFLIGHT_VALID_LAYOUTS="+
+                            coordinated64.Attempts);
+                        foreach(string rejection in
+                            coordinated64.LayoutRejections ??
+                            Array.Empty<string>())
+                            Log("REV22_65_LAYOUT_REJECTION="+rejection);
+                        Log("REV22_64_LAYOUT_ALTERNATIVES_TESTED="+
+                            coordinated64.Attempts);
+                        Log("REV22_64_LEADER_STACKS_REPOSITIONED="+
+                            coordinated64.ShiftedViews);
+                        Log("REV22_64_EXTRA_NATIVE_LOCAL_DIMENSIONS="+
+                            coordinated64.AddedDimensions);
+                        Log("REV22_64_LOCAL_OMISSIONS="+
+                            coordinated64.OriginalLocalOmissions+"/"+
+                            coordinated64.RemainingLocalOmissions);
+                        Log("REV22_64_PREVIOUS_DIMENSIONS_PROTECTED=True");
+                        foreach(string diagnostic in coordinated64.Diagnostics)
+                            Log("REV22_64_LAYOUT="+diagnostic);
+                    }
+                    catch(System.Exception ex)
+                    {
+                        // A failed OPTIONAL optimization never prevents
+                        // native view or annotation generation.
+                        Log("REV22_64_OPTIMIZATION_SKIPPED="+
+                            ex.GetType().Name+":"+ex.Message);
+                    }
+                }
+                dimensionCollisionCallouts=visibleCallouts;
                 Log("REV22_38_PIPE_LABEL_FORMAT=BARE_LINE_TAG_AND_BOP");
                 annotated=CreateNativePaperMemberLeaders27(
                     targetDoc.Database,paperLayout,visibleCallouts,
-                    out var nativeTextWarnings);
+                    paperWidth,paperHeight,
+                    out var nativeTextWarnings,out double smallestRenderedTextMm,
+                    out int shrunkAnnotationLabels);
+                Log("REV66_A0_LABEL_PREFERRED_TEXT_MM="+
+                    SupportOrthoPaperTypography66.TextHeight(
+                        paperWidth,paperHeight).ToString("0.###",
+                            CultureInfo.InvariantCulture));
+                Log("REV66_A0_LABEL_WIDTH_CAP_MM="+
+                    SupportOrthoPaperTypography66.WidthCap(
+                        paperWidth,paperHeight).ToString("0.###",
+                            CultureInfo.InvariantCulture));
+                Log("REV66_LABELS_BELOW_2MM_REVIEW_REQUIRED="+
+                    (smallestRenderedTextMm<2.0));
+                Log("REV60_ANNOTATION_MIN_RENDERED_TEXT_MM="+
+                    smallestRenderedTextMm.ToString("0.###",
+                        CultureInfo.InvariantCulture));
+                Log("REV60_ANNOTATION_SHRUNK_LABELS="+shrunkAnnotationLabels);
+                Log("REV60_ANNOTATION_VISUAL_REVIEW_REQUIRED=True");
                 foreach(var warning in nativeTextWarnings)
                     Log("REV22_29_NATIVE_TEXT_SKIP="+warning);
                 Log("REV22_29_NATIVE_TEXT_SKIPPED_COUNT="+
                     nativeTextWarnings.Count);
                 Log("REV22_29_TEXT_MODE=SEPARATE_NON_WRAPPING_DBTEXT");
                 Log("REV22_29_TEXT_HEIGHT_MAX="+
-                    SupportOrthoMemberCalloutPlan27.TextHeightMm);
+                    SupportOrthoPaperTypography66.TextHeight(
+                        paperWidth,paperHeight));
                 Log("STEP10_INDIVIDUAL_MEMBER_LAYER="+
                     SupportOrthoMemberCalloutPlan27.Layer);
                 Log("STEP10_INDIVIDUAL_SOURCE_MEMBER_COUNT="+
@@ -1490,10 +2210,20 @@ public sealed class SupportOrthoTenViewGenerator
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 var supportHandles=plantSupports.Members.Select(m=>m.Handle)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                int steelTosLabels=options.Tos?
-                    visibleCallouts.Count(x=>steelHandles.Contains(x.Handle)):0;
-                int supportTosLabels=options.Tos?
-                    visibleCallouts.Count(x=>supportHandles.Contains(x.Handle)):0;
+                // REV22.62: steel/support TOS must be counted only
+                // where the selected native source HAS a true TOS
+                // property/qualified approximation AND the plotted
+                // callout actually carries a TOS line. A description
+                // by itself is NOT a TOS label. This also works when
+                // the user enables TOS but disables Description.
+                var steelTos62=SupportOrthoTosAudit62.Count(
+                    sourceAnnotations,visibleCallouts,steelHandles,
+                    options.Views.Count,options.Tos);
+                var supportTos62=SupportOrthoTosAudit62.Count(
+                    sourceAnnotations,visibleCallouts,supportHandles,
+                    options.Views.Count,options.Tos);
+                int steelTosLabels=steelTos62.Visible;
+                int supportTosLabels=supportTos62.Visible;
                 Log("STEP10_HORIZONTAL_TOS_LABEL_COUNT="+steelTosLabels);
                 Log("STEP10_SUPPORT_TOS_LABEL_COUNT="+supportTosLabels);
                 Log("STEP10_TOTAL_TOS_LABEL_COUNT="+
@@ -1528,10 +2258,15 @@ public sealed class SupportOrthoTenViewGenerator
                         ? options.LineNumber||options.Bop
                         : options.Description||(options.Tos&&m.HasTos)));
                 int target=options.Views.Count*perViewExpected;
-                int steelTosTarget=options.Tos?
-                    options.Views.Count*horizontalSteel.HorizontalCount:0;
-                int supportTosTarget=options.Tos?
-                    options.Views.Count*plantSupports.Members.Count:0;
+                int steelTosTarget=steelTos62.Expected;
+                int supportTosTarget=supportTos62.Expected;
+                Log("REV22_62_TOS_REAL_SOURCE_MEMBERS="+
+                    (steelTosTarget+supportTosTarget)/
+                        Math.Max(1,options.Views.Count));
+                Log("REV22_62_STEEL_TOS="+steelTosLabels+
+                    "/"+steelTosTarget);
+                Log("REV22_62_SUPPORT_TOS="+supportTosLabels+
+                    "/"+supportTosTarget);
                 int pipeBopTarget=options.Bop?
                     options.Views.Count*pipeRead.Pipes.Count:0;
                 // XREF file-name notes are best-effort; failure/overflow
@@ -1586,12 +2321,270 @@ public sealed class SupportOrthoTenViewGenerator
                 {
                     var dimCameras=ReadNativeMemberCameras(
                         targetDoc.Database,nativeMemberViewportIds);
-                    var dimensionPlan=SupportOrthoAllViewDimPlan44.Build(
-                        dimCameras,everyViewMembers.Members,
-                        paperWidth,paperHeight,units);
+                    // REV22.48: make dimension exclusion independent from
+                    // optional XREF annotation discovery and UI toggles.
+                    // Defensive native-only filters at extraction, planning
+                    // and writer input prevent XREF dimensions entirely.
+                    var nativeDimensionMembers=everyViewMembers.Members
+                        .Where(SupportOrthoNativeDimensionPolicy48.AcceptMember)
+                        .ToArray();
+                    var nativeDimensionSegments=dimSource.Segments
+                        .Where(x=>SupportOrthoNativeDimensionPolicy48.IsNativeKey(x.Key))
+                        .ToArray();
+                    Log("REV22_48_DIMENSION_SOURCE_MODE=NATIVE_ONLY");
+                    Log("REV22_48_XREF_ANNOTATIONS_PRESERVED="+
+                        xrefNearCube.Length);
+                    Log("REV22_48_XREF_DIMENSION_SOURCES_EXCLUDED="+
+                        xrefNearCube.Length);
+                    Log("REV22_48_NATIVE_MEMBER_DIMENSION_SOURCES="+
+                        nativeDimensionMembers.Length);
+                    Log("REV22_48_NATIVE_ENDPOINT_DIMENSION_SOURCES="+
+                        nativeDimensionSegments.Length);
+                    SupportOrthoReferenceDimPlan47.Result? detailPlan=null;
+                    SupportOrthoSmartDimPlan46.Result dimensionPlan;
+                    if(options.ReferenceDetailDimensions)
+                    {
+                        // REV22.47: per-view functional chain dimensions
+                        // on verified member datums, plus one independent
+                        // outer overall dimension (never a cut length).
+                        var verifiedSegments=nativeDimensionSegments
+                            .Select(segment=>new SupportOrthoDimLinearPlan41.Segment(
+                                segment.Key,segment.Kind,
+                                segment.Ax,segment.Ay,segment.Az,
+                                segment.Bx,segment.By,segment.Bz,
+                                segment.SourceLength,segment.Millimeters,
+                                segment.Provenance)).ToArray();
+                        detailPlan=SupportOrthoReferenceDimPlan47.Build(
+                            dimCameras,nativeDimensionMembers,
+                            paperWidth,paperHeight,units,verifiedSegments,
+                            dimensionCollisionCallouts,titles,
+                            nativeEdges:nativeEdges59.Edges,
+                            bypassTitleBlock:bypassTitleBlock69);
+                        // Stable, revision-independent drawing optimizer:
+                        // try alternate native paper-space lane ranks only
+                        // when a verified optional dimension is missing or
+                        // an inner chain appears outside its overall. The
+                        // selected plan must preserve ALL source witness
+                        // coordinates, source dimensions and dynamic scaling.
+                        var optimized=SupportOrthoDimensionReflow.Improve(
+                            dimCameras,detailPlan,preferences=>
+                                SupportOrthoReferenceDimPlan47.Build(
+                                    dimCameras,nativeDimensionMembers,
+                                    paperWidth,paperHeight,units,
+                                    verifiedSegments,dimensionCollisionCallouts,
+                                    titles,nativeEdges:nativeEdges59.Edges,
+                                    lanePreferences:preferences,
+                                    bypassTitleBlock:bypassTitleBlock69));
+                        detailPlan=optimized.Plan;
+                        Log("DIM_LAYOUT_TRIALS="+optimized.AlternativesTested);
+                        Log("DIM_LAYOUT_REPOSITIONED_VIEWS="+
+                            optimized.ChangedViews);
+                        Log("DIM_LAYOUT_OPTIONAL_OMISSIONS="+
+                            optimized.OriginalOptionalOmissions+"/"+
+                            optimized.RemainingOptionalOmissions);
+                        Log("DIM_LAYOUT_HIERARCHY_ERRORS="+
+                            optimized.OriginalHierarchyErrors+"/"+
+                            optimized.RemainingHierarchyErrors);
+                        foreach(var pair in optimized.Preferences.OrderBy(
+                            x=>x.Key,StringComparer.OrdinalIgnoreCase))
+                            Log("DIM_LAYOUT_SELECTED="+pair.Key+
+                                ":OVERALL_LANE_RANK="+
+                                pair.Value.OverallLaneRank+
+                                ":CHAIN_LANE_RANK="+
+                                pair.Value.ChainLaneRank);
+                        foreach(string why in optimized.Rejections)
+                            Log("DIM_LAYOUT_REJECTED="+why);
+                        Log("DIM_LAYOUT_SOURCE_WITNESSES_PROTECTED=True");
+                        Log("DIM_LAYOUT_AXIS_STATION_CANDIDATES_TESTED="+
+                            detailPlan.VerifiedAxisStationCandidatesTested);
+                        Log("DIM_LAYOUT_AXIS_STATION_DIMENSIONS_RECOVERED="+
+                            detailPlan.VerifiedAxisStationDimensionsRecovered);
+                        Log("REV68_A0_EXTRA_WITNESS_AND_LINE_GEOMETRY_TESTED="+
+                            detailPlan.Rev68SupplementaryGeometryCandidatesTested);
+                        Log("REV68_A0_EXTRA_LOCAL_DIMENSIONS_RECOVERED="+
+                            detailPlan.Rev68SupplementaryGeometryDimensionsRecovered);
+                        Log("REV68_LOCAL_DIMENSION_SAFETY="+
+                            "ADD_ONLY_12_OVERALLS_AND_EXISTING_DIMENSIONS_PROTECTED");
+                        foreach(string line in
+                            SupportOrthoDimensionReflow.HierarchyLinePositions(
+                                detailPlan))
+                            Log("DIM_LAYOUT_PAPER_HIERARCHY="+line);
+                        // REV22.63: explicitly distinguish compact-only
+                        // retries from adaptive title/short-text recovery.
+                        // Per-view omitted member causes remain in
+                        // REV22_47_DIMENSION_SKIP for manual QA.
+                        Log("REV22_63_ADAPTIVE_LOCAL_DIMENSIONS_RECOVERED="+
+                            detailPlan.AdaptiveLocalWidthDimensionsRecovered);
+                        Log("REV22_63_NATIVE_DIMENSION_COMPLETENESS="+
+                            (detailPlan.Skipped.Any(x=>
+                                x.Contains("_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE",
+                                    StringComparison.Ordinal))?
+                                "PARTIAL_OPTIONAL_DETAILS":"OVERALL_AND_LOCAL_PASS"));
+                        Log("REV22_62_COMPACT_LOCAL_DIMENSIONS_RECOVERED="+
+                            detailPlan.CompactLocalWidthDimensionsRecovered);
+                        Log("REV22_62_CHAIN_GROUPS_SAVED_BY_INTERMEDIATE_LANES="+
+                            detailPlan.IntermediateChainLaneGroupsRecovered);
+                        Log("REV22_62_REMAINING_LOCAL_NO_CLEAR_LANES="+
+                            detailPlan.Skipped.Count(x=>
+                                x.Contains("_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE",
+                                    StringComparison.Ordinal)));
+                        Log("REV22_60_COORDINATED_PROFILE_GROUPS="+
+                            detailPlan.CoordinatedProfileGroups);
+                        Log("REV22_60_COORDINATED_PROFILE_DIMENSIONS="+
+                            detailPlan.CoordinatedProfilesPlaced);
+                        Log("REV22_60_OPTIONAL_GROUPS_OMITTED="+
+                            detailPlan.CoordinatedProfileGroupsOmitted);
+                        Log("REV22_60_LAYOUT_CANDIDATE_COMPARISONS="+
+                            detailPlan.CoordinatedCandidateComparisons);
+                        Log("REV22_60_ESSENTIAL_OVERALL_AND_VERIFIED_CHAINS="+
+                            (detailPlan.OverallDimensions+
+                                detailPlan.ChainDimensions+
+                                detailPlan.TerminalMemberRemainderDimensions));
+                        Log("REV22_59_EXACT_NATIVE_SOURCE_EDGES="+
+                            nativeEdges59.Edges.Count);
+                        Log("REV22_59_EXACT_PROFILE_DIMS="+
+                            detailPlan.ExactNativeEdgeProfileDimensions);
+                        Log("REV22_59_PROJECTED_ENVELOPE_PROFILE_DIMS="+
+                            detailPlan.ApproximateProfileDimensions);
+                        foreach(string edgeNote in nativeEdges59.Diagnostics)
+                            Log("REV22_59_SOURCE="+edgeNote);
+                        // Normalize the plan so the established REV22.44 and
+                        // REV22.46 diagnostics/writer remain backward-safe.
+                        dimensionPlan=new SupportOrthoSmartDimPlan46.Result(
+                            detailPlan.Dimensions,detailPlan.Skipped,
+                            Array.Empty<SupportOrthoSmartDimPlan46.Placement>(),
+                            nativeDimensionMembers.Length,
+                            detailPlan.OrthographicViews,
+                            detailPlan.RequestedDimensions,0,
+                            detailPlan.CollisionCandidatesRejected);
+                        Log("REV22_47_DIMENSION_MODE=REFERENCE_CHAIN_PLUS_OVERALL");
+                        Log("REV22_47_CHAIN_DIMENSIONS="+
+                            detailPlan.ChainDimensions);
+                        Log("REV22_47_OVERALL_DIMENSIONS="+
+                            detailPlan.OverallDimensions);
+                        Log("REV22_52_LOCAL_PROJECTED_MEMBER_DIMENSIONS="+
+                            detailPlan.LocalMemberDimensions);
+                        Log("REV22_53_OVERALL_DIMENSIONS_RESERVED_FIRST="+
+                            detailPlan.PriorityOverallDimensions);
+                        Log("REV22_53_RIGHT_VERTICAL_OVERALL_PRESENT="+
+                            detailPlan.Dimensions.Any(d=>
+                                d.View=="RIGHT"&&!d.Horizontal&&
+                                d.Source.EndsWith("/OVERALL",
+                                    StringComparison.Ordinal)));
+                        Log("REV22_54_RIGHT_OVERALL_COLLISION_DIAGNOSTICS="+
+                            string.Join("|",detailPlan.Skipped.Where(
+                                x=>x.StartsWith(
+                                    "RIGHT/V:REV22_54_OVERALL_DIAGNOSTICS=",
+                                    StringComparison.Ordinal))));
+                        Log("REV22_56_TERMINAL_MEMBER_COMPLEMENTS="+
+                            detailPlan.TerminalMemberRemainderDimensions);
+                        Log("REV22_58_ACCEPTED_UNINTENDED_WITNESS_INTERSECTIONS="+
+                            detailPlan.UnintendedAcceptedWitnessIntersections);
+                        if(detailPlan.UnintendedAcceptedWitnessIntersections!=0)
+                            throw new InvalidOperationException(
+                                "REV22.58 dimension placement produced "+
+                                "unintended witness/line intersection; "+
+                                "drawing generation must not write unsafe dimensions.");
+                        Log("REV22_57_REDUNDANT_END_PROFILE_CHAINS_SKIPPED="+
+                            detailPlan.RedundantChainsSuppressed);
+                        Log("REV22_57_OVERALL_DETAIL_ORDER_REJECTIONS="+
+                            detailPlan.HierarchyCrossingsRejected);
+                        Log("REV22_57_MANUAL_VIEW_DETAILS_SUPPRESSED="+
+                            detailPlan.ManualViewDetailsSuppressed);
+                        foreach(string label in new[]{"TOP","BOTTOM","LEFT","RIGHT"})
+                        {
+                            var selected=detailPlan.Dimensions
+                                .Where(d=>d.View==label).ToArray();
+                            string items=string.Join("|",selected.Select(d=>
+                                (d.Horizontal?"H":"V")+":"+
+                                d.Measurement+":"+d.Source));
+                            Log("REV22_57_REFERENCE_SELECTION="+label+
+                                " "+items);
+                        }
+                        foreach(string name in new[]{
+                            "TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK"})
+                        {
+                            var items=detailPlan.Dimensions.Where(d=>
+                                d.View==name&&d.Source.Contains(
+                                    "/TERMINAL_REMAINDER_",
+                                    StringComparison.Ordinal));
+                            Log("REV22_56_REFERENCE_DATUM="+name+
+                                " MEASURED_COMPLEMENTS="+
+                                string.Join(",",items.Select(i=>
+                                    i.Measurement+"mm:"+i.Source)));
+                        }
+                        Log("REV22_55_NATIVE_MEMBER_MIDPOINT_DIMENSIONS="+
+                            detailPlan.NativeMidpointMemberDimensions);
+                        Log("REV22_55_APPROXIMATE_BOUNDS_MIDPOINT_DIMENSIONS="+
+                            detailPlan.BoundsMidpointMemberDimensions);
+                        Log("REV22_55_MEMBER_DIMENSION_ANCHOR="+
+                            "NATIVE_START_END_AXIS_MIDPOINT_WHEN_VERIFIED");
+                        Log("REV22_53_DIMENSION_PROVENANCE="+
+                            "NATIVE_ONLY;GEOMETRIC_ENVELOPE_VS_ENDPOINT_CHAIN");
+                        Log("REV22_53_PROJECTED_DIMENSIONS_DYNAMIC_NOT_HARDCODED=True");
+                        Log("REV22_52_REFERENCE_PDF_DIMENSION_RULES="+
+                            "CHAIN_NEAR_OVERALL_OUTER;LOCAL_MEMBER_MEASURED;"+
+                            "XREF_DIMENSIONS_DISABLED");
+                        foreach(string viewName in new[]{
+                            "TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK"})
+                        {
+                            int h=detailPlan.Dimensions.Count(x=>
+                                x.View==viewName&&x.Horizontal);
+                            int v=detailPlan.Dimensions.Count(x=>
+                                x.View==viewName&&!x.Horizontal);
+                            int local=detailPlan.Dimensions.Count(x=>
+                                x.View==viewName&&
+                                x.Source.Contains("/MEMBER_",
+                                    StringComparison.Ordinal));
+                            bool hasVOverall=detailPlan.Dimensions.Any(x=>
+                                x.View==viewName&&!x.Horizontal&&
+                                x.Source.EndsWith("/OVERALL",
+                                    StringComparison.Ordinal));
+                            Log("REV22_52_PDF_VIEW="+viewName+
+                                " H="+h+" V="+v+
+                                " LOCAL_PROFILE="+local+
+                                " V_OVERALL="+hasVOverall);
+                        }
+                        Log("REV22_47_UNRESOLVED_DATUM_DIMENSIONS="+
+                            detailPlan.Skipped.Count);
+                        Log("REV22_47_BOLT_PITCH_NOT_ASSUMED=True");
+                        Log("REV22_47_OVERALL_NOT_FABRICATION_CUT_LENGTH=True");
+                        foreach(string note in detailPlan.Skipped)
+                            Log("REV22_47_DIMENSION_SKIP="+note);
+                    }
+                    else
+                    {
+                        dimensionPlan=SupportOrthoSmartDimPlan46.Build(
+                            dimCameras,nativeDimensionMembers,
+                            paperWidth,paperHeight,units,
+                            dimensionCollisionCallouts,titles,
+                            bypassTitleBlock:bypassTitleBlock69);
+                        Log("REV22_47_DIMENSION_MODE=LEGACY_ALL_MEMBER_HV");
+                    }
+                    Log("REV22_48_XREF_DIMENSION_POLICY=DISABLED");
+                    Log("REV22_48_REFERENCE_STYLE="+
+                        (options.ReferenceDetailDimensions?
+                            "NATIVE_DATUM_CHAIN_OVERALL":
+                            "NATIVE_MEMBER_HV"));
+                    Log("REV22_46_DIMENSION_MODE=COLLISION_AWARE_PER_MEMBER_HV");
+                    Log("REV22_46_AUTO_REPOSITIONED="+
+                        dimensionPlan.Repositioned);
+                    Log("REV22_46_COLLIDING_CANDIDATES_REJECTED="+
+                        dimensionPlan.CollisionCandidatesRejected);
+                    Log("REV22_46_DIMENSIONS_REQUESTED="+
+                        dimensionPlan.RequestedAxisCount);
+                    Log("REV22_46_DIMENSIONS_PLANNED="+
+                        dimensionPlan.Dimensions.Count);
+                    Log("REV22_46_DIMENSIONS_UNPLACED="+
+                        dimensionPlan.Skipped.Count(x=>
+                            x.Contains("_NO_COLLISION_FREE_DIMENSION_LANE")||
+                            x.Contains("_SPAN_TOO_SMALL_ON_PAPER")||
+                            x.Contains("_MEMBER_NOT_FULLY_IN_NATIVE_VIEW")));
+                    foreach(var skip in dimensionPlan.Skipped)
+                        Log("REV22_46_DIMENSION_SKIPPED="+skip);
                     Log("REV22_44_DIMENSION_MODE=PER_MEMBER_PER_ORTHOGRAPHIC_VIEW_H_AND_V");
                     Log("REV22_44_MEMBER_SOURCES="+
-                        everyViewMembers.Members.Count);
+                        nativeDimensionMembers.Length);
                     foreach(string note in everyViewMembers.Diagnostics)
                         Log("REV22_44_SOURCE_DIAGNOSTIC="+note);
                     Log("REV22_44_ORTHOGRAPHIC_VIEW_COUNT="+
@@ -1628,17 +2621,112 @@ public sealed class SupportOrthoTenViewGenerator
                         int vertical=dimensionPlan.Dimensions.Count(d=>
                             d.View==view.Name&&!d.Horizontal);
                         Log("REV22_44_VIEW="+view.Name+
-                            " RECOGNIZED_MEMBERS="+everyViewMembers.Members.Count+
+                            " RECOGNIZED_MEMBERS="+nativeDimensionMembers.Length+
                             " HORIZONTAL_DIMS="+horizontal+
                             " VERTICAL_DIMS="+vertical+
                             " REQUESTED_AXES="+
-                                everyViewMembers.Members.Count*2);
+                                nativeDimensionMembers.Length*2);
                     }
+                    // REV22.61: independently audit required overall
+                    // axes, vetted member source keys, actual dynamic
+                    // measurements, duplicates and dimension intersections.
+                    // Missing optional widths do NOT cancel valid paper
+                    // generation. Required faults flag REVIEW in the TXT.
+                    var qaBefore=SupportOrthoDrawingQualityAudit61.Review(
+                        dimCameras,nativeDimensionMembers,
+                        dimensionPlan.Dimensions,dimensionPlan.Skipped,
+                        units,options.ReferenceDetailDimensions,
+                        nativeEdges:nativeEdges59.Edges);
+                    // REV62: four ISO camera presets are geometrically valid
+                    // but have no independent H/V DIMLINEAR obligations.
+                    // Audit still requires native member evidence, valid
+                    // cameras and zero unsupported dimensions.
+                    bool isoOnly62=options.Views.Count>0&&
+                        options.Views.All(NativeOrthoIsoViewType.IsIsometric);
+                    Log("REV62_DIMENSION_QA_MODE="+
+                        (isoOnly62?"ISO_ONLY_NO_HV_AXES":
+                            "ORTHOGRAPHIC_HV_REQUIRED"));
+                    Log("REV22_61_QA_PREWRITE="+qaBefore.Status);
+                    Log("REV22_61_EXPECTED_HV_OVERALLS="+
+                        qaBefore.ExpectedOverallAxes);
+                    Log("REV22_61_PRESENT_HV_OVERALLS="+
+                        qaBefore.PresentOverallAxes);
+                    Log("REV22_61_MISSING_HV_OVERALLS="+
+                        qaBefore.MissingOverallAxes);
+                    Log("REV22_61_QA_OPTIONAL_OMISSIONS="+
+                        qaBefore.OptionalOmissions);
+                    Log("REV22_61_QA_SOURCE_AND_MEASUREMENT_ISSUES="+
+                        (qaBefore.UnverifiedSources+
+                            qaBefore.MeasurementMismatches));
+                    Log("REV22_61_QA_DUPLICATES="+
+                        qaBefore.DuplicateDimensions);
+                    Log("REV22_61_QA_WITNESS_INTERSECTIONS="+
+                        qaBefore.GeometryIntersections);
+                    foreach(var issue in qaBefore.Issues)
+                        Log("REV22_61_QA_ISSUE="+issue.Code+
+                            " VIEW="+issue.View+
+                            " DETAIL="+issue.Description);
                     int created=SupportOrthoDimLinearWriter41.Write(
                         targetDoc.Database,paperLayout,
                         dimensionPlan.Dimensions,out var dimensionWarnings);
+                    // The paper-space writer may reject an entity
+                    // even after the geometric plan passed. QA MUST
+                    // report actual written count, not just plan count.
+                    var qaWritten=SupportOrthoDrawingQualityAudit61.Review(
+                        dimCameras,nativeDimensionMembers,
+                        dimensionPlan.Dimensions,dimensionPlan.Skipped,
+                        units,options.ReferenceDetailDimensions,
+                        writtenCount:created,nativeEdges:nativeEdges59.Edges);
+                    Log("REV22_61_QA_STATUS="+qaWritten.Status);
+                    Log("REV22_61_QA_TOTAL_ISSUES="+
+                        qaWritten.ReviewIssues);
+                    Log("REV22_61_QA_WRITTEN_DIMENSION_MISMATCHES="+
+                        qaWritten.WrittenCountMismatches);
+                    // The manual PDF remains the drafting reference.
+                    // A QA PASS checks supported structural facts,
+                    // not pixel-perfect equivalence with the PDF.
                     Log("REV22_41_DIMENSIONS_CREATED="+created);
                     Log("REV22_44_DIMENSIONS_CREATED="+created);
+                    Log("REV22_46_DIMENSIONS_CREATED="+created);
+                    Log("REV22_48_NATIVE_DIMENSIONS_CREATED="+created);
+                    Log("REV22_48_XREF_DIMENSIONS_CREATED=0");
+                    // REV22.49: persist explicit native model handles
+                    // and saved native viewport identity only after a
+                    // successful paper DIMLINEAR generation. The manifest
+                    // is required for any later automatic Update View
+                    // refresh. Previous REV22.48 drawings are untouched.
+                    if(created>0&&created==dimensionPlan.Dimensions.Count)
+                    {
+                        try
+                        {
+                            SupportOrthoDimensionRefresh49.SaveInitial(
+                                targetDoc.Database,source,paperLayout,
+                                units,paperWidth,paperHeight,
+                                options.ReferenceDetailDimensions,
+                                nativeDimensionMembers,
+                                nativeMemberViewportIds,
+                                dimensionPlan.Dimensions,
+                                nativeDimensionSegments,nativeEdges59.Edges);
+                            Log("REV22_49_AUTO_UPDATE_MANIFEST=PASS");
+                            Log("REV22_50_NATIVE_GEOMETRY_CACHE_SAVED="+
+                                nativeDimensionMembers.Length);
+                            Log("REV22_50_UNVERIFIED_LOCAL_50MM_STATIONS_DISABLED=True");
+                            Log("REV22_49_AUTO_UPDATE_TRIGGER=PLANTORTHOUPDATE_COMPLETED");
+                            Log("REV22_49_REPLACE_OWNED_DIMENSIONS_ONLY=TRUE");
+                            Log("REV22_49_XREF_DIMENSIONS_DISABLED=TRUE");
+                        }
+                        catch(System.Exception ex)
+                        {
+                            Log("REV22_49_AUTO_UPDATE_MANIFEST=FAILED:"+
+                                ex.GetType().Name+":"+ex.Message);
+                        }
+                    }
+                    Log("REV22_46_DIMENSION_COVERAGE="+
+                        (created==dimensionPlan.RequestedAxisCount?
+                            "COMPLETE":"PARTIAL")+
+                        " CREATED="+created+
+                        " REQUESTED="+dimensionPlan.RequestedAxisCount);
+                    Log("REV22_46_COLLISION_MODE=NO_FORCED_OVERLAP");
                     Log("REV22_43_OVERALL_HEIGHT_DIMENSIONS_PLANNED="+
                         dimensionPlan.Dimensions.Count(d=>
                             d.Provenance=="GEOMETRIC_OVERALL_Z_HEIGHT"));
@@ -1667,12 +2755,74 @@ public sealed class SupportOrthoTenViewGenerator
                         ":"+ex.Message);
                 }
             }
-            Log("REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=TRUE");
+            Log("REV22_49_DIMENSIONS_REGENERATE_ON_PLANTORTHOUPDATE=TRUE");
+            Log("REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=FALSE_FOR_REV22_49_REGISTERED_DWGS");
             Log("UPDATE_VIEW_MANUAL_TEST_REQUIRED=TRUE");
             Log("FINAL_STATUS=TEN_NATIVE_VIEWS_AND_TITLES_MEMBER_LEADERS_"+
                 annotationStatus);
             succeeded=annotationStatus=="PASS" ||
                 annotationStatus=="NO_NATIVE_STEEL_OR_PLANT_SUPPORTS";
+
+            // This optional step occurs AFTER native views and DIMLINEAR
+            // QA have completed. Only explicitly mapped attributes of
+            // one matching paper-space title block can be changed.
+            // No title block geometry, manual text, XREF or Ortho view
+            // is guessed or rewritten.
+            if(packageSettings.Enabled)
+            {
+                try
+                {
+                    string number=SupportProductionPackagePlan.DrawingNumber(
+                        packageSettings,source,handles,explicitSupportTag)+
+                        sheetDrawingSuffix;
+                    string scaleText="1:"+candidate.Denominator;
+                    var metadata=SupportProductionTitleBlockWriter.Metadata(
+                        packageSettings,number,source,
+                        explicitSupportTag??string.Join("+",handles),
+                        scaleText);
+                    var stamped=SupportProductionTitleBlockWriter.Apply(
+                        targetDoc.Database,paperLayout,packageSettings,metadata);
+                    titleBlockStatus=stamped.Status;
+                    if(stamped.Status=="NOT_CONFIGURED"||
+                       stamped.Status=="TITLEBLOCK_NOT_FOUND"||
+                       stamped.Status=="PARTIAL_NEEDS_REVIEW")
+                    {
+                        // REV66: distinguish editable ATTRIB tags from
+                        // static seed text. Never rewrite ambiguous
+                        // test1/#### DBText, MText, block definitions or
+                        // XREFs merely by matching printed characters.
+                        foreach(string candidateBlock in
+                            SupportProductionTitleBlockWriter.InspectCandidates(
+                                targetDoc.Database,paperLayout))
+                        {
+                            Log("REV60_TITLEBLOCK_CANDIDATE="+candidateBlock);
+                            Log("REV66_TITLEBLOCK_CANDIDATE="+candidateBlock);
+                            Log("REV67_TITLEBLOCK_NESTED_INSPECTION="+
+                                candidateBlock);
+                            if(candidateBlock.Contains("ATTRIB_TAGS=NONE",
+                                StringComparison.Ordinal))
+                                Log("REV66_TITLEBLOCK_STATIC_SEED_POLICY="+
+                                    "READ_ONLY_REQUIRES_APPROVED_ATTDEF_TEMPLATE");
+                        }
+                        Log("REV60_TITLEBLOCK_NEXT_ACTION="+
+                            "MAP_EXACT_BLOCK_AND_ATTRIBUTE_TAGS_IN_PRODUCTION_SETTINGS");
+                        Log("REV66_TITLEBLOCK_NEXT_ACTION="+
+                            "ADD_APPROVED_ATTDEF_ATTRIB_TO_SEED_OR_MAP_EXISTING_TAGS");
+                    }
+                    Log("PRODUCTION_DRAWING_NUMBER="+number);
+                    Log("PRODUCTION_TITLEBLOCK_STATUS="+stamped.Status+
+                        " WRITTEN="+stamped.Written+
+                        " EXISTING_PRESERVED="+stamped.ExistingPreserved+
+                        " MISSING_TAGS="+string.Join(";",stamped.MissingTags));
+                    Log("PRODUCTION_PDF_STATUS=NOT_PUBLISHED");
+                    Log("PRODUCTION_ISSUE_STATUS=DRAFT_NEEDS_SAVED_DWG_AND_QA");
+                }
+                catch(System.Exception ex)
+                {
+                    titleBlockStatus="FAILED:"+ex.GetType().Name;
+                    Log("PRODUCTION_TITLEBLOCK_ERROR="+ex);
+                }
+            }
             SafeWriteToActiveEditor(
                 "SPTC: "+options.Views.Count+" native views and titles created. "+
                 annotated+" per-member leader annotations; "+
@@ -1744,6 +2894,39 @@ public sealed class SupportOrthoTenViewGenerator
             // Never let eNotApplicable from WriteMessage mask the real exception.
             SafeWriteToActiveEditor("REV22 RESULT: " + report);
         }
+        if(packageSettings.Enabled&&cloned&&File.Exists(dest))
+        {
+            try
+            {
+                var entry=SupportProductionPackagePlan.BuildEntry(
+                    packageSettings,source,handles,dest,report,
+                    log.ToString(),options.Views.ToArray(),
+                    options.ScaleDenominator>0?
+                        "1:"+options.ScaleDenominator:"Automatic",
+                    SupportBuildIdentity.Id,explicitSupportTag,
+                    titleBlockStatus,
+                    sheetDrawingSuffix:sheetDrawingSuffix);
+                if(!succeeded)
+                    entry=entry with {
+                        QaStatus="FAIL",IssueStatus="GENERATION_FAILED",
+                        IssueNote="GENERATION_DID_NOT_COMPLETE"
+                    };
+                SupportProductionPackagePlan.SaveEntry(entry);
+                onProductionEntry?.Invoke(entry);
+                Log("PRODUCTION_PACKAGE_SIDECAR=CREATED"+
+                    " DRAWING_NUMBER="+entry.DrawingNumber+
+                    " ISSUE_STATUS="+entry.IssueStatus);
+            }
+            catch(System.Exception ex)
+            {
+                // Sidecar failures NEVER invalidate an otherwise sound
+                // native Ortho and never cause native drawing regeneration.
+                try {Log("PRODUCTION_PACKAGE_ERROR="+
+                    ex.GetType().Name+":"+ex.Message);}
+                catch { /* native report may be unavailable */ }
+            }
+        }
+        if(cloned&&File.Exists(dest))onOutputDwg?.Invoke(dest);
         return succeeded;
     }
 
@@ -1869,6 +3052,51 @@ public sealed class SupportOrthoTenViewGenerator
         return dir;
     }
 
+    // REV22.52: drawing content remains visible; only the paper-space
+    // viewport outline is on a non-plotting layer. Do not change the
+    // native model, support solids, piping or any existing title block.
+    private const string ViewportBorderLayer52=
+        "SPTC_ORTHO_VIEWPORT_NOPLOT";
+
+    private static ObjectId EnsureViewportBorderLayer52(
+        Database db,Transaction tr)
+    {
+        var table=(LayerTable)tr.GetObject(db.LayerTableId,
+            OpenMode.ForRead);
+        if(table.Has(ViewportBorderLayer52))
+        {
+            var existing=(LayerTableRecord)tr.GetObject(
+                table[ViewportBorderLayer52],OpenMode.ForWrite);
+            existing.IsPlottable=false;
+            return existing.ObjectId;
+        }
+        table.UpgradeOpen();
+        using var layer=new LayerTableRecord
+        {
+            Name=ViewportBorderLayer52,
+            IsPlottable=false
+        };
+        var id=table.Add(layer);
+        tr.AddNewlyCreatedDBObject(layer,true);
+        return id;
+    }
+
+    private static void EnsureNativeViewportsNoPlot52(
+        Database db,IReadOnlyDictionary<string,ObjectId> nativeViewIds)
+    {
+        using var tr=db.TransactionManager.StartTransaction();
+        ObjectId borderLayer=EnsureViewportBorderLayer52(db,tr);
+        foreach(var view in nativeViewIds)
+        {
+            if(tr.GetObject(view.Value,OpenMode.ForWrite,false)
+                is not Viewport vp)
+                throw new InvalidOperationException(
+                    "REV22.52 native viewport unavailable: "+view.Key);
+            vp.LayerId=borderLayer;
+        }
+        tr.Commit();
+    }
+
     private static ObjectId CreateExperimentalViewport(
         Database db,string layoutName,Point3d paperCenter,
         double frameWidth,double frameHeight,Vector3d viewDirection,
@@ -1882,8 +3110,11 @@ public sealed class SupportOrthoTenViewGenerator
             throw new InvalidOperationException("Native paper-space layout disappeared.");
         var lay=(Layout)tr.GetObject(layouts.GetAt(layoutName),OpenMode.ForRead);
         var paper=(BlockTableRecord)tr.GetObject(lay.BlockTableRecordId,OpenMode.ForWrite);
+        // Nonplot layer is attached to the actual viewport border.
+        ObjectId borderLayer=EnsureViewportBorderLayer52(db,tr);
         using var viewport=new Viewport
         {
+            LayerId=borderLayer,
             CenterPoint=paperCenter,
             Width=frameWidth,Height=frameHeight,
             ViewDirection=viewDirection,
@@ -1937,9 +3168,17 @@ public sealed class SupportOrthoTenViewGenerator
     private static int CreateNativePaperMemberLeaders27(
         Database db,string paperLayout,
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout> callouts,
-        out List<string> skipped)
+        double paperW,double paperH,
+        out List<string> skipped,out double minimumRenderedTextMm,
+        out int shrunkAnnotationLabels)
     {
         skipped=new List<string>();
+        minimumRenderedTextMm=0;
+        shrunkAnnotationLabels=0;
+        double preferredHeight=SupportOrthoPaperTypography66.TextHeight(
+            paperW,paperH);
+        double minimumHeight=SupportOrthoPaperTypography66.
+            MinimumRenderedText(paperW,paperH);
         using Transaction tr=db.TransactionManager.StartTransaction();
         var layouts=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,OpenMode.ForRead);
         if(!layouts.Contains(paperLayout))
@@ -1974,7 +3213,7 @@ public sealed class SupportOrthoTenViewGenerator
             using var name=new DBText
             {
                 TextString=SupportOrthoMemberMetadata.Clean(lines[0]),
-                Height=SupportOrthoMemberCalloutPlan27.TextHeightMm,
+                Height=preferredHeight,
                 Position=new Point3d(item.LabelX,item.LabelTop-2.1,0),
                 LayerId=layerId,
                 TextStyleId=db.Textstyle,
@@ -1990,10 +3229,10 @@ public sealed class SupportOrthoTenViewGenerator
                     tos=new DBText
                     {
                         TextString=SupportOrthoMemberMetadata.Clean(lines[1]),
-                        Height=SupportOrthoMemberCalloutPlan27.TextHeightMm,
+                        Height=preferredHeight,
                         Position=new Point3d(item.LabelX,
                             item.LabelTop-
-                            SupportOrthoMemberCalloutPlan27.TextLineHeightMm-2.1,0),
+                            item.LabelHeight/lines.Length-2.1,0),
                         LayerId=layerId,
                         TextStyleId=db.Textstyle,
                         WidthFactor=1.0
@@ -2002,8 +3241,9 @@ public sealed class SupportOrthoTenViewGenerator
                     tr.AddNewlyCreatedDBObject(tos,true);
                 }
 
-                const double minimumReadableTextMm=1.05;
-                double fontHeight=SupportOrthoMemberCalloutPlan27.TextHeightMm;
+                double minimumReadableTextMm=minimumHeight;
+                double fontHeight=preferredHeight;
+                double lineAdvance=item.LabelHeight/lines.Length;
                 bool fit=false;
                 string problem="NATIVE_TEXT_TOO_WIDE";
                 for(int pass=0;pass<10;pass++)
@@ -2016,8 +3256,7 @@ public sealed class SupportOrthoTenViewGenerator
                         tos.Height=fontHeight;
                         tos.Position=new Point3d(item.LabelX,
                             item.LabelTop-
-                                SupportOrthoMemberCalloutPlan27.TextLineHeightMm-
-                                fontHeight*1.18,0);
+                                lineAdvance-fontHeight*1.18,0);
                     }
                     try
                     {
@@ -2076,8 +3315,7 @@ public sealed class SupportOrthoTenViewGenerator
                     continue;
                 }
 
-                double landingY=item.LabelTop-
-                    SupportOrthoMemberCalloutPlan27.TextLineHeightMm*.5;
+                double landingY=item.LabelTop-lineAdvance*.5;
                 var routes=new (Point3d Start,Point3d End)[]
                 {
                     (new Point3d(item.AnchorX,item.AnchorY,0),
@@ -2095,6 +3333,10 @@ public sealed class SupportOrthoTenViewGenerator
                     paper.AppendEntity(leader);
                     tr.AddNewlyCreatedDBObject(leader,true);
                 }
+                minimumRenderedTextMm=count==0?fontHeight:
+                    Math.Min(minimumRenderedTextMm,fontHeight);
+                if(fontHeight<preferredHeight-.01)
+                    shrunkAnnotationLabels++;
                 count++;
             }
             finally
@@ -2189,7 +3431,8 @@ public sealed class SupportOrthoTenViewGenerator
     // not part of the model source, native OrthoCube or viewport regeneration.
     private static IReadOnlyList<string> CreateNativePaperTitles(
         Database db,string paperLayout,
-        IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles)
+        IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles,
+        double paperW,double paperH)
     {
         if(titles==null||titles.Count<1||titles.Count>10)
             throw new ArgumentException("SPTC selected native view title count invalid.");
@@ -2234,6 +3477,33 @@ public sealed class SupportOrthoTenViewGenerator
             if(textId.IsNull||!textId.IsValid)
                 throw new InvalidOperationException(
                     "REV22.29 failed to append paper title "+title.Name);
+            if(SupportOrthoPaperTypography66.IsLargePaper(paperW,paperH))
+            {
+                // REV66: MText wrapping turns a reserved 6mm caption
+                // into two lines. Read its REAL AutoCAD layout height
+                // and shrink the title *only when necessary*, never
+                // change the native viewport frame or its scale.
+                // Fail closed if the approved 3mm floor cannot fit.
+                bool oneLine=false;
+                for(int trial=0;trial<7;trial++)
+                {
+                    double measured=label.ActualHeight;
+                    if(double.IsFinite(measured)&&
+                       measured<=title.Height+.15)
+                    {
+                        oneLine=true;
+                        break;
+                    }
+                    label.TextHeight=Math.Max(3.0,
+                        label.TextHeight-.18);
+                    if(trial==6)break;
+                }
+                if(!oneLine)
+                    throw new InvalidOperationException(
+                        "REV66 A0 view caption cannot fit the reserved "+
+                        "single-line band: "+title.Name+
+                        ". No wrapped or overlapping title accepted.");
+            }
             handles.Add(label.Handle.ToString());
         }
         tr.Commit();
@@ -2402,7 +3672,8 @@ public sealed class SupportOrthoTenViewGenerator
         return best;
     }
 
-    private static (double width,double height) CurrentPaper(Database db,string layoutName)
+    private static NativeOrthoEffectivePaper59.Sheet CurrentPaperDetails(
+        Database db,string layoutName)
     {
         using Transaction tr=db.TransactionManager.StartTransaction();
         var dict=(DBDictionary)tr.GetObject(db.LayoutDictionaryId,OpenMode.ForRead);
@@ -2410,10 +3681,25 @@ public sealed class SupportOrthoTenViewGenerator
         {
             if (tr.GetObject(entry.Value,OpenMode.ForRead) is not Layout paper ||
                 paper.LayoutName!=layoutName) continue;
-            double factor=paper.PlotPaperUnits.ToString()=="Inches"?25.4:1;
+            if(paper.PlotPaperUnits==PlotPaperUnit.Pixels)
+                throw new InvalidOperationException(
+                    "Native Ortho paper media in pixels is unsupported.");
+            double factor=paper.PlotPaperUnits==PlotPaperUnit.Inches?25.4:1;
             Point2d size=paper.PlotPaperSize;
-            if (!(size.X>0 && size.Y>0)) break;
-            return (size.X*factor,size.Y*factor);
+            int degrees=paper.PlotRotation switch
+            {
+                PlotRotation.Degrees000=>0,
+                PlotRotation.Degrees090=>90,
+                PlotRotation.Degrees180=>180,
+                PlotRotation.Degrees270=>270,
+                _=>throw new InvalidOperationException(
+                    "Unsupported native Ortho paper rotation.")
+            };
+            // 594x841 media with a 270-degree seed rotation is an
+            // 841x594 actual landscape paper-space border. Without this
+            // transpose, TOP/BOTTOM are placed above the native border.
+            return NativeOrthoEffectivePaper59.FromMedia(
+                size.X*factor,size.Y*factor,degrees);
         }
         throw new InvalidOperationException("Valid Ortho paper-space layout not found.");
     }

@@ -20,8 +20,12 @@ namespace SPTC.SupportDrawings;
 public sealed class SupportDrawingCommands : IExtensionApplication
 {
     // Avoid obsolete REV19 banners or unnecessary output on NETLOAD.
-    public void Initialize() { }
-    public void Terminate() { SupportDrawingPalette40.Shutdown(); }
+    public void Initialize() { SupportOrthoDimensionRefresh49.Start(); }
+    public void Terminate()
+    {
+        SupportOrthoDimensionRefresh49.Stop();
+        SupportDrawingPalette40.Shutdown();
+    }
 
     [CommandMethod("SPTC_SUPPORTEXPORT", CommandFlags.Modal)]
     public void ExportOne()

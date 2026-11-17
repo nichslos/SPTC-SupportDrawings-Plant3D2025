@@ -42,7 +42,7 @@ public static class SupportOrthoMemberCalloutPlan27
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles,
         IReadOnlyList<Member> members,double paperW,double paperH,
-        bool allowSubset=false)
+        bool allowSubset=false,bool bypassTitleBlock=false)
     {
         if(cameras==null||cameras.Count<1||cameras.Count>10||members==null||
            titles==null||titles.Count!=cameras.Count||
@@ -60,22 +60,37 @@ public static class SupportOrthoMemberCalloutPlan27
         if(members.Select(m=>m.Handle).Distinct(StringComparer.OrdinalIgnoreCase)
             .Count()!=members.Count)
             throw new ArgumentException("REV22.27 duplicate member handle.");
+        // REV66: on an ACTUAL A0 (or larger) sheet reserve wider,
+        // taller label rectangles so printed text can remain legible.
+        // The original A1 camera/title layout and annotation constants
+        // are unchanged; every expanded label still passes the existing
+        // physical viewport/title/callout collision checks.
+        double lineAdvance=SupportOrthoPaperTypography66.LineAdvance(
+            paperW,paperH);
+        double rowSpacing=SupportOrthoPaperTypography66.RowSpacing(
+            paperW,paperH);
+        double widthCap=SupportOrthoPaperTypography66.WidthCap(
+            paperW,paperH);
+        var frames=cameras.Select(c=>
+            new NativeOrthoViewTitlePlan.Frame(
+                c.Name,c.X,c.Y,c.W,c.H)).ToArray();
         var notes=new List<Callout>();
         var skips=new List<string>();
         var empty=new List<string>();
         foreach(var camera in cameras)
         {
             double viewRight=camera.X+camera.W/2;
-            // Reserve 17.5mm for orthogonal leader dogleg lanes. Labels
-            // remain outside every native viewport, not on top of its lines.
-            double x=viewRight+LabelGapFromFrameMm;
-            var rightNeighbor=cameras.Where(v=>v.X>camera.X+1e-5 &&
-                    Math.Abs(v.Y-camera.Y)<Math.Max(v.H,camera.H))
-                .OrderBy(v=>v.X).FirstOrDefault();
-            double rightLimit=rightNeighbor!=null?
-                rightNeighbor.X-rightNeighbor.W/2-5:paperW*.78-3;
-            double width=Math.Min(114,rightLimit-x);
-            if(width<54)
+            // REV71: same real gutter geometry is used by the
+            // pre-registration capacity test and actual member writer.
+            // Only horizontally intersecting viewports can terminate
+            // this view's independent right annotation column.
+            bool hasGutter=SupportOrthoAnnotationCapacity71.TryGutter(
+                frames.Single(v=>v.Name==camera.Name),
+                frames,paperW,paperH,bypassTitleBlock,
+                out var gutter);
+            double x=gutter.X;
+            double width=Math.Min(widthCap,gutter.Width);
+            if(!hasGutter)
             {
                 skips.Add(camera.Name+":NO_SAFE_TEXT_GUTTER");
                 empty.Add(camera.Name);
@@ -126,8 +141,8 @@ public static class SupportOrthoMemberCalloutPlan27
                 // AutoCAD style glyph extents before writing the leader.
                 // DBText cannot wrap; the writer shrinks to fit or
                 // explicitly skips if the real glyph width cannot fit.
-                double height=hasSecondLine?TextLineHeightMm*2:
-                    TextLineHeightMm;
+                double height=hasSecondLine?lineAdvance*2:
+                    lineAdvance;
                 projected.Add((member,p.X,p.Y,
                     secondary==null?label:label+"\n"+secondary,
                     height,hasSecondLine));
@@ -143,52 +158,75 @@ public static class SupportOrthoMemberCalloutPlan27
                 .DefaultIfEmpty(134.56).Min();
             double halfBand=Math.Min(60.0,nextRowGap/2-8);
             double topSafe=Math.Min(camera.Y+halfBand,paperH*.94-2);
-            double bottomSafe=Math.Max(camera.Y-halfBand,paperH*.12+8);
+            double bottomSafe=Math.Max(camera.Y-halfBand,
+                NativeOrthoTitleBlockBypass69.Bottom(
+                    paperH,bypassTitleBlock)+8);
             double total=projected.Sum(t=>t.Height)+
-                Math.Max(0,projected.Count-1)*RowSpacingMm;
-            if(total>topSafe-bottomSafe+1e-6)
+                Math.Max(0,projected.Count-1)*rowSpacing;
+            double originalRowTop=Math.Min(topSafe,
+                Math.Max(bottomSafe+total,camera.Y+total/2));
+            var reserved=notes.Select(n=>
+                new SupportOrthoAnnotationCapacity71.Rect(
+                    n.LabelX,n.LabelTop-n.LabelHeight,
+                    n.LabelX+n.LabelWidth,n.LabelTop)).ToArray();
+            // Preserve REV70 positions unchanged whenever the entire
+            // old label stack is geometrically safe. Otherwise find
+            // actual free vertical intervals for this column. The old
+            // nearest-row-center rule incorrectly restricted disjoint
+            // columns on the 12-object sample.
+            bool oldFits=total<=topSafe-bottomSafe+1e-6&&
+                SupportOrthoAnnotationCapacity71.IsFree(
+                    frames,titles,reserved,x,width,
+                    originalRowTop-total,originalRowTop);
+            if(!oldFits)
             {
-                // Optional XREF filenames must NEVER crowd out previously
-                // validated native steel/support and pipe annotations.
-                // Keep original ten-view behavior when no XREFs are present.
                 var required=projected.Where(t=>
                     t.Member.XrefDrawingName==null).ToList();
                 var extras=projected.Where(t=>
                     t.Member.XrefDrawingName!=null).ToList();
                 double needed=required.Sum(t=>t.Height)+
-                    Math.Max(0,required.Count-1)*RowSpacingMm;
-                if(needed>topSafe-bottomSafe+1e-6)
+                    Math.Max(0,required.Count-1)*rowSpacing;
+                if(!SupportOrthoAnnotationCapacity71.TryFindBand(
+                    frames,titles,reserved,x,width,camera.Y,
+                    needed,total,paperW,paperH,bypassTitleBlock,
+                    out var band))
                 {
-                    skips.Add(camera.Name+":NOT_ENOUGH_LABEL_HEIGHT");
+                    skips.Add(camera.Name+":NOT_ENOUGH_LABEL_HEIGHT"+
+                        "_AFTER_GEOMETRY_BANDS");
                     empty.Add(camera.Name);
                     continue;
                 }
+                topSafe=band.Top;
+                bottomSafe=band.Bottom;
+                // Native member/pipe labels are mandatory. Only XREF
+                // filenames can be dropped and only when their full
+                // measured-height stack cannot fit any free band.
                 while(extras.Count>0)
                 {
                     int count=required.Count+extras.Count;
                     double size=needed+extras.Sum(t=>t.Height)+
-                        (count>1?Math.Max(0,count-1)*RowSpacingMm-
-                            Math.Max(0,required.Count-1)*RowSpacingMm:0);
-                    if(size<=topSafe-bottomSafe+1e-6)break;
+                        Math.Max(0,count-1)*rowSpacing-
+                        Math.Max(0,required.Count-1)*rowSpacing;
+                    if(size<=band.CapacityMm+1e-6)break;
                     var dropped=extras[^1];
                     skips.Add(camera.Name+":"+dropped.Member.Handle+
                         ":XREF_FILENAME_NO_LABEL_SPACE");
                     extras.RemoveAt(extras.Count-1);
                 }
-                projected=required.Concat(extras).OrderByDescending(t=>t.Y)
+                projected=required.Concat(extras)
+                    .OrderByDescending(t=>t.Y)
                     .ThenBy(t=>t.Member.Handle,
                         StringComparer.OrdinalIgnoreCase).ToList();
                 total=projected.Sum(t=>t.Height)+
-                    Math.Max(0,projected.Count-1)*RowSpacingMm;
+                    Math.Max(0,projected.Count-1)*rowSpacing;
             }
             double rowTop=Math.Min(topSafe,
-                Math.Max(bottomSafe+total,
-                    camera.Y+total/2));
+                Math.Max(bottomSafe+total,camera.Y+total/2));
             int placed=0;
             foreach(var item in projected)
             {
                 double labelTop=rowTop;
-                rowTop-=item.Height+RowSpacingMm;
+                rowTop-=item.Height+rowSpacing;
                 double lane=viewRight+LaneFirstMm+
                     placed*LaneStepMm;
                 if(lane>=x-1.5)
@@ -210,9 +248,12 @@ public static class SupportOrthoMemberCalloutPlan27
         {
             double lx=note.LabelX,rx=note.LabelX+note.LabelWidth;
             double bottom=note.LabelTop-note.LabelHeight;
-            if(lx<0||rx>paperW*.78+1e-5||
+            if(lx<0||rx>(bypassTitleBlock?
+                    NativeOrthoTitleBlockBypass69.Right(paperW,true):
+                    paperW*.78)+1e-5||
                 note.LabelTop>paperH*.94+1e-5||
-                bottom<paperH*.12-1e-5)
+                bottom<NativeOrthoTitleBlockBypass69.Bottom(
+                    paperH,bypassTitleBlock)-1e-5)
                 throw new InvalidOperationException(
                     "REV22.27 member label outside native drawing keepout.");
             foreach(var frame in cameras)

@@ -36,7 +36,9 @@ public static class SupportOrthoDimLinearPlan41
         string View,string Source,string Kind,bool Horizontal,
         double Ax,double Ay,double Bx,double By,
         double LineX,double LineY,string Measurement,
-        string Provenance="EXPLICIT_MEMBER_ENDPOINTS");
+        string Provenance="EXPLICIT_MEMBER_ENDPOINTS",
+        double? PaperTextX=null,double? PaperTextY=null,
+        double? PaperToModelMm=null);
     public sealed record Result(IReadOnlyList<Dimension> Dimensions,
         IReadOnlyList<string> Skipped,int SourceCount,int OrthographicViews);
 
