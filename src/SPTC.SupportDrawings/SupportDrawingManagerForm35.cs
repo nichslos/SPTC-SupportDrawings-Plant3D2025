@@ -665,9 +665,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         uiTips.SetToolTip(outputMode,
             "Printable sheet, single-DWG Draft Overflow, or split sheets without changing scale.");
         uiTips.SetToolTip(hiddenLineMode,
-            "Select native Plant Ortho output. REV84 verifies the active host's command mode and keeps explicit choices in the Ortho ribbon after successful generation. Other views referencing the same model can be affected on refresh.");
+            "Requested hidden-line output is best-effort after native drawing generation. If Plant cannot verify the native command, set appearance using Edit View > Output Appearance. DWG generation continues. Other views sharing the model can be affected on refresh.");
         uiTips.SetToolTip(insulationMode,
-            "Select native Ortho insulation visibility for new views. REV84 keeps explicit choices in the active Plant ribbon after successful generation; shared-model views may be affected on update. Project Default makes no changes.");
+            "Requested insulation mode is checked independently after generating the native DWG. Saved view appearance must be verified in Plant Edit View; unsupported modes do not block drawing creation. Project Default makes no changes.");
         uiTips.SetToolTip(quickDraft,
             "Select all ten views and Draft Overflow; keep your selected exact drawing scale.");
         uiTips.SetToolTip(quickPhysical,
@@ -1512,8 +1512,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 " | XREF Names="+xrefNames.Checked+"\r\n"+
             "6. HIDDEN LINES: "+hiddenLineMode.Text+"\r\n"+
             "7. INSULATION: "+insulationMode.Text+"\r\n"+
-            "   Native ribbon: explicit modes remain active after a successful run; "+
-            "shared-model Ortho updates can affect other views.\r\n"+
+            "   Native appearance: best-effort host sync AFTER drawing generation. "+
+            "Unsupported mode: use Edit View > Output Appearance.\r\n"+
+            "   Saved native view appearance requires manual verification; "+
+            "shared-model updates may affect other views.\r\n"+
             "8. DIMENSIONS: "+(autoDimLinear.Checked?
                 (referenceDimensions.Checked?
                     "Native H/V chain + overall":"Native H/V all members"):"OFF")+
