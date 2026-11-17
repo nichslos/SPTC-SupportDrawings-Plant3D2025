@@ -42,6 +42,17 @@ internal static class Rev72XrefPipeEvidenceTests
         Need(SupportOrthoXrefPipeEvidence72.Coverage(unresolved)==
             "XREF_NOT_LOADED",
             "unloaded or unresolved XREF sources explicitly diagnosed");
+        var partiallyUnresolved=noSources with{
+            ResolvedReferences=3,UnresolvedReferences=1,
+            VerifiedPipeEntities=2,NearbyPipeEntities=2,
+            InCubePipeCandidates=2,AnnotatedPipeSources=2
+        };
+        Need(SupportOrthoXrefPipeEvidence72.Coverage(
+                partiallyUnresolved)=="XREF_REFERENCES_PARTIALLY_UNRESOLVED"&&
+            SupportOrthoXrefPipeEvidence72.NeedsReview(
+                partiallyUnresolved,true)&&
+            SupportOrthoXrefPipeEvidence72.NeedsReview(unresolved,true),
+            "unloaded XREF sources cannot be hidden by other verified pipes");
         var empty=noSources with{ResolvedReferences=3};
         Need(SupportOrthoXrefPipeEvidence72.Coverage(empty)==
             "NO_VERIFIED_NATIVE_PIPE_ENTITIES"&&
