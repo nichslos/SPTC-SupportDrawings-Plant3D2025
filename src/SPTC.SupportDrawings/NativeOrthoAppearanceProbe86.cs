@@ -111,6 +111,21 @@ internal static class NativeOrthoAppearanceProbe86
             }
             ReportType(sheet,"NATIVE_SHEET",report);
             ReportType(viewArgs[2]!,"SAVED_VIEWDEF",report);
+            // REV87: inspect native appearance-controller TYPES and the
+            // HlrTrans property's metadata only, not undocumented values.
+            // Failure is diagnostic; it must not interrupt ten-view
+            // generation, dimension QA or the native PDF publisher.
+            try
+            {
+                NativeOrthoAppearanceProbe87.Inspect(
+                    viewArgs[2]!,nativeView,report);
+            }
+            catch(Exception probeError)
+            {
+                report("REV87_NATIVE_APPEARANCE_TYPE_SCAN=UNAVAILABLE:"+
+                    probeError.GetType().Name+":"+
+                    probeError.Message.Replace('\r',' ').Replace('\n',' '));
+            }
             report("REV86_VIEWDEF_PROBE=READ_ONLY_COMPLETED"+
                 " NO_HOST_OR_SAVED_VIEW_MUTATION=True");
         }

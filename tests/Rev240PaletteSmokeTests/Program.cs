@@ -17,6 +17,8 @@ internal static class Program
             @"C:\Projects\SAMPLE\Orthos");
         Check(manager is UserControl && !manager.IsDisposed,
             "must be persistent UserControl, not a modal Form");
+        Check(manager.Controls.Find("SPTC_NATIVE_MODE_CAPTURE_87",true).Length==1,
+            "REV87 native mode capture stays inside the existing manager; no command added");
         Check(manager.Controls.Find("SPTC_UI_LAYOUT_SURFACE",true)
                 .Single().Controls.OfType<TabControl>().Single().TabCount==4,
             "four existing operation tabs preserved");
@@ -61,6 +63,7 @@ internal static class Program
         Rev84AppearanceSyncTests.Run();
         Rev85NonblockingAppearanceTests.Run();
         Rev86AppearanceProbeTests.Run();
+        Rev87NativeAppearanceTests.Run();
         TestBatchProgressReporting();
         TestProductionPackageCheckboxSaveRoundTrip();
         var surface=manager.Controls.Find(

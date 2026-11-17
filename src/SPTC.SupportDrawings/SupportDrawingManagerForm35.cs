@@ -85,6 +85,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly ComboBox hiddenLineMode=new();
     private readonly Label insulationLabel=new();
     private readonly ComboBox insulationMode=new();
+    private readonly Button captureNativeMode87=new();
     private readonly Label selectedViewCount = new();
     private readonly Label readinessHint = new();
     private readonly Button quickDraft = new();
@@ -123,6 +124,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private string projectRoot;
     internal SupportDrawingUiOptions? Settings { get; private set; }
     internal event Action<SupportDrawingUiOptions>? RunRequested;
+    internal event Action<string>? NativeModeCaptureRequested;
     internal bool IsRunning { get; private set; }
 
     internal SupportDrawingManagerForm35(string sourceDwg, string projectRoot,
@@ -295,6 +297,35 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             NativeOrthoAppearance83.InsulationChoices.Cast<object>().ToArray());
         insulationMode.SelectedItem=NativeOrthoAppearance83.ProjectDefault;
         orthoTab.Controls.Add(insulationMode);
+        // REV87: the four production commands must stay unchanged.
+        // Capture is a modeless Manager UI action, available while the
+        // operator is in the native Ortho Editor contextual ribbon.
+        // It records readbacks only; it cannot change hidden lines.
+        captureNativeMode87.Name="SPTC_NATIVE_MODE_CAPTURE_87";
+        captureNativeMode87.Text="Capture Native Editor Mode (REV87)";
+        orthoTab.Controls.Add(captureNativeMode87);
+        var nativeModeMenu87=new ContextMenuStrip();
+        foreach(string nativeMode in new[]{
+            NativeOrthoAppearance83.NoHidden,
+            NativeOrthoAppearance83.PipeHidden,
+            NativeOrthoAppearance83.AllHidden})
+        {
+            string selected=nativeMode;
+            var item=nativeModeMenu87.Items.Add(selected);
+            item.Click+=(_,_)=>{
+                if(IsRunning)return;
+                if(NativeModeCaptureRequested==null)
+                    SetStatus("REV87 native mode capture unavailable. "+
+                        "Open the Support Drawing Manager from Plant 3D.");
+                else
+                    NativeModeCaptureRequested.Invoke(selected);
+            };
+        }
+        captureNativeMode87.Click+=(_,_)=>{
+            if(!IsRunning)
+                nativeModeMenu87.Show(captureNativeMode87,
+                    new Point(0,captureNativeMode87.Height));
+        };
         quickDraft.Text="Draft: All 10 Views";
         quickDraft.Name="SPTC_QUICK_DRAFT_78";
         quickDraft.SetBounds(18,144,170,30);
@@ -536,7 +567,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             new Control[]{vLabel,views,selectedViewCount,all,six,four,none},
             new Control[]{outputLabel,outputMode,outputHint,batch,notice,
                 quickDraft,quickPhysical,readinessHint,
-                hiddenLineLabel,hiddenLineMode,insulationLabel,insulationMode},
+                hiddenLineLabel,hiddenLineMode,insulationLabel,insulationMode,
+                captureNativeMode87},
             new Control[]{qaHeader,generatedHistory,qaIndicator,lastQa,
                 openDwgFolder,openResult,copyQa,openDwg},
             new Control[]{autoDimLinear,referenceDimensions},
@@ -606,6 +638,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         outputFields[9].SetBounds(18,266,333,29);
         outputFields[10].SetBounds(368,238,336,23);
         outputFields[11].SetBounds(368,266,352,29);
+        outputFields[12].SetBounds(18,310,360,29);
         dimensions[0].SetBounds(18,8,390,27);
         dimensions[1].SetBounds(18,43,415,31);
         annotations[0].SetBounds(18,8,306,24);
@@ -666,6 +699,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             "Printable sheet, single-DWG Draft Overflow, or split sheets without changing scale.");
         uiTips.SetToolTip(hiddenLineMode,
             "Requested hidden-line output is best-effort after native drawing generation. If Plant cannot verify the native command, set appearance using Edit View > Output Appearance. DWG generation continues. Other views sharing the model can be affected on refresh.");
+        uiTips.SetToolTip(captureNativeMode87,
+            "REV87 read-only diagnostic. In native Ortho Editor first select the actual ribbon mode, then click this button and choose the SAME label. The three host readbacks are appended beside the active drawing. This does not change appearance.");
         uiTips.SetToolTip(insulationMode,
             "Requested insulation mode is checked independently after generating the native DWG. Saved view appearance must be verified in Plant Edit View; unsupported modes do not block drawing creation. Project Default makes no changes.");
         uiTips.SetToolTip(quickDraft,
