@@ -10,6 +10,7 @@ Rev71GeometryAnnotationTests.Run();
 Rev72XrefPipeEvidenceTests.Run();
 Rev73XrefPipeProximityTests.Run();
 Rev74SheetFallbackTests.Run();
+Rev75DraftOverflowTests.Run();
 var box = new BoundingBox3(10,20,30,110,220,330);
 Assert(box.SizeX == 100 && box.SizeY == 200 && box.SizeZ == 300, "model spans");
 Assert(box.MidX == 60 && box.MidY == 120 && box.MidZ == 180, "model midpoint");
