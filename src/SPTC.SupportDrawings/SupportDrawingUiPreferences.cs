@@ -28,7 +28,9 @@ internal static class SupportDrawingUiPreferences
         bool SupportFocus,string[] Views,bool LineNumber,bool Bop,
         bool Tos,bool Description,bool XrefMemberNames,
         bool AutoDimLinear,bool ReferenceDetailDimensions,
-        bool BatchOrtho);
+        bool BatchOrtho,
+        string HiddenLineMode=NativeOrthoAppearance83.ProjectDefault,
+        string InsulationMode=NativeOrthoAppearance83.ProjectDefault);
 
     internal static Values Defaults => new(
         SupportDrawingPaperScale39.Automatic,25,"",true,
@@ -68,6 +70,12 @@ internal static class SupportDrawingUiPreferences
            prefix.IndexOfAny("<>:\"/\\|?*".ToCharArray())>=0||
            prefix.Any(char.IsControl))
             throw new ArgumentException("Saved drawing prefix is invalid.");
+        // Both appearance modes are scoped native options, never
+        // approximated with manually generated dashed/insulation lines.
+        // Old per-project JSON without these optional fields loads
+        // the original Plant 3D default mode.
+        NativeOrthoAppearance83.ValidateHidden(value.HiddenLineMode);
+        NativeOrthoAppearance83.ValidateInsulation(value.InsulationMode);
         // Stable canonical order; never restore a nonstandard camera.
         return value with {
             Views=AllViews.Where(v=>value.Views.Contains(v,
