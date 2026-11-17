@@ -54,7 +54,10 @@ internal static class Rev282PlantSteelPlateDimensionsTests
             "adding a native plate does not remove existing overall dimensions");
         Need(topPlan.Dimensions.Any(d=>d.Kind=="PLATE"&&
                 d.Source.Contains("PLATE_",StringComparison.Ordinal)),
-            "at least one actual safe native plate DIMLINEAR is generated in a clear TOP test viewport");
+            "at least one safe native plate DIMLINEAR must be planned; "+
+            "dims="+topPlan.Dimensions.Count+
+            ", skips="+string.Join(";",topPlan.Skipped.Where(x=>
+                x.Contains("PLATE82",StringComparison.Ordinal))));
         Need(topPlan.UnintendedAcceptedWitnessIntersections==0,
             "native plate dimensions never bypass witness intersection safety");
         Need(topPlan.Dimensions.All(d=>
