@@ -54,6 +54,7 @@ internal static class Program
             "settings persist and Run can repeat with new source");
 
         TestScrollableDpiLayout();
+        TestRev77SessionHistoryAndCollapse();
         TestBatchProgressReporting();
         TestProductionPackageCheckboxSaveRoundTrip();
         var surface=manager.Controls.Find(
@@ -138,6 +139,76 @@ internal static class Program
         }
         Console.WriteLine(
             "REV77 sticky footer and seven collapsible sections at 100/125/150% DPI PASS");
+    }
+
+    private static void TestRev77SessionHistoryAndCollapse()
+    {
+        string root=Path.Combine(Path.GetTempPath(),
+            "SPTC_REV77_UI_"+Guid.NewGuid().ToString("N"));
+        string ortho=Path.Combine(root,"Orthos");
+        string folder=Path.Combine(ortho,"DWGs");
+        Directory.CreateDirectory(folder);
+        try
+        {
+            using var ui=new SupportDrawingManagerForm35(
+                Path.Combine(root,"MODEL.dwg"),root,ortho);
+            var hist=AllControls(ui).OfType<ListBox>()
+                .Single(b=>b is not CheckedListBox);
+            var qa=AllControls(ui).OfType<TextBox>()
+                .Single(b=>b.Multiline&&b.ReadOnly&&
+                    b.Text.Contains("No completed",StringComparison.Ordinal));
+            string first=Path.Combine(folder,"FIRST.dwg");
+            string second=Path.Combine(folder,"SECOND.dwg");
+            File.WriteAllText(first,"test artifact");
+            File.WriteAllText(second,"test artifact");
+            File.WriteAllText(Path.ChangeExtension(first,null)+"_RESULT.txt",
+                "REV75_DRAFT_OVERFLOW_ACTIVE=True\n"+
+                "NATIVE_ORTHO_VIEW_COUNT=10\n"+
+                "REV22_41_DIMENSIONS_CREATED=33\n"+
+                "STEP10_ACTUAL_VIEWPORT_OVERLAP_DETECTED=False\n"+
+                "FINAL_STATUS=TEN_NATIVE_VIEWS_AND_TITLES_MEMBER_LEADERS_PASS_DRAFT_ONLY\n");
+            ui.RecordGeneratedDwg(first);
+            Check(hist.Items.Count==1&&hist.SelectedIndex==0&&
+                  qa.Text.Contains("Dimensions: 33",StringComparison.Ordinal),
+                "actual first DWG and matching report reflected in history");
+            ui.SetRunning(true);
+            Check(hist.Items.Count==1,
+                "starting next command preserves project session history");
+            ui.SetRunning(false);
+            ui.RecordGeneratedDwg(second);
+            Check(hist.Items.Count==2,
+                "multiple real DWGs appended, even if later report missing");
+            hist.SelectedIndex=0;
+            Check(qa.Text.Contains("OFF-SHEET DRAFT",
+                     StringComparison.Ordinal),
+                "history selection restores original DWG-specific QA");
+            var tab=AllControls(ui).OfType<TabControl>().Single()
+                .TabPages[0];
+            var dim=AllControls(tab).OfType<Button>()
+                .Single(b=>b.Text.EndsWith("Dimensions",
+                    StringComparison.Ordinal));
+            Check(dim.Text.StartsWith("[+]",StringComparison.Ordinal),
+                "dimensions start collapsed without discarding controls");
+            dim.PerformClick();
+            Check(dim.Text.StartsWith("[-]",StringComparison.Ordinal),
+                "collapsible section expands on actual UI interaction");
+            dim.PerformClick();
+            Check(dim.Text.StartsWith("[+]",StringComparison.Ordinal),
+                "collapsible section closes again");
+            string next=Path.Combine(Path.GetTempPath(),
+                "SPTC_REV77_OTHER_"+Guid.NewGuid().ToString("N"));
+            ui.UpdateProjectContext(Path.Combine(next,"MODEL.dwg"),
+                next,Path.Combine(next,"Orthos"));
+            Check(hist.Items.Count==0,
+                "switching projects clears all previous project history");
+            Console.WriteLine(
+                "REV77 history, real QA selection, retention, collapse and project isolation PASS");
+        }
+        finally
+        {
+            try{Directory.Delete(root,recursive:true);}
+            catch(IOException){/* no native DWG files held by this test */}
+        }
     }
 
     private static void TestProductionPackageCheckboxSaveRoundTrip()
