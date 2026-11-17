@@ -721,6 +721,11 @@ public sealed class SupportOrthoTenViewGenerator
                 "REV73_XREF_PIPE_GEOMETRY_SUMMARY=SCAN_REGION_UNAVAILABLE");
         foreach(string diagnostic in rev73XrefGeometryNotes)
             ed.WriteMessage("\nSPTC "+diagnostic);
+        // REV83: Validate the two optional native output appearance
+        // settings before creating or registering another Ortho DWG.
+        NativeOrthoAppearance83.ValidateHidden(options.HiddenLineMode);
+        NativeOrthoAppearance83.ValidateInsulation(options.InsulationMode);
+
         // REV22.29: source-authenticated pipe metadata only.
         // XREF source ObjectIds and nested transforms come from loaded XREF DBs.
         var nativeRead=SupportOrthoPlantPipe27.Read(
@@ -2004,7 +2009,18 @@ public sealed class SupportOrthoTenViewGenerator
                             Log("STEP8_"+label+"_NATIVE_REQUESTED_PAPER_FRAME="+
                                 Point(item.Width,item.Height,0));
                             Log("STEP8_"+label+"_PRIVATE_GENERATEORTHOS_ENTERED");
-                            generate.Invoke(nativeView,args);
+                            // REV83: apply the requested appearance only
+                            // during native Plant GenerateOrthos. The scope
+                            // restores the original host settings even if
+                            // the private native generator throws. Do not
+                            // synthesize dashed or insulated geometry.
+                            using (NativeOrthoAppearance83.Begin(
+                                new NativeOrthoAppearanceAutoCAD83(targetDoc),
+                                options.HiddenLineMode,options.InsulationMode,
+                                message=>Log("REV83_"+label+"_"+message)))
+                            {
+                                generate.Invoke(nativeView,args);
+                            }
                             Log("STEP8_"+label+"_PRIVATE_GENERATEORTHOS_RETURNED");
                             if(NativeOrthoAxialEditorPreset.IsAxial(label))
                             {
