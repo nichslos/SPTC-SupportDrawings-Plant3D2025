@@ -269,9 +269,11 @@ public sealed class SupportOrthoTenViewGenerator
                     singleSourceIds=supportSelection.Value.GetObjectIds();
                 }
                 bool initialPageNoFit=false;
+                bool actualDraftOverflow75=false;
                 bool ok=await GenerateOne(sourceDoc,singleSourceIds,options,
                     progress,productionEntries.Add,
-                    onPaperFitFailure:()=>initialPageNoFit=true);
+                    onPaperFitFailure:()=>initialPageNoFit=true,
+                    onDraftOverflowUsed:()=>actualDraftOverflow75=true);
 
                 // REV74: the original one-sheet run remains FIRST and
                 // unchanged. Only an explicit user opt-in plus a verified
@@ -352,7 +354,14 @@ public sealed class SupportOrthoTenViewGenerator
 
                 bool pdfOk=!packageForRun.Enabled||
                     !packageForRun.PublishPdf;
-                if(productionEntries.Count>0&&packageForRun.Enabled&&
+                // REV75: never publish a clipped PDF from a real
+                // registered paper whose virtual DRAFT layout is larger.
+                if(actualDraftOverflow75)
+                    progress.Report("REV75: Native PDF blocked: all ten "+
+                        "native views remain in ONE DWG, potentially "+
+                        "outside the seed's physical plot area. DRAFT ONLY.");
+                if(!actualDraftOverflow75&&
+                   productionEntries.Count>0&&packageForRun.Enabled&&
                    packageForRun.PublishPdf)
                 {
                     pdfOk=true;
@@ -393,9 +402,11 @@ public sealed class SupportOrthoTenViewGenerator
                     "REV74 multi-sheet result ("+completedSheets+" sheet(s)): ":
                     "Single Ortho result: ")+
                     (ok?"DWG PASS":"DWG FAILED / INCOMPLETE")+
-                    (packageForRun.Enabled&&packageForRun.PublishPdf?
-                        " | PDF "+(pdfOk?"PASS":"FAILED / BLOCKED"):
-                        " | PDF NOT REQUESTED"));
+                    (actualDraftOverflow75?
+                        " | PDF BLOCKED (OFFSHEET DRAFT ONLY)":
+                        packageForRun.Enabled&&packageForRun.PublishPdf?
+                            " | PDF "+(pdfOk?"PASS":"FAILED / BLOCKED"):
+                            " | PDF NOT REQUESTED"));
             }
         }
         catch(System.Exception ex)
