@@ -50,6 +50,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly Panel scrollingWorkspace = new();
     private readonly Panel stickyFooter = new();
     private bool arrangingStickyFooter;
+    private bool arrangingWorkspace;
+    private int lastWorkspaceWidth=-1;
+    private readonly Label stickySummary=new();
+    private readonly Button fixSettings=new();
     private readonly List<CollapsibleSection> uiSections = new();
     private readonly Button essentialsButton=new();
     private readonly Button allSettingsButton=new();
@@ -62,6 +66,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         internal readonly Button Header=new();
         internal int BodyHeight;
         internal bool Expanded;
+        internal Control[] Fields=Array.Empty<Control>();
+        internal readonly Dictionary<Control,Rectangle> WideBounds=new();
     }
     private readonly ComboBox cubeMode = new();
     private readonly CheckBox autoSeed = new();
@@ -90,6 +96,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly TextBox lastQa = new();
     private readonly ListBox generatedHistory = new();
     private readonly Button openDwgFolder = new();
+    private readonly Button openDwg = new();
     private readonly Button openResult = new();
     private readonly Button copyQa = new();
     private readonly Label qaIndicator = new();
@@ -133,6 +140,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         layoutSurface.SetBounds(0,0,805,630);
         layoutSurface.BackColor = Color.White;
         scrollingWorkspace.Controls.Add(layoutSurface);
+        scrollingWorkspace.Resize+=(_,_)=>ResizeResponsivePalette();
         Controls.Add(scrollingWorkspace);
         Controls.Add(stickyFooter);
         stickyFooter.BringToFront();
@@ -467,6 +475,12 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         copyQa.Enabled=false;
         copyQa.Click+=(_,_)=>CopySelectedQa();
         orthoTab.Controls.Add(copyQa);
+        openDwg.Text="Open DWG";
+        openDwg.Name="SPTC_OPEN_DWG_79";
+        openDwg.SetBounds(521,287,155,30);
+        openDwg.Enabled=false;
+        openDwg.Click+=(_,_)=>OpenSelectedDwg();
+        orthoTab.Controls.Add(openDwg);
 
         outputMode.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
         batch.CheckedChanged+=(_,_)=>UpdateOutputModeUi();
@@ -484,15 +498,24 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             new Control[]{outputLabel,outputMode,outputHint,batch,notice,
                 quickDraft,quickPhysical,readinessHint},
             new Control[]{qaHeader,generatedHistory,qaIndicator,lastQa,
-                openDwgFolder,openResult,copyQa},
+                openDwgFolder,openResult,copyQa,openDwg},
             new Control[]{autoDimLinear,referenceDimensions},
             new Control[]{aLabel,line,bop,tos,description,xrefNames},
             new Control[]{settingsCaption,saveSettings,loadSettings,
                 resetSettings,productionSettings,privacy});
         InstallUiGuidance(orthoTab);
 
-        Label previewLabel = L("Preflight / configuration summary",12,6,390);
-        stickyFooter.Controls.Add(previewLabel);
+        stickySummary.Name="SPTC_FOOTER_SUMMARY_79";
+        stickySummary.Font=new Font("Segoe UI",9f,FontStyle.Bold);
+        stickySummary.ForeColor=Color.FromArgb(31,65,103);
+        stickySummary.AutoEllipsis=true;
+        stickyFooter.Controls.Add(stickySummary);
+        fixSettings.Name="SPTC_FIX_SETTINGS_79";
+        fixSettings.Text="Fix setting";
+        fixSettings.Size=new Size(112,29);
+        fixSettings.Visible=false;
+        fixSettings.Click+=(_,_)=>FocusRequiredSetting();
+        stickyFooter.Controls.Add(fixSettings);
         preview.Multiline=true;
         preview.ReadOnly=true;
         preview.ScrollBars=ScrollBars.Vertical;
@@ -518,6 +541,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // or source geometry can be replayed.
         LoadProjectPreferences(showFeedback:false);
         UpdateOutputModeUi();
+        ResizeResponsivePalette();
     }
 
     // REV77: section headers reflow inside the existing Ortho-tab's
