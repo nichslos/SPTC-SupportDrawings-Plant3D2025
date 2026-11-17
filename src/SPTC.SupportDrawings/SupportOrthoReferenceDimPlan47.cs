@@ -1690,7 +1690,8 @@ public static class SupportOrthoReferenceDimPlan47
     private static bool ValidMember(
         SupportOrthoAllViewDimPlan44.Member m)=>
         !string.IsNullOrWhiteSpace(m.Key)&&
-        (m.Kind=="STRUCTURE"||m.Kind=="SUPPORT")&&
+        (m.Kind=="STRUCTURE"||m.Kind=="SUPPORT"||
+         m.Kind=="PLATE")&&
         new[]{m.MinX,m.MinY,m.MinZ,m.MaxX,m.MaxY,m.MaxZ}
             .All(double.IsFinite)&&
         m.MinX<=m.MaxX&&m.MinY<=m.MaxY&&m.MinZ<=m.MaxZ;
