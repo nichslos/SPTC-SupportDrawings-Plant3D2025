@@ -549,14 +549,101 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         preferences[4].SetBounds(409,40,220,30);
         preferences[5].SetBounds(18,84,700,24);
 
-        AddCollapsibleSection(tab,"Source & OrthoCube",true,sourceFields);
-        AddCollapsibleSection(tab,"Native Views & Scale",true,nativeViews);
-        AddCollapsibleSection(tab,"Drawing Output",true,outputFields);
-        AddCollapsibleSection(tab,"Generation History & QA",true,qaFields);
+        AddCollapsibleSection(tab,"1. Source, Scale & Seed",true,sourceFields);
+        AddCollapsibleSection(tab,"2. Choose Native Views",true,nativeViews);
+        AddCollapsibleSection(tab,"3. Drawing Output",true,outputFields);
+        AddCollapsibleSection(tab,"Generation History & QA",false,qaFields);
         AddCollapsibleSection(tab,"Dimensions",false,dimensions);
         AddCollapsibleSection(tab,"Annotations & XREF",false,annotations);
         AddCollapsibleSection(tab,"Project Settings",false,preferences);
         ReflowSections(tab);
+    }
+
+    // REV78: guided discovery of essential fields and a safe, explicit
+    // shortcut for the already-supported native ten-view draft flow.
+    // No project coordinates, model paths or drawing dimensions are used.
+    private void InstallUiGuidance(TabPage tab)
+    {
+        essentialsButton.Name="SPTC_SHOW_BASICS_78";
+        essentialsButton.Text="Show essentials";
+        essentialsButton.SetBounds(8,7,159,31);
+        essentialsButton.Click+=(_,_)=>SetSectionVisibility(
+            tab,showAdvanced:false);
+        tab.Controls.Add(essentialsButton);
+
+        allSettingsButton.Name="SPTC_SHOW_ALL_78";
+        allSettingsButton.Text="Show all settings";
+        allSettingsButton.SetBounds(181,7,164,31);
+        allSettingsButton.Click+=(_,_)=>SetSectionVisibility(
+            tab,showAdvanced:true);
+        tab.Controls.Add(allSettingsButton);
+
+        uiTips.SetToolTip(essentialsButton,
+            "Show Source, Views and Output. Your hidden settings are preserved.");
+        uiTips.SetToolTip(allSettingsButton,
+            "Expand all sections to review dimensions, annotations and project settings.");
+        uiTips.SetToolTip(cubeMode,
+            "SupportFocus limits the native OrthoCube around the selected support.");
+        uiTips.SetToolTip(scale,
+            "Automatic allows standard output; Draft and Multiple Sheets require an explicit 1:N.");
+        uiTips.SetToolTip(customScale,
+            "Enter the exact 1:N denominator. It is not a paper dimension.");
+        uiTips.SetToolTip(autoSeed,
+            "Use an empty Ortho seed already registered in this Plant 3D project.");
+        uiTips.SetToolTip(prefix,
+            "Optional filename prefix. Leave blank to use native automatic naming.");
+        uiTips.SetToolTip(outputMode,
+            "Printable sheet, single-DWG Draft Overflow, or split sheets without changing scale.");
+        uiTips.SetToolTip(quickDraft,
+            "Select all ten views and Draft Overflow; keep your selected exact drawing scale.");
+        uiTips.SetToolTip(quickPhysical,
+            "Return to normal printable-sheet constraints without changing your view choices.");
+        uiTips.SetToolTip(batch,
+            "Run sequentially for support BLOCK references. Incompatible with Draft and Split.");
+        uiTips.SetToolTip(xrefNames,
+            "Annotate nearby verified XREF structural/support members with source drawing names.");
+        uiTips.SetToolTip(generatedHistory,
+            "Select any DWG from this project's current session to inspect its RESULT.txt.");
+        uiTips.SetToolTip(copyQa,
+            "Copy only the chosen DWG's measured QA summary to the clipboard.");
+        uiTips.SetToolTip(preflightButton,
+            "Review current selections. Physical page fit is verified during generation.");
+        uiTips.SetToolTip(runButton,
+            "Start the existing AutoCAD command using exactly the selected options.");
+    }
+
+    private void SetSectionVisibility(TabPage tab,bool showAdvanced)
+    {
+        if(IsRunning)return;
+        // First three sections are the primary drawing workflow.
+        // On the basics layout, retain results when outputs exist.
+        for(int i=0;i<uiSections.Count;i++)
+            uiSections[i].Expanded=showAdvanced||i<3||
+                (i==3&&outputHistory.Count>0);
+        ReflowSections(tab);
+    }
+
+    private void PrepareDraftViews()
+    {
+        if(IsRunning)return;
+        SetViewPreset("All");
+        batch.Checked=false;
+        outputMode.SelectedIndex=(int)SupportDrawingOutputMode76.Mode.Draft;
+        var tab=tabs.TabPages.Cast<TabPage>()
+            .First(p=>p.Name=="ortho");
+        uiSections[0].Expanded=true;
+        uiSections[1].Expanded=true;
+        uiSections[2].Expanded=true;
+        ReflowSections(tab);
+        UpdateOutputModeUi();
+        // An explicit scale is a user decision, never silently changed.
+        int denominator=SupportDrawingPaperScale39.Resolve(
+            scale.Text,(int)customScale.Value);
+        SetStatus(denominator>0?
+            "Draft configured: All 10 / 1:"+denominator+
+            ". PDF remains disabled for off-sheet drawings. Click Preflight to review.":
+            "All 10 Draft selected. Choose an exact 1:N scale "+
+            "before Run (Automatic is not valid for Draft Overflow).");
     }
 
     private void AddCollapsibleSection(TabPage tab,string name,
