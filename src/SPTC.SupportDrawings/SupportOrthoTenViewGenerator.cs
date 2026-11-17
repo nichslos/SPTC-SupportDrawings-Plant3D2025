@@ -3129,6 +3129,44 @@ public sealed class SupportOrthoTenViewGenerator
                     Log("PRODUCTION_TITLEBLOCK_ERROR="+ex);
                 }
             }
+            // REV84: REV83 restored the native host appearance after
+            // every GenerateOrthos call, leaving the ribbon at "No"
+            // despite the user's explicit All Hidden/Insulation choices.
+            // Keep the native host in sync with the selected appearance
+            // ONLY after successful generation, with the exact native
+            // hidden command/readback verified by the host adapter.
+            // Plant notes that shared model refreshes may propagate
+            // appearance; do not change any settings in Default mode.
+            if(succeeded&&(
+                options.HiddenLineMode!=NativeOrthoAppearance83.ProjectDefault||
+                options.InsulationMode!=NativeOrthoAppearance83.ProjectDefault))
+            {
+                try
+                {
+                    using var nativeRibbon84=NativeOrthoAppearance83.Begin(
+                        new NativeOrthoAppearanceAutoCAD83(targetDoc),
+                        options.HiddenLineMode,options.InsulationMode,
+                        message=>Log("REV84_FINAL_NATIVE_RIBBON_"+message));
+                    nativeRibbon84.KeepForNativeRibbonOnSuccess();
+                    Log("REV84_FINAL_NATIVE_RIBBON_SYNC=PASS"+
+                        " SCOPE=ACTIVE_PLANT_SESSION"+
+                        " UI_EDIT_VIEW_CONFIRMATION_REQUIRED=TRUE");
+                }
+                catch(System.Exception appearanceError)
+                {
+                    Log("REV84_FINAL_NATIVE_RIBBON_SYNC=FAILED:"+ 
+                        appearanceError.GetType().Name+":"+
+                        appearanceError.Message);
+                    SafeWriteToActiveEditor(
+                        "SPTC appearance warning: the requested native "+
+                        "Ortho Editor ribbon mode could not be verified. "+
+                        "Check the ribbon manually before issuing a drawing.");
+                }
+            }
+            else
+                Log("REV84_FINAL_NATIVE_RIBBON_SYNC="+
+                    (succeeded?"DEFAULT_NO_CHANGES":
+                        "SKIPPED_UNSUCCESSFUL_GENERATION"));
             SafeWriteToActiveEditor(
                 "SPTC: "+options.Views.Count+" native views and titles created. "+
                 annotated+" per-member leader annotations; "+
