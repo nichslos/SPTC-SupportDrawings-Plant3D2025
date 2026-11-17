@@ -266,7 +266,13 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         selectedViewCount.TextAlign=ContentAlignment.MiddleRight;
         selectedViewCount.ForeColor=Color.DimGray;
         orthoTab.Controls.Add(selectedViewCount);
-        views.ItemCheck+=(_,_)=>BeginInvoke(new Action(UpdateOutputModeUi));
+        views.ItemCheck+=(_,_)=>{
+            // The palette can apply saved presets before a WinForms
+            // window handle exists. Update synchronously in that case;
+            // ApplyPreferences refreshes again after all checks settle.
+            if(IsHandleCreated)
+                BeginInvoke(new Action(UpdateOutputModeUi));
+        };
         // Presets are UI-only: the native camera selection contract
         // remains the unchanged 10-element checked list. Individual
         // checkboxes remain editable after choosing any preset.
