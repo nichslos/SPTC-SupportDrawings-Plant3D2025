@@ -124,6 +124,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private string projectRoot;
     internal SupportDrawingUiOptions? Settings { get; private set; }
     internal event Action<SupportDrawingUiOptions>? RunRequested;
+    internal event Action<string>? NativeModeCaptureRequested;
     internal bool IsRunning { get; private set; }
 
     internal SupportDrawingManagerForm35(string sourceDwg, string projectRoot,
@@ -313,24 +314,11 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             var item=nativeModeMenu87.Items.Add(selected);
             item.Click+=(_,_)=>{
                 if(IsRunning)return;
-                var document=Autodesk.AutoCAD.ApplicationServices.
-                    Application.DocumentManager.MdiActiveDocument;
-                if(document==null)
-                {
-                    SetStatus("REV87 capture: no active Plant 3D document.");
-                    return;
-                }
-                try
-                {
-                    string result=NativeOrthoContextCapture87.Capture(
-                        document,selected);
-                    SetStatus(result);
-                }
-                catch(System.Exception ex)
-                {
-                    SetStatus("REV87 read-only native mode capture failed: "+
-                        ex.GetType().Name+": "+ex.Message);
-                }
+                if(NativeModeCaptureRequested==null)
+                    SetStatus("REV87 native mode capture unavailable. "+
+                        "Open the Support Drawing Manager from Plant 3D.");
+                else
+                    NativeModeCaptureRequested.Invoke(selected);
             };
         }
         captureNativeMode87.Click+=(_,_)=>{
