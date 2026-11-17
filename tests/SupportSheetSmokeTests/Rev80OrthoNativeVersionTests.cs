@@ -61,7 +61,7 @@ internal static class Rev80OrthoNativeVersionTests
     }
     private sealed class FakeOrtho
     {
-        public readonly FakeDlm DataLinksManager=new();
+        public FakeDlm DataLinksManager {get;}=new();
     }
     private static FakeRow Row(long id,string path,Guid guid,
         string? version) 
