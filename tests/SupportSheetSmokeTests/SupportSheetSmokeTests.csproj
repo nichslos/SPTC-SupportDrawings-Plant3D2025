@@ -57,6 +57,7 @@
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingQaStatus77.cs" Link="SupportDrawingQaStatus77.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoVersionPolicy80.cs" Link="NativeOrthoVersionPolicy80.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoVersionHandshake80.cs" Link="NativeOrthoVersionHandshake80.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoDimensionCollisionRecovery.cs" Link="SupportOrthoDimensionCollisionRecovery.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan27.cs" Link="SupportOrthoMemberCalloutPlan27.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoAnnotationCapacity71.cs" Link="SupportOrthoAnnotationCapacity71.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoPaperTypography66.cs" Link="SupportOrthoPaperTypography66.cs" />
