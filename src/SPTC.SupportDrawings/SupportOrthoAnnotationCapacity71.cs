@@ -161,17 +161,15 @@ internal static class SupportOrthoAnnotationCapacity71
     // actual projected anchors and native glyph widths are rechecked
     // after Plant creates the views. No false PDF success on failure.
     internal static bool TryPreflight(
-        IReadOnlyList<NativeOrthoTenViewPlan.Placement> placements,
+        IReadOnlyList<NativeOrthoViewTitlePlan.Frame> frames,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title> titles,
         double paperW,double paperH,bool bypass,
         double mandatoryHeight,out string reason)
     {
         reason="";
         if(mandatoryHeight<=0)return true;
-        var frames=placements.Select(v=>
-            new NativeOrthoViewTitlePlan.Frame(
-                v.Name,v.CenterX,v.CenterY,
-                v.PaperFrameWidth,v.PaperFrameHeight)).ToArray();
+        if(frames==null||titles==null||
+           frames.Count!=titles.Count)return false;
         var reserved=new List<Rect>();
         foreach(var f in frames)
         {
