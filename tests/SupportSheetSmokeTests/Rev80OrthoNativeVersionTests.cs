@@ -40,7 +40,7 @@ internal static class Rev80OrthoNativeVersionTests
     }
     private sealed class FakeDb
     {
-        public readonly FakeTables Tables=new();
+        public FakeTables Tables {get;}=new();
     }
     private sealed class FakeDlm
     {
