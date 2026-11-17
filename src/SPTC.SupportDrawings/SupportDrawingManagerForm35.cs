@@ -896,7 +896,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         tab.SuspendLayout();
         try
         {
-            int frameWidth=Math.Max(300,Math.Min(737,tabs.Width-28));
+            int frameWidth=Math.Max(300,Math.Min(737,tabs.Width-44));
             int y=47;
             for(int i=0;i<uiSections.Count;i++)
             {
