@@ -58,6 +58,7 @@ internal static class Program
         TestRev78GuidedSetup();
         TestRev79ResponsiveUx();
         Rev83OrthoAppearanceTests.Run();
+        Rev84AppearanceSyncTests.Run();
         TestBatchProgressReporting();
         TestProductionPackageCheckboxSaveRoundTrip();
         var surface=manager.Controls.Find(

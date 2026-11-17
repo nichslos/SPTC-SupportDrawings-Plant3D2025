@@ -75,6 +75,15 @@ internal static class NativeOrthoAppearance83
         private readonly bool changeHidden,changeInsulation;
         private readonly Action<string> report;
         private bool disposed;
+        private bool preserveForNativeRibbon84;
+        // Explicit selection is an opt-in to make the native Ortho
+        // Editor ribbon match the SPTC setting after successful output.
+        // Never retain on failure: disposal restores the old session.
+        internal void KeepForNativeRibbonOnSuccess()
+        {
+            if(disposed)throw new ObjectDisposedException(nameof(Scope));
+            preserveForNativeRibbon84=true;
+        }
         internal Scope(IHost host,object? oldHidden,object? oldInsulation,
             bool changeHidden,bool changeInsulation,Action<string> report)
         {
@@ -88,6 +97,12 @@ internal static class NativeOrthoAppearance83
         {
             if(disposed)return;
             disposed=true;
+            if(preserveForNativeRibbon84)
+            {
+                report("NATIVE_RIBBON_SESSION_SYNC=PRESERVED_EXPLICIT_SELECTION"+
+                    " OTHER_VIEWS_MAY_SHARE_MODEL_APPEARANCE");
+                return;
+            }
             Exception? error=null;
             if(changeInsulation&&oldInsulation!=null)
             {
@@ -144,6 +159,7 @@ internal static class NativeOrthoAppearance83
                 report("HIDDEN_LINE_REQUEST="+selectedHidden+
                     " NATIVE_KEYWORD="+keyword+
                     " HOST_READBACK="+observed+
+                    " HOST_MODE_VERIFICATION=ADAPTER_REQUIRED"+
                     " VIEW_OUTPUT_VERIFICATION=PENDING");
             }
             if(insulation.HasValue)

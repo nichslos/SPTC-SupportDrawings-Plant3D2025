@@ -277,7 +277,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         outputHint.AutoEllipsis=false;
         outputHint.ForeColor=Color.DimGray;
         orthoTab.Controls.Add(outputHint);
-        hiddenLineLabel.Text="Hidden Lines";
+        hiddenLineLabel.Text="Hidden Lines (new Ortho views)";
         hiddenLineLabel.Name="SPTC_HIDDEN_LINES_LABEL_83";
         orthoTab.Controls.Add(hiddenLineLabel);
         hiddenLineMode.Name="SPTC_HIDDEN_LINES_83";
@@ -286,7 +286,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             NativeOrthoAppearance83.HiddenChoices.Cast<object>().ToArray());
         hiddenLineMode.SelectedItem=NativeOrthoAppearance83.ProjectDefault;
         orthoTab.Controls.Add(hiddenLineMode);
-        insulationLabel.Text="Insulation";
+        insulationLabel.Text="Insulation (new Ortho views)";
         insulationLabel.Name="SPTC_INSULATION_LABEL_83";
         orthoTab.Controls.Add(insulationLabel);
         insulationMode.Name="SPTC_INSULATION_83";
@@ -665,9 +665,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         uiTips.SetToolTip(outputMode,
             "Printable sheet, single-DWG Draft Overflow, or split sheets without changing scale.");
         uiTips.SetToolTip(hiddenLineMode,
-            "Native Plant Ortho Editor hidden-line output. Project Default leaves existing behavior unchanged.");
+            "Select native Plant Ortho output. REV84 verifies the active host's command mode and keeps explicit choices in the Ortho ribbon after successful generation. Other views referencing the same model can be affected on refresh.");
         uiTips.SetToolTip(insulationMode,
-            "Native Ortho insulation visibility for piping. Project Default leaves current Plant behavior unchanged.");
+            "Select native Ortho insulation visibility for new views. REV84 keeps explicit choices in the active Plant ribbon after successful generation; shared-model views may be affected on update. Project Default makes no changes.");
         uiTips.SetToolTip(quickDraft,
             "Select all ten views and Draft Overflow; keep your selected exact drawing scale.");
         uiTips.SetToolTip(quickPhysical,
@@ -1512,6 +1512,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 " | XREF Names="+xrefNames.Checked+"\r\n"+
             "6. HIDDEN LINES: "+hiddenLineMode.Text+"\r\n"+
             "7. INSULATION: "+insulationMode.Text+"\r\n"+
+            "   Native ribbon: explicit modes remain active after a successful run; "+
+            "shared-model Ortho updates can affect other views.\r\n"+
             "8. DIMENSIONS: "+(autoDimLinear.Checked?
                 (referenceDimensions.Checked?
                     "Native H/V chain + overall":"Native H/V all members"):"OFF")+
