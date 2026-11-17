@@ -49,6 +49,7 @@
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan25.cs" Link="SupportOrthoMemberCalloutPlan25.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoPipeLabel27.cs" Link="SupportOrthoPipeLabel27.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan27.cs" Link="SupportOrthoMemberCalloutPlan27.cs" />
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoAnnotationCapacity71.cs" Link="SupportOrthoAnnotationCapacity71.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoPaperTypography66.cs" Link="SupportOrthoPaperTypography66.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberMText22.cs" Link="SupportOrthoMemberMText22.cs" />
   </ItemGroup>
