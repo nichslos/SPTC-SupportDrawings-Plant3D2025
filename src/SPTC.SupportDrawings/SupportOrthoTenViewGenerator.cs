@@ -325,7 +325,8 @@ public sealed class SupportOrthoTenViewGenerator
         Action<SupportProductionPackagePlan.Entry>? onProductionEntry=null,
         Action<IReadOnlyList<NativeOrthoMultiSheetPlan63.Sheet>>? onSheetSet=null,
         string sheetDrawingSuffix="",
-        Action<string>? onOutputDwg=null)
+        Action<string>? onOutputDwg=null,
+        Action? onPaperFitFailure=null)
     {
         Editor ed=sourceDoc.Editor;
         bool succeeded=false;
@@ -855,6 +856,8 @@ public sealed class SupportOrthoTenViewGenerator
                     }
                     else
                     {
+                        // REV74: no-fit before any project registration.
+                        onPaperFitFailure?.Invoke();
                         ed.WriteMessage("\nSPTC REV65: ONE SHEET REQUIRED. "+
                             "See REV65_SEED_CANDIDATE for the exact sheet "+
                             "media and rejection reason. "+
@@ -1026,6 +1029,9 @@ public sealed class SupportOrthoTenViewGenerator
         }
         catch(System.Exception ex)
         {
+            // Only physical fit failures can trigger opt-in splitting.
+            if(ex is NativeOrthoExactScalePlacement61.DoesNotFitException)
+                onPaperFitFailure?.Invoke();
             ed.WriteMessage("\nSPTC preflight failed before drawing registration: "+ex.Message+
                 (exactTenOnOneSheet64?
                     " REV64: ALL 10 views must remain in ONE native Ortho DWG "+
