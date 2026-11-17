@@ -55,9 +55,11 @@ internal static class Rev282PlantSteelPlateDimensionsTests
         Need(topPlan.Dimensions.Any(d=>d.Kind=="PLATE"&&
                 d.Source.Contains("PLATE_",StringComparison.Ordinal)),
             "at least one safe native plate DIMLINEAR must be planned; "+
-            "dims="+topPlan.Dimensions.Count+
+            "dims="+string.Join(",",topPlan.Dimensions.Select(d=>d.Source))+
             ", skips="+string.Join(";",topPlan.Skipped.Where(x=>
-                x.Contains("PLATE82",StringComparison.Ordinal))));
+                x.Contains("PLATE",StringComparison.OrdinalIgnoreCase)||
+                x.Contains("POST_AUDIT",StringComparison.OrdinalIgnoreCase)||
+                x.Contains("OPTIONAL_PROFILE",StringComparison.OrdinalIgnoreCase))));
         Need(topPlan.UnintendedAcceptedWitnessIntersections==0,
             "native plate dimensions never bypass witness intersection safety");
         Need(topPlan.Dimensions.All(d=>
