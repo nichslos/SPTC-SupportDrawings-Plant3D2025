@@ -141,6 +141,7 @@ internal static class SupportOrthoPipeDiscovery28
             if(entity==null)continue;
             if(entity is BlockReference br)
             {
+                bool attemptedXref=false;
                 try
                 {
                     var def=tr.GetObject(br.BlockTableRecord,
@@ -149,6 +150,7 @@ internal static class SupportOrthoPipeDiscovery28
                     var next=toHost*br.BlockTransform;
                     if(def.IsFromExternalReference || def.IsFromOverlayReference)
                     {
+                        attemptedXref=true;
                         Database xdb=def.GetXrefDatabase(false);
                         if(xdb==null)
                         {
@@ -190,6 +192,7 @@ internal static class SupportOrthoPipeDiscovery28
                 }
                 catch(System.Exception ex)
                 {
+                    if(attemptedXref)audit.Unresolved++;
                     notes.Add("XREF_REFERENCE_SKIPPED="+path+"/"+
                         br.Handle+":"+ex.GetType().Name+":"+ex.Message);
                 }
