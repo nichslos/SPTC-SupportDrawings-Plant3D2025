@@ -1722,8 +1722,18 @@ jobs:
           }
           if(-not $ui.Contains('Auto H/V dimensions: native members only') -or
              -not $ui.Contains('autoDimLinear.Checked = true') -or
-             -not $ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked);')) {
+             -not ($ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked);') -or
+                   $ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked,'))) {
             throw 'REV22.41 persistent UI option must be default ON and retained'
+          }
+          # REV74 opt-in: the original default and native dimension option
+          # remain mandatory even with an additional, non-persisted checkbox.
+          foreach($token in @('If All 10 won''t fit, split across sheets',
+              'bypassOneSheetLimit.Checked = false',
+              'bypassOneSheetLimit.Checked);')) {
+            if(-not $ui.Contains($token)) {
+              throw "REV74 opt-in native page split UI option missing: $token"
+            }
           }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
               'SupportOrthoMemberCalloutPlan27.Build',
