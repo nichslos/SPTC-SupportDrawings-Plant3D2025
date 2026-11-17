@@ -59,6 +59,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly Button allSettingsButton=new();
     private readonly ToolTip uiTips=new(){AutoPopDelay=12500,InitialDelay=550,ReshowDelay=250,ShowAlways=true};
     private readonly TabControl tabs = new();
+    private Control? brandingLogo;
+    private readonly Label headingTitle=new();
+    private readonly Label brandSubtitle=new();
     private sealed class CollapsibleSection
     {
         internal readonly Panel Frame=new();
@@ -68,6 +71,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         internal bool Expanded;
         internal Control[] Fields=Array.Empty<Control>();
         internal readonly Dictionary<Control,Rectangle> WideBounds=new();
+        internal bool Narrow;
     }
     private readonly ComboBox cubeMode = new();
     private readonly CheckBox autoSeed = new();
@@ -149,20 +153,17 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 
         // The supplied SPTC Engineering logo is embedded; no image path needed.
         // A larger top band keeps the full wordmark readable at Windows DPI.
-        layoutSurface.Controls.Add(SupportBranding36.MakeLogo(18, 10, 184, 118));
-        Label heading = new()
-        {
-            Text = "SUPPORT DRAWING MANAGER",
-            Font = new Font("Segoe UI", 13f, FontStyle.Bold),
-            Location = new Point(222, 21), Size = new Size(545, 33)
-        };
-        layoutSurface.Controls.Add(heading);
-        Label brandSubtitle = new()
-        {
-            Text = "SPTC Engineering  |  AutoCAD Plant 3D 2025",
-            ForeColor = Color.DimGray,
-            Location = new Point(222, 57), Size = new Size(545, 25)
-        };
+        brandingLogo=SupportBranding36.MakeLogo(18, 10, 184, 118);
+        layoutSurface.Controls.Add(brandingLogo);
+        headingTitle.Text="SUPPORT DRAWING MANAGER";
+        headingTitle.Font=new Font("Segoe UI",13f,FontStyle.Bold);
+        headingTitle.SetBounds(222,21,545,33);
+        headingTitle.AutoEllipsis=true;
+        layoutSurface.Controls.Add(headingTitle);
+        brandSubtitle.Text="SPTC Engineering  |  AutoCAD Plant 3D 2025";
+        brandSubtitle.ForeColor=Color.DimGray;
+        brandSubtitle.SetBounds(222,57,545,25);
+        brandSubtitle.AutoEllipsis=true;
         layoutSurface.Controls.Add(brandSubtitle);
         sourceLabel.Text = "Source: " + Path.GetFileName(sourceDwg) +
             "     |     Project: " + Path.GetFileName(projectRoot.TrimEnd('\\','/'));
@@ -675,7 +676,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private void AddCollapsibleSection(TabPage tab,string name,
         bool expanded,params Control[] children)
     {
-        var section=new CollapsibleSection{Expanded=expanded};
+        var section=new CollapsibleSection{Expanded=expanded,Fields=children};
         int left=children.Min(c=>c.Left);
         int top=children.Min(c=>c.Top);
         section.BodyHeight=children.Max(c=>c.Bottom)-top+14;
@@ -686,6 +687,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         section.Header.FlatAppearance.BorderSize=0;
         section.Header.Font=new Font("Segoe UI",9f,FontStyle.Bold);
         section.Header.TextAlign=ContentAlignment.MiddleLeft;
+        section.Header.AutoEllipsis=true;
         section.Header.BackColor=Color.FromArgb(236,242,248);
         section.Header.SetBounds(0,0,734,33);
         section.Body.SetBounds(0,35,734,section.BodyHeight);
@@ -696,6 +698,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             int dy=child.Top-top+5;
             section.Body.Controls.Add(child);
             child.Location=new Point(dx,dy);
+            section.WideBounds[child]=child.Bounds;
         }
         section.Frame.Controls.Add(section.Header);
         section.Frame.Controls.Add(section.Body);
