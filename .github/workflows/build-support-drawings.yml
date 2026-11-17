@@ -385,6 +385,50 @@ jobs:
              -not $test70.Contains('SmallestFitting(')) {
             throw 'REV70 all project-native paper sizes and custom/portrait bypass regression missing'
           }
+          # REV71: the actual paper geometry, not an arbitrary
+          # nearest-row-center, view preset or 12-member sample, must
+          # determine capacity for every required native annotation.
+          # The user-selected exact 1:N and all 10 native views remain
+          # mandatory; capacity is checked before registration and the
+          # live annotation writer still applies final collision QA.
+          $capacity71=Get-Content "$root/SupportOrthoAnnotationCapacity71.cs" -Raw
+          $callout71=Get-Content "$root/SupportOrthoMemberCalloutPlan27.cs" -Raw
+          $exact71=Get-Content "$root/NativeOrthoExactScalePlacement61.cs" -Raw
+          $single71=Get-Content "$root/NativeOrthoSingleSheet64.cs" -Raw
+          $test71=Get-Content 'tests/SupportSheetSmokeTests/Rev71GeometryAnnotationTests.cs' -Raw
+          foreach($token in @('TryPreflight(', 'TryFindBand(', 'TryGutter(',
+              'RequiredHeight(', 'IsFree(')) {
+            if(-not $capacity71.Contains($token)) {
+              throw "REV71 geometry derived annotation capacity missing: $token"
+            }
+          }
+          foreach($token in @('SupportOrthoAnnotationCapacity71.TryGutter(',
+              'SupportOrthoAnnotationCapacity71.IsFree(',
+              'SupportOrthoAnnotationCapacity71.TryFindBand(')) {
+            if(-not $callout71.Contains($token)) {
+              throw "REV71 geometry driven native annotation writer missing: $token"
+            }
+          }
+          foreach($token in @('mandatoryAnnotationHeightMm',
+              'SupportOrthoAnnotationCapacity71.TryPreflight(')) {
+            if(-not $exact71.Contains($token) -or
+               -not $single71.Contains('mandatoryAnnotationHeightMm')) {
+              throw "REV71 pre-registration annotation capacity gate missing: $token"
+            }
+          }
+          foreach($token in @('REV71_MANDATORY_NATIVE_LABEL_STACK_MM=',
+              'REV71_ANNOTATION_CAPACITY_POLICY=',
+              'mandatoryAnnotationHeightMm:requiredLabels71')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV71 project integration missing: $token"
+            }
+          }
+          if(-not $test71.Contains('mandatory.Length*cameras.Length') -or
+             -not $test71.Contains('TryPreflight(') -or
+             -not $test71.Contains('required*100') -or
+             -not $test71.Contains('no hard-coded view rules PASS')) {
+            throw 'REV71 crowded 12-object annotation and fail-closed regression missing'
+          }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
               'options.AutoSeed','options.Views.Count',
