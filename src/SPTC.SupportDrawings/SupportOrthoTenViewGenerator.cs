@@ -310,7 +310,7 @@ public sealed class SupportOrthoTenViewGenerator
                         if(generated)
                         {
                             completedSheets++;
-                            ed.WriteMessage("\nSPTC REV74: Sheet "+
+                            SafeWriteToActiveEditor("SPTC REV74: Sheet "+
                                 completedSheets+" generated at exact 1:"+
                                 options.ScaleDenominator+" with views "+
                                 string.Join(",",subset)+".");
