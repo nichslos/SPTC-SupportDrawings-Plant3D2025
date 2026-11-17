@@ -410,6 +410,38 @@ public sealed class SupportOrthoTenViewGenerator
         }
     }
 
+    // REV75: derive a draft-only virtual paper from CURRENT source
+    // geometry, real source member labels and the original exact scale.
+    // The real registered paper media and plot settings remain untouched.
+    private static NativeOrthoDraftOverflow75.Canvas DraftCanvas75(
+        NativeOrthoLayout.Plan layout,
+        IReadOnlyList<SupportOrthoMemberCalloutPlan27.Member> annotations,
+        IReadOnlyList<string> views,int denominator,
+        double actualWidthMm,double actualHeightMm)
+    {
+        if(denominator<=0||views.Count!=10)
+            throw new ArgumentException(
+                "REV75 virtual canvas requires exactly ten views and explicit 1:N.");
+        return NativeOrthoDraftOverflow75.Choose(
+            actualWidthMm,actualHeightMm,(width,height)=>{
+                var plan=NativeOrthoTenViewPlan.Build(layout,width,height)
+                    with{Denominator=denominator,Scale=1.0/denominator};
+                double height71=SupportOrthoAnnotationCapacity71.RequiredHeight(
+                    annotations,width,height);
+                try
+                {
+                    _=NativeOrthoExactScalePlacement61.Build(
+                        plan,views,width,height,
+                        mandatoryAnnotationHeightMm:height71);
+                    return true;
+                }
+                catch(NativeOrthoExactScalePlacement61.DoesNotFitException)
+                {
+                    return false;
+                }
+            });
+    }
+
     private async Task<bool> GenerateOne(Document sourceDoc,
         ObjectId[]? selectedOverride,SupportDrawingUiOptions options,
         SupportDrawingProgressForm35 progress,
@@ -417,7 +449,8 @@ public sealed class SupportOrthoTenViewGenerator
         Action<IReadOnlyList<NativeOrthoMultiSheetPlan63.Sheet>>? onSheetSet=null,
         string sheetDrawingSuffix="",
         Action<string>? onOutputDwg=null,
-        Action? onPaperFitFailure=null)
+        Action? onPaperFitFailure=null,
+        Action? onDraftOverflowUsed=null)
     {
         Editor ed=sourceDoc.Editor;
         bool succeeded=false;
@@ -819,6 +852,7 @@ public sealed class SupportOrthoTenViewGenerator
         // The title-block BLOCK/TEXT/PDF seed remains unchanged and
         // may be visibly overprinted; this is DRAFT-only mode.
         bool bypassTitleBlock69=false;
+        bool draftOverflow75=false;
         if(options.AutoSeed)
         {
             try
@@ -839,6 +873,7 @@ public sealed class SupportOrthoTenViewGenerator
                 {
                     var validMedia=new List<NativeOrthoSingleSheet64.Seed>();
                     var bypassMedia69=new List<NativeOrthoSingleSheet64.Seed>();
+                    var draftMedia75=new List<NativeOrthoSingleSheet64.Seed>();
                     var reviews=new List<NativeOrthoSeedDiagnostics65.Result>();
                     int checkedEmpty=0;
                     foreach(string path in candidates)
@@ -865,6 +900,9 @@ public sealed class SupportOrthoTenViewGenerator
                             previewDb.CloseInput(true);
                             var previewSheet=CurrentPaperDetails(previewDb,
                                 FindPaperLayout(previewDb));
+                            draftMedia75.Add(new NativeOrthoSingleSheet64.Seed(
+                                Path.GetFullPath(path),
+                                previewSheet.WidthMm,previewSheet.HeightMm,true));
                             double requiredLabels71=
                                 SupportOrthoAnnotationCapacity71.RequiredHeight(
                                     sourceAnnotations,
@@ -945,6 +983,27 @@ public sealed class SupportOrthoTenViewGenerator
                                 " WARNING: printed title-block graphics may "+
                                 "overlap the ten views. DRAFT / REVIEW REQUIRED.":""));
                     }
+                    else if(options.AllowDraftOverflow&&
+                        draftMedia75.Count>0)
+                    {
+                        // REV75: source paper remains unchanged. Choose the
+                        // largest VERIFIED registered EMPTY native seed so
+                        // the resulting draft extends beyond the least
+                        // possible printable area. This is NOT a PDF issue.
+                        var draftSeed=draftMedia75.OrderByDescending(p=>
+                            p.WidthMm*p.HeightMm).ThenBy(p=>p.Path,
+                                StringComparer.OrdinalIgnoreCase).First();
+                        seed=draftSeed.Path;
+                        draftOverflow75=true;
+                        onDraftOverflowUsed?.Invoke();
+                        ed.WriteMessage("\nSPTC REV75: DRAFT OVERFLOW ENABLED. "+
+                            "Keep all ten native 1:"+
+                            options.ScaleDenominator+
+                            " views in one DWG using a virtual drafting "+
+                            "canvas; actual printable paper is unchanged. "+
+                            "NATIVE PDF ISSUE DISABLED. Seed: "+
+                            Path.GetFileName(seed));
+                    }
                     else
                     {
                         // REV74: no-fit before any project registration.
@@ -994,6 +1053,13 @@ public sealed class SupportOrthoTenViewGenerator
         else
         {
             seed=Path.GetFullPath(options.SeedPath);
+            // Explicit manual seed selected by the user. The opt-in
+            // overflow canvas may extend beyond that native paper.
+            if(options.AllowDraftOverflow&&exactTenOnOneSheet64)
+            {
+                draftOverflow75=true;
+                onDraftOverflowUsed?.Invoke();
+            }
         }
         progress.Report("Preflight: source registered; native seed "+Path.GetFileName(seed));
         if (!NativeOrthoRegistrationNames.IsInsideProjectDirectory(seed, part.ProjectRoot) ||
