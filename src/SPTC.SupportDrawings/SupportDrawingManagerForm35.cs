@@ -622,9 +622,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         tabs.Enabled=!running;
         if(running)
         {
-            ClearGeneratedOutput();
-            lastQa.Text="Generating... QA is available only after the native DWG report is written.";
-            SetStatus("Operation queued / in progress. Select CAD entities when prompted.");
+            // REV77: history persists across runs within this project.
+            // New output is appended only when GenerateOne actually
+            // completes; an aborted run cannot fabricate QA results.
+            SetStatus("Generating... previous DWGs remain in session history.");
         }
         else
             SetStatus("Ready for another operation. Settings retained.");
@@ -786,16 +787,22 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 
     private void ClearGeneratedOutput()
     {
+        outputHistory.Clear();
+        generatedHistory.Items.Clear();
         lastOutputDwg=null;
         lastResultTxt=null;
-        completedOutputCount=0;
+        lastCopiedSummary="";
         openDwgFolder.Enabled=false;
         openResult.Enabled=false;
-        lastQa.Text="No completed Ortho drawing in this session.";
+        copyQa.Enabled=false;
+        qaIndicator.Text="QA status: UNVERIFIED";
+        qaIndicator.ForeColor=Color.DimGray;
+        lastQa.Text="No generated Ortho drawings in this project session.";
     }
 
     // Called only with a DWG actually emitted by GenerateOne, never with
-    // an inferred name or a guessed output path.
+    // a guessed output name or arbitrary report path. All history entries
+    // are scoped to the current project and the current palette session.
     internal void RecordGeneratedDwg(string dwg)
     {
         if(IsDisposed)return;
@@ -806,32 +813,90 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         }
         if(string.IsNullOrWhiteSpace(dwg)||!File.Exists(dwg))
             return;
-        lastOutputDwg=Path.GetFullPath(dwg);
-        completedOutputCount++;
-        string folder=Path.GetDirectoryName(lastOutputDwg)??"";
-        lastResultTxt=Path.Combine(folder,
-            Path.GetFileNameWithoutExtension(lastOutputDwg)+"_RESULT.txt");
-        openDwgFolder.Enabled=Directory.Exists(folder);
-        openResult.Enabled=File.Exists(lastResultTxt);
-        string report=Path.GetFileName(lastOutputDwg)+
-            " ("+completedOutputCount+" generated DWG(s) in this run)";
-        if(openResult.Enabled)
+        string full=Path.GetFullPath(dwg);
+        // Avoid reusing an output from another project if a callback
+        // reaches this palette after its source project was switched.
+        if(!NativeOrthoRegistrationNames.IsInsideProjectDirectory(
+            full,projectRoot))
+            return;
+        string report=Path.Combine(Path.GetDirectoryName(full)??"",
+            Path.GetFileNameWithoutExtension(full)+"_RESULT.txt");
+        int existing=outputHistory.FindIndex(x=>
+            x.Path.Equals(full,StringComparison.OrdinalIgnoreCase));
+        if(existing>=0)
         {
-            try
+            // A regenerated file has fresh real evidence. Re-select it.
+            outputHistory.RemoveAt(existing);
+            generatedHistory.Items.RemoveAt(existing);
+        }
+        outputHistory.Add(new GeneratedDwg(full,report));
+        generatedHistory.Items.Add(
+            outputHistory.Count.ToString("00")+"  "+Path.GetFileName(full));
+        generatedHistory.SelectedIndex=outputHistory.Count-1;
+    }
+
+    // Selection-only read; no mutation of a DWG, source file, project
+    // registration, PDF sidecar or a result TXT.
+    private void RefreshSelectedQa()
+    {
+        int index=generatedHistory.SelectedIndex;
+        bool has=index>=0&&index<outputHistory.Count;
+        lastOutputDwg=has?outputHistory[index].Path:null;
+        lastResultTxt=has?outputHistory[index].ResultPath:null;
+        openDwgFolder.Enabled=has&&Directory.Exists(
+            Path.GetDirectoryName(lastOutputDwg??""));
+        openResult.Enabled=has&&File.Exists(lastResultTxt);
+        copyQa.Enabled=false;
+        if(!has)
+        {
+            lastQa.Text="Select a generated DWG to review its recorded QA.";
+            qaIndicator.Text="QA status: UNVERIFIED";
+            qaIndicator.ForeColor=Color.DimGray;
+            return;
+        }
+        string name=Path.GetFileName(lastOutputDwg);
+        string risk="UNVERIFIED";
+        string detail="No matching RESULT.txt. Actual QA cannot be verified.";
+        try
+        {
+            if(openResult.Enabled)
             {
-                report+="\r\n"+SupportDrawingQaSummary76.Format(
-                    SupportDrawingQaSummary76.Read(
-                        File.ReadAllText(lastResultTxt)));
-            }
-            catch(System.Exception ex) when (ex is IOException or
-                UnauthorizedAccessException)
-            {
-                report+="\r\nRESULT.txt unavailable: "+ex.Message;
+                string raw=File.ReadAllText(lastResultTxt!);
+                var summary=SupportDrawingQaSummary76.Read(raw);
+                risk=SupportDrawingQaStatus77.Assess(raw,summary);
+                detail=SupportDrawingQaSummary76.Format(summary);
             }
         }
-        else
-            report+="\r\nRESULT.txt not written. QA unverified.";
-        lastQa.Text=report;
+        catch(System.Exception ex) when(ex is IOException or
+            UnauthorizedAccessException)
+        {
+            detail="RESULT.txt could not be read: "+ex.Message;
+        }
+        qaIndicator.Text="QA status: "+risk;
+        qaIndicator.ForeColor=risk.StartsWith("FAIL",
+            StringComparison.Ordinal)?Color.Firebrick:
+            risk.StartsWith("PASS",StringComparison.Ordinal)?
+                Color.DarkGreen:risk=="REVIEW"?
+                    Color.DarkGoldenrod:Color.DimGray;
+        lastCopiedSummary=name+"\r\n"+qaIndicator.Text+"\r\n"+detail;
+        lastQa.Text=lastCopiedSummary;
+        copyQa.Enabled=openResult.Enabled;
+    }
+
+    private void CopySelectedQa()
+    {
+        if(!copyQa.Enabled||lastCopiedSummary.Length==0)return;
+        try
+        {
+            Clipboard.SetText(lastCopiedSummary);
+            SetStatus("Copied the selected DWG's report-derived QA summary.");
+        }
+        catch(System.Exception ex) when(ex is
+            System.Runtime.InteropServices.ExternalException or
+            System.Threading.ThreadStateException)
+        {
+            SetStatus("Clipboard unavailable: "+ex.Message);
+        }
     }
 
     private void OpenGeneratedOutput(bool reportFile)
