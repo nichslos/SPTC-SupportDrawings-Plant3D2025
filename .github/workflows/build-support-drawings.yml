@@ -161,10 +161,16 @@ jobs:
             throw 'REV64 unable to validate queued Ortho orchestration'
           }
           $queuedOrtho=$gen.Substring($queueStart,$queueEnd-$queueStart)
+          # REV74 is explicit opt-in only; preserve the REV64 default
+          # one-sheet path, but allow a validated -Snn suffix inside the
+          # guarded optional fallback. The obsolete automatic REV63
+          # sheet-splitting route remains forbidden.
           if($queuedOrtho.Contains('sheets!=null') -or
              $queuedOrtho.Contains('NativeOrthoMultiSheetPlan63') -or
-             $queuedOrtho.Contains('sheetDrawingSuffix:')) {
-            throw 'REV64 All10 default flow still splits into multiple native sheets'
+             ($queuedOrtho.Contains('sheetDrawingSuffix:') -and
+              (-not $queuedOrtho.Contains('NativeOrthoSheetSplit74.Eligible(') -or
+               -not $queuedOrtho.Contains('options.BypassOneSheetLimit')))) {
+            throw 'REV64 default flow may not split without REV74 opt-in'
           }
           foreach($token in @('bool ok=await GenerateOne(sourceDoc,singleSourceIds',
               'NativeOrthoSingleSheet64.SmallestFitting(',
@@ -1722,8 +1728,18 @@ jobs:
           }
           if(-not $ui.Contains('Auto H/V dimensions: native members only') -or
              -not $ui.Contains('autoDimLinear.Checked = true') -or
-             -not $ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked);')) {
+             -not ($ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked);') -or
+                   $ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked,'))) {
             throw 'REV22.41 persistent UI option must be default ON and retained'
+          }
+          # REV74 opt-in: the original default and native dimension option
+          # remain mandatory even with an additional, non-persisted checkbox.
+          foreach($token in @('If All 10 won''t fit, split across sheets',
+              'bypassOneSheetLimit.Checked = false',
+              'bypassOneSheetLimit.Checked);')) {
+            if(-not $ui.Contains($token)) {
+              throw "REV74 opt-in native page split UI option missing: $token"
+            }
           }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
               'SupportOrthoMemberCalloutPlan27.Build',

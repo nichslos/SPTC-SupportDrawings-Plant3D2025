@@ -268,20 +268,109 @@ public sealed class SupportOrthoTenViewGenerator
                     if(supportSelection.Status!=PromptStatus.OK)return;
                     singleSourceIds=supportSelection.Value.GetObjectIds();
                 }
+                bool initialPageNoFit=false;
                 bool ok=await GenerateOne(sourceDoc,singleSourceIds,options,
-                    progress,productionEntries.Add);
+                    progress,productionEntries.Add,
+                    onPaperFitFailure:()=>initialPageNoFit=true);
+
+                // REV74: the original one-sheet run remains FIRST and
+                // unchanged. Only an explicit user opt-in plus a verified
+                // physical NO_FIT may initiate multiple independently
+                // validated native sheets. Never split on source/SDK errors.
+                bool didSplit=false;
+                int completedSheets=ok?1:0;
+                if(!ok&&initialPageNoFit&&
+                   NativeOrthoSheetSplit74.Eligible(
+                       options.BypassOneSheetLimit,options.ScaleDenominator,
+                       options.Views.Count,options.BatchOrtho))
+                {
+                    didSplit=true;
+                    ed.WriteMessage("\nSPTC REV74: The exact 1:"+
+                        options.ScaleDenominator+" / All 10 view group "+
+                        "does not fit one registered sheet. User selected "+
+                        "safe multi-sheet fallback; no individual sheet "+
+                        "will bypass page boundaries or native view checks.");
+                    progress.Report("REV74: exact 1:"+
+                        options.ScaleDenominator+
+                        " retained; splitting native view groups into "+
+                        "independently checked Ortho DWGs.");
+
+                    int attemptedPartNumber=0;
+                    async Task<bool> GeneratePartition(
+                        IReadOnlyList<string> subset)
+                    {
+                        bool childPageNoFit=false;
+                        AcadApp.DocumentManager.MdiActiveDocument=sourceDoc;
+                        var subOptions=options with {
+                            Views=subset,BypassOneSheetLimit=false
+                        };
+                        // Use the existing validated native -Snn package
+                        // identifier so separate sheets never share one
+                        // project drawing number in the production register.
+                        string partSuffix="-S"+(++attemptedPartNumber)
+                            .ToString("00",CultureInfo.InvariantCulture);
+                        bool generated=await GenerateOne(
+                            sourceDoc,singleSourceIds,subOptions,progress,
+                            productionEntries.Add,
+                            sheetDrawingSuffix:partSuffix,
+                            onPaperFitFailure:()=>childPageNoFit=true);
+                        if(generated)
+                        {
+                            completedSheets++;
+                            SafeWriteToActiveEditor("SPTC REV74: Sheet "+
+                                completedSheets+" generated at exact 1:"+
+                                options.ScaleDenominator+" with views "+
+                                string.Join(",",subset)+".");
+                            return true;
+                        }
+                        if(!childPageNoFit||subset.Count<2)
+                        {
+                            progress.Report("REV74: Native sheet could not "+
+                                "be generated for views "+
+                                string.Join(",",subset)+
+                                "; no unchecked drawings substituted.");
+                            return false;
+                        }
+                        // Pure view-list bisection; project dimensions,
+                        // pipe tags, file paths and coordinates NEVER
+                        // affect the split partition.
+                        var halves=NativeOrthoSheetSplit74.Bisect(subset);
+                        bool firstOk=await GeneratePartition(halves.First);
+                        bool secondOk=await GeneratePartition(halves.Second);
+                        return firstOk&&secondOk;
+                    }
+                    var groups=NativeOrthoSheetSplit74.Bisect(
+                        options.Views);
+                    bool group1=await GeneratePartition(groups.First);
+                    bool group2=await GeneratePartition(groups.Second);
+                    ok=group1&&group2&&completedSheets>0;
+                    progress.Report("REV74: generated "+
+                        completedSheets+" validated native sheet(s). "+
+                        (ok?"ALL REQUESTED VIEWS COMPLETE":
+                            "INCOMPLETE — review individual sheet diagnostics"));
+                }
+
                 bool pdfOk=!packageForRun.Enabled||
                     !packageForRun.PublishPdf;
                 if(productionEntries.Count>0&&packageForRun.Enabled&&
                    packageForRun.PublishPdf)
                 {
-                    var published=await SupportProductionNativePdfPublisher.PublishAsync(
-                        sourceDoc,packageForRun,productionEntries[0],progress.Report);
-                    productionEntries[0]=published;
-                    pdfOk=published.PdfStatus=="PDF_PUBLISHED_VERIFIED";
-                    try {SupportProductionPackagePlan.SaveEntry(published);}
-                    catch(System.Exception ex)
-                    {progress.Report("PDF sidecar update error: "+ex.Message);}
+                    pdfOk=true;
+                    for(int sheetIndex=0;sheetIndex<productionEntries.Count;
+                        sheetIndex++)
+                    {
+                        var published=await SupportProductionNativePdfPublisher.PublishAsync(
+                            sourceDoc,packageForRun,productionEntries[sheetIndex],
+                            progress.Report);
+                        productionEntries[sheetIndex]=published;
+                        bool thisPdf=published.PdfStatus=="PDF_PUBLISHED_VERIFIED";
+                        pdfOk=thisPdf&&pdfOk;
+                        try {SupportProductionPackagePlan.SaveEntry(published);}
+                        catch(System.Exception ex)
+                        {
+                            progress.Report("PDF sidecar update error: "+ex.Message);
+                        }
+                    }
                 }
                 progress.AdvanceWorkload(ok&&pdfOk);
                 if(productionEntries.Count>0)
@@ -300,8 +389,10 @@ public sealed class SupportOrthoTenViewGenerator
                         progress.Report("Register not written: "+ex.Message);
                     }
                 }
-                progress.Report("Single Ortho result: "+
-                    (ok?"DWG PASS":"DWG FAILED")+
+                progress.Report((didSplit?
+                    "REV74 multi-sheet result ("+completedSheets+" sheet(s)): ":
+                    "Single Ortho result: ")+
+                    (ok?"DWG PASS":"DWG FAILED / INCOMPLETE")+
                     (packageForRun.Enabled&&packageForRun.PublishPdf?
                         " | PDF "+(pdfOk?"PASS":"FAILED / BLOCKED"):
                         " | PDF NOT REQUESTED"));
@@ -325,7 +416,8 @@ public sealed class SupportOrthoTenViewGenerator
         Action<SupportProductionPackagePlan.Entry>? onProductionEntry=null,
         Action<IReadOnlyList<NativeOrthoMultiSheetPlan63.Sheet>>? onSheetSet=null,
         string sheetDrawingSuffix="",
-        Action<string>? onOutputDwg=null)
+        Action<string>? onOutputDwg=null,
+        Action? onPaperFitFailure=null)
     {
         Editor ed=sourceDoc.Editor;
         bool succeeded=false;
@@ -855,6 +947,8 @@ public sealed class SupportOrthoTenViewGenerator
                     }
                     else
                     {
+                        // REV74: no-fit before any project registration.
+                        onPaperFitFailure?.Invoke();
                         ed.WriteMessage("\nSPTC REV65: ONE SHEET REQUIRED. "+
                             "See REV65_SEED_CANDIDATE for the exact sheet "+
                             "media and rejection reason. "+
@@ -1026,6 +1120,9 @@ public sealed class SupportOrthoTenViewGenerator
         }
         catch(System.Exception ex)
         {
+            // Only physical fit failures can trigger opt-in splitting.
+            if(ex is NativeOrthoExactScalePlacement61.DoesNotFitException)
+                onPaperFitFailure?.Invoke();
             ed.WriteMessage("\nSPTC preflight failed before drawing registration: "+ex.Message+
                 (exactTenOnOneSheet64?
                     " REV64: ALL 10 views must remain in ONE native Ortho DWG "+
