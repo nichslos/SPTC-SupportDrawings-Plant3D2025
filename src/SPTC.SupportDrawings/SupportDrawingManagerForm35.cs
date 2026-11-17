@@ -488,6 +488,17 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         scale.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
         customScale.ValueChanged+=(_,_)=>UpdateOutputModeUi();
         tabs.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
+        autoSeed.CheckedChanged+=(_,_)=>UpdateOutputModeUi();
+        seed.TextChanged+=(_,_)=>UpdateOutputModeUi();
+        prefix.TextChanged+=(_,_)=>UpdateOutputModeUi();
+        autoDimLinear.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        referenceDimensions.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        line.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        bop.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        tos.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        description.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        xrefNames.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        cubeMode.SelectedIndexChanged+=(_,_)=>UpdateSectionSummaries();
 
         // REV77: all settings scroll in their own Ortho tab. The user
         // can collapse any section without losing its values.
@@ -1122,26 +1133,38 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                     scale.Text,(int)customScale.Value);
         }
         catch(ArgumentException){denominator=0;}
-        bool valid=SupportDrawingOutputMode76.Eligible(
-            mode,count,denominator,batch.Checked);
         bool isOrtho=tabs.SelectedTab?.Name=="ortho";
+        Control? issue=RequiredSetting(count,denominator,mode,isOrtho);
+        bool eligible=SupportDrawingOutputMode76.Eligible(
+            mode,count,denominator,batch.Checked);
+        bool valid=eligible&&issue==null;
         string modeInfo=SupportDrawingOutputMode76.Explanation(mode);
         outputHint.Text=modeInfo+
-            (!valid?"\r\nTo continue: select all 10 views, "+
-                "choose a 1:N scale, and turn Batch OFF.":"");
+            (!valid?"\r\nTo continue: "+RequiredAction(issue):"");
         outputHint.ForeColor=!valid?Color.Firebrick:
             mode==SupportDrawingOutputMode76.Mode.Draft?
                 Color.DarkGoldenrod:Color.DimGray;
         string scaleText=denominator>0?"1:"+denominator:"Automatic";
+        string modeName=mode switch
+        {
+            SupportDrawingOutputMode76.Mode.Draft=>"Draft DWG · PDF BLOCKED",
+            SupportDrawingOutputMode76.Mode.Split=>"Multiple sheets · Printable",
+            _=>"Single sheet · Paper fit"
+        };
+        stickySummary.Text=count+"/10 views  ·  "+scaleText+
+            "  ·  "+modeName;
+        stickySummary.ForeColor=issue!=null?Color.Firebrick:
+            mode==SupportDrawingOutputMode76.Mode.Draft?
+                Color.DarkGoldenrod:Color.FromArgb(31,65,103);
+        uiTips.SetToolTip(stickySummary,stickySummary.Text+
+            (issue!=null?"  — "+RequiredAction(issue):""));
         string readiness;
         if(IsRunning)
             readiness="Generating... CAD source selection and progress remain in AutoCAD.";
         else if(!isOrtho)
             readiness="Ready: use the original "+tabs.SelectedTab?.Text+" workflow.";
-        else if(count==0)
-            readiness="Select at least one native view before running.";
-        else if(!valid)
-            readiness="Action required: All 10 views, exact 1:N and Batch OFF.";
+        else if(issue!=null)
+            readiness="Action required: "+RequiredAction(issue);
         else if(mode==SupportDrawingOutputMode76.Mode.Draft)
             readiness="Ready: "+count+" views / "+scaleText+
                 " / ONE DWG — DRAFT ONLY (native PDF blocked).";
@@ -1152,11 +1175,21 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             readiness="Ready: "+count+" view(s) / "+scaleText+
                 " / physical paper fit enforced.";
         readinessHint.Text=readiness;
-        readinessHint.ForeColor=(!valid||count==0)&&isOrtho?
+        readinessHint.ForeColor=issue!=null&&isOrtho?
             Color.Firebrick:mode==SupportDrawingOutputMode76.Mode.Draft?
                 Color.DarkGoldenrod:Color.DarkGreen;
-        if(runButton!=null)
-            runButton.Enabled=!IsRunning&&(!isOrtho||count>0&&valid);
+        fixSettings.Visible=!IsRunning&&isOrtho&&issue!=null;
+        fixSettings.Enabled=fixSettings.Visible;
+        runButton.Enabled=!IsRunning&&(!isOrtho||valid);
+        if(uiSections.Count==7)
+        {
+            UpdateSectionSummaries();
+            // Custom scale fields become visible without requiring the
+            // user to undock the responsive palette.
+            if(uiSections[0].Narrow)
+                ReflowSections(tabs.TabPages[0]);
+        }
+        ArrangeStickyFooter();
     }
 
     // REV79 explicit validation navigation, based solely on selected
