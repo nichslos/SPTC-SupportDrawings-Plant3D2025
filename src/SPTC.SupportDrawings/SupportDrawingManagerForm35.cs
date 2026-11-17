@@ -31,7 +31,9 @@ internal sealed record SupportDrawingUiOptions(
     bool AutoDimLinear,
     bool ReferenceDetailDimensions=true,
     bool BypassOneSheetLimit=false,
-    bool AllowDraftOverflow=false)
+    bool AllowDraftOverflow=false,
+    string HiddenLineMode=NativeOrthoAppearance83.ProjectDefault,
+    string InsulationMode=NativeOrthoAppearance83.ProjectDefault)
 {
     public static readonly string[] AllViews =
         {"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK","NW","NE","SW","SE"};
@@ -79,6 +81,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     // generator flags. Neither the generator nor its defaults change.
     private readonly ComboBox outputMode = new();
     private readonly Label outputHint = new();
+    private readonly Label hiddenLineLabel=new();
+    private readonly ComboBox hiddenLineMode=new();
+    private readonly Label insulationLabel=new();
+    private readonly ComboBox insulationMode=new();
     private readonly Label selectedViewCount = new();
     private readonly Label readinessHint = new();
     private readonly Button quickDraft = new();
@@ -271,6 +277,24 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         outputHint.AutoEllipsis=false;
         outputHint.ForeColor=Color.DimGray;
         orthoTab.Controls.Add(outputHint);
+        hiddenLineLabel.Text="Hidden Lines";
+        hiddenLineLabel.Name="SPTC_HIDDEN_LINES_LABEL_83";
+        orthoTab.Controls.Add(hiddenLineLabel);
+        hiddenLineMode.Name="SPTC_HIDDEN_LINES_83";
+        hiddenLineMode.DropDownStyle=ComboBoxStyle.DropDownList;
+        hiddenLineMode.Items.AddRange(
+            NativeOrthoAppearance83.HiddenChoices.Cast<object>().ToArray());
+        hiddenLineMode.SelectedItem=NativeOrthoAppearance83.ProjectDefault;
+        orthoTab.Controls.Add(hiddenLineMode);
+        insulationLabel.Text="Insulation";
+        insulationLabel.Name="SPTC_INSULATION_LABEL_83";
+        orthoTab.Controls.Add(insulationLabel);
+        insulationMode.Name="SPTC_INSULATION_83";
+        insulationMode.DropDownStyle=ComboBoxStyle.DropDownList;
+        insulationMode.Items.AddRange(
+            NativeOrthoAppearance83.InsulationChoices.Cast<object>().ToArray());
+        insulationMode.SelectedItem=NativeOrthoAppearance83.ProjectDefault;
+        orthoTab.Controls.Add(insulationMode);
         quickDraft.Text="Draft: All 10 Views";
         quickDraft.Name="SPTC_QUICK_DRAFT_78";
         quickDraft.SetBounds(18,144,170,30);
@@ -500,6 +524,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         description.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
         xrefNames.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
         cubeMode.SelectedIndexChanged+=(_,_)=>UpdateSectionSummaries();
+        hiddenLineMode.SelectedIndexChanged+=(_,_)=>UpdateSectionSummaries();
+        insulationMode.SelectedIndexChanged+=(_,_)=>UpdateSectionSummaries();
 
         // REV77: all settings scroll in their own Ortho tab. The user
         // can collapse any section without losing its values.
@@ -509,7 +535,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 autoSeed,seed,browse},
             new Control[]{vLabel,views,selectedViewCount,all,six,four,none},
             new Control[]{outputLabel,outputMode,outputHint,batch,notice,
-                quickDraft,quickPhysical,readinessHint},
+                quickDraft,quickPhysical,readinessHint,
+                hiddenLineLabel,hiddenLineMode,insulationLabel,insulationMode},
             new Control[]{qaHeader,generatedHistory,qaIndicator,lastQa,
                 openDwgFolder,openResult,copyQa,openDwg},
             new Control[]{autoDimLinear,referenceDimensions},
@@ -575,6 +602,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         outputFields[5].SetBounds(18,153,166,30);
         outputFields[6].SetBounds(196,153,166,30);
         outputFields[7].SetBounds(18,198,686,26);
+        outputFields[8].SetBounds(18,238,325,23);
+        outputFields[9].SetBounds(18,266,333,29);
+        outputFields[10].SetBounds(368,238,336,23);
+        outputFields[11].SetBounds(368,266,352,29);
         dimensions[0].SetBounds(18,8,390,27);
         dimensions[1].SetBounds(18,43,415,31);
         annotations[0].SetBounds(18,8,306,24);
@@ -633,6 +664,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             "Optional filename prefix. Leave blank to use native automatic naming.");
         uiTips.SetToolTip(outputMode,
             "Printable sheet, single-DWG Draft Overflow, or split sheets without changing scale.");
+        uiTips.SetToolTip(hiddenLineMode,
+            "Native Plant Ortho Editor hidden-line output. Project Default leaves existing behavior unchanged.");
+        uiTips.SetToolTip(insulationMode,
+            "Native Ortho insulation visibility for piping. Project Default leaves current Plant behavior unchanged.");
         uiTips.SetToolTip(quickDraft,
             "Select all ten views and Draft Overflow; keep your selected exact drawing scale.");
         uiTips.SetToolTip(quickPhysical,
@@ -824,6 +859,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 Stack(0,23);Stack(1,30);Stack(2,78);
                 Stack(3,53);Stack(4,34);
                 Pair(5,6,32);Stack(7,55);
+                Stack(8,23);Stack(9,30);
+                Stack(10,23);Stack(11,30);
                 break;
             case 3:
                 Stack(0,24);Stack(1,92);Stack(2,30);
@@ -856,10 +893,12 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             0=>(cubeMode.SelectedIndex==0?"SupportFocus":"Original")+
                 " · "+scaled+(autoSeed.Checked?" · Auto seed":" · Manual seed"),
             1=>selected+"/10 views",
-            2=>SelectedOutputMode() switch {
+            2=>(SelectedOutputMode() switch {
                 SupportDrawingOutputMode76.Mode.Draft=>"One DWG · Draft / No PDF",
                 SupportDrawingOutputMode76.Mode.Split=>"Multiple sheets · Exact scale",
-                _=>"Single sheet · Fit to paper"},
+                _=>"Single sheet · Fit to paper"})+
+                " · Hidden: "+hiddenLineMode.Text+
+                " · Insulation: "+insulationMode.Text,
             3=>outputHistory.Count==0?
                 "No results":outputHistory.Count+" generated DWG(s)",
             4=>autoDimLinear.Checked?
@@ -1056,6 +1095,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // Deliberately NOT persisted: opt-in overflow/splitting resets
         // on project change, Load settings or Restore defaults.
         outputMode.SelectedIndex=0;
+        hiddenLineMode.SelectedItem=v.HiddenLineMode;
+        insulationMode.SelectedItem=v.InsulationMode;
         // Never persist manual DWG/seed paths.
         autoSeed.Checked=true;
         seed.Text="";
@@ -1071,7 +1112,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             cubeMode.SelectedIndex==0,chosen,line.Checked,bop.Checked,
             tos.Checked,description.Checked,xrefNames.Checked,
             autoDimLinear.Checked,referenceDimensions.Checked,
-            batch.Checked));
+            batch.Checked,hiddenLineMode.Text,insulationMode.Text));
     }
 
     private void SaveProjectPreferences()
@@ -1469,7 +1510,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 " | BOP="+bop.Checked+" | TOS="+tos.Checked+
                 " | Description="+description.Checked+
                 " | XREF Names="+xrefNames.Checked+"\r\n"+
-            "6. DIMENSIONS: "+(autoDimLinear.Checked?
+            "6. HIDDEN LINES: "+hiddenLineMode.Text+"\r\n"+
+            "7. INSULATION: "+insulationMode.Text+"\r\n"+
+            "8. DIMENSIONS: "+(autoDimLinear.Checked?
                 (referenceDimensions.Checked?
                     "Native H/V chain + overall":"Native H/V all members"):"OFF")+
                 " | Batch: "+(batch.Checked?"ON":"OFF")+"\r\n"+
@@ -1549,7 +1592,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             description.Checked,batch.Checked,xrefNames.Checked,
             autoDimLinear.Checked,referenceDimensions.Checked,
             SupportDrawingOutputMode76.BypassOneSheetLimit(chosenOutput),
-            SupportDrawingOutputMode76.AllowDraftOverflow(chosenOutput));
+            SupportDrawingOutputMode76.AllowDraftOverflow(chosenOutput),
+            NativeOrthoAppearance83.ValidateHidden(hiddenLineMode.Text),
+            NativeOrthoAppearance83.ValidateInsulation(insulationMode.Text));
         // Modeless palette remains open; dispatch in a fresh AutoCAD
         // command context rather than accessing Editor from this UI callback.
         RunRequested?.Invoke(Settings);
