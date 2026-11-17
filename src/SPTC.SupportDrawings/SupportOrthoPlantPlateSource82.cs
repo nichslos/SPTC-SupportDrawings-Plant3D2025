@@ -98,18 +98,19 @@ internal static class SupportOrthoPlantPlateSource82
                             foreach(object? pair in rows)
                             {
                                 if(pair==null)continue;
-                                string key=pair.GetType().GetProperty("Key")?
+                                string propertyName=pair.GetType()
+                                    .GetProperty("Key")?
                                     .GetValue(pair)?.ToString()?.Trim()??"";
                                 string val=pair.GetType().GetProperty("Value")?
                                     .GetValue(pair)?.ToString()?.Trim()??"";
-                                if(key.Equals("ClassName",
+                                if(propertyName.Equals("ClassName",
                                     StringComparison.OrdinalIgnoreCase)||
-                                   key.Equals("PnPClassName",
+                                   propertyName.Equals("PnPClassName",
                                     StringComparison.OrdinalIgnoreCase))
                                     rowClass=val;
-                                else if(key.Equals("LongDescriptionSize",
+                                else if(propertyName.Equals("LongDescriptionSize",
                                         StringComparison.OrdinalIgnoreCase)||
-                                    key.Equals("Long Description (Size)",
+                                    propertyName.Equals("Long Description (Size)",
                                         StringComparison.OrdinalIgnoreCase))
                                     description=val;
                             }
