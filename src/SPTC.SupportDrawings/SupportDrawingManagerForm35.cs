@@ -49,6 +49,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly Panel layoutSurface = new();
     private readonly Panel scrollingWorkspace = new();
     private readonly Panel stickyFooter = new();
+    private bool arrangingStickyFooter;
     private readonly List<CollapsibleSection> uiSections = new();
     private readonly TabControl tabs = new();
     private sealed class CollapsibleSection
@@ -478,6 +479,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         runButton.Click+=(_,_)=>RunSelected();
         stickyFooter.Controls.Add(runButton);
         stickyFooter.Resize+=(_,_)=>ArrangeStickyFooter();
+        // AutoScale may resize the footer before scaling its children.
+        // A post-scale Layout event is also needed to restore true
+        // right-docking after simulated or actual 125%/150% DPI.
+        stickyFooter.Layout+=(_,_)=>ArrangeStickyFooter();
         ArrangeStickyFooter();
         // A newly opened palette restores only settings explicitly
         // saved for this Plant 3D project. No persisted queued command
@@ -584,11 +589,26 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 
     private void ArrangeStickyFooter()
     {
+        if(arrangingStickyFooter||stickyFooter.IsDisposed)return;
         int w=stickyFooter.ClientSize.Width;
-        int right=Math.Max(140,w-126);
-        preview.SetBounds(12,29,Math.Max(120,right-25),73);
-        preflightButton.SetBounds(right,30,112,29);
-        runButton.SetBounds(right,69,112,30);
+        int h=stickyFooter.ClientSize.Height;
+        if(w<=0||h<=0)return;
+        arrangingStickyFooter=true;
+        try
+        {
+            // Use the actual DPI-scaled button dimensions, not their
+            // original 96-DPI values. No CAD/paper measurements used.
+            int buttonWidth=Math.Max(runButton.Width,preflightButton.Width);
+            int right=Math.Max(128,w-buttonWidth-12);
+            int top=Math.Max(10,(h-runButton.Height-
+                preflightButton.Height-9)/2);
+            preflightButton.Location=new Point(right,top);
+            runButton.Location=new Point(right,
+                top+preflightButton.Height+9);
+            preview.SetBounds(12,Math.Max(24,top),
+                Math.Max(100,right-25),Math.Max(35,h-Math.Max(24,top)-12));
+        }
+        finally{arrangingStickyFooter=false;}
     }
 
     // Never clear user options on another drawing run. Refresh source context
@@ -859,7 +879,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             qaIndicator.ForeColor=Color.DimGray;
             return;
         }
-        string name=Path.GetFileName(lastOutputDwg);
+        string name=Path.GetFileName(lastOutputDwg)??"(unavailable)";
         string risk="UNVERIFIED";
         string detail="No matching RESULT.txt. Actual QA cannot be verified.";
         try
