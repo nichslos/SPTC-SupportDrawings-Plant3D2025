@@ -54,8 +54,11 @@ public static class SupportOrthoDimensionReflow
             rejections[key]=rejections.TryGetValue(key,out int n)?n+1:1;
         }
 
-        // A complete, correctly tiered drawing is not re-planned.
-        if(originalMissing==0&&originalHierarchy==0)
+        // A complete/tiered drawing can still contain unsafe witness
+        // intersections. Older reflow did not trigger for this case,
+        // causing the writer to reject every native dimension.
+        if(originalMissing==0&&originalHierarchy==0&&
+           baseline.UnintendedAcceptedWitnessIntersections==0)
             return new Result(current,0,0,0,0,0,0,
                 Array.Empty<string>(),preferences);
 
@@ -85,7 +88,11 @@ public static class SupportOrthoDimensionReflow
             bool issue=current.Skipped.Any(s=>
                 s.StartsWith(view+"/",StringComparison.OrdinalIgnoreCase)&&
                 IsLocalOmission(s))||
-                HierarchyErrors(current,view)>0;
+                HierarchyErrors(current,view)>0||
+                current.UnintendedAcceptedWitnessIntersections>0&&
+                (current.FinalCollisionDiagnostics?.Any(x=>
+                    x.StartsWith(view+":CAUSE=",
+                        StringComparison.OrdinalIgnoreCase))??false);
             if(!issue)continue;
             int attemptsForView=0;
             SupportOrthoReferenceDimPlan47.Result best=current;
@@ -129,6 +136,8 @@ public static class SupportOrthoDimensionReflow
                 int hierarchy=HierarchyErrors(candidate);
                 int bestMissing=Missing(best);
                 int bestHierarchy=HierarchyErrors(best);
+                int bestCrossings=
+                    best.UnintendedAcceptedWitnessIntersections;
                 // No loss of accepted local detail or drafting order
                 // is permitted to obtain a different profile width.
                 if(missing>bestMissing||hierarchy>bestHierarchy)
@@ -136,7 +145,9 @@ public static class SupportOrthoDimensionReflow
                     Reject(view,"COMPLETENESS_OR_HIERARCHY_REGRESSION");
                     continue;
                 }
-                if(missing==bestMissing&&hierarchy==bestHierarchy)
+                if(missing==bestMissing&&hierarchy==bestHierarchy&&
+                   candidate.UnintendedAcceptedWitnessIntersections>=
+                       bestCrossings)
                 {
                     Reject(view,"NO_VERIFIED_IMPROVEMENT");
                     continue;
@@ -145,7 +156,9 @@ public static class SupportOrthoDimensionReflow
                 bestPref=pref;
                 // No later move can improve a zero-omission,
                 // fully correct drafting hierarchy.
-                if(missing==0&&hierarchy==0)break;
+                if(missing==0&&hierarchy==0&&
+                   candidate.UnintendedAcceptedWitnessIntersections==0)
+                    break;
             }
             if(bestPref==null)continue;
             current=best;
@@ -163,6 +176,8 @@ public static class SupportOrthoDimensionReflow
         text.Contains("_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE",
             StringComparison.Ordinal)||
         text.Contains("OPTIONAL_PROFILE_NO_COMPATIBLE_LAYOUT",
+            StringComparison.Ordinal)||
+        text.Contains("POST_AUDIT_OPTIONAL_PROFILE_COLLISION_OMITTED",
             StringComparison.Ordinal);
 
     private static int Missing(SupportOrthoReferenceDimPlan47.Result result) =>
