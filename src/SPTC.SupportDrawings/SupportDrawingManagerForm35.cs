@@ -626,6 +626,19 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 return;
             }
         }
+        // A virtual paper canvas is a drafting aid, not a plotted
+        // paper format or an automatically scaled multi-sheet run.
+        if(allowDraftOverflow.Checked &&
+           (tab!="ortho"||selected.Length!=10||
+            denominator<=0||batch.Checked))
+        {
+            MessageBox.Show(this,
+                "Draft overflow requires All 10, an explicit 1:N scale, "+
+                "and Batch Ortho OFF. Real sheet / PDF publishing will be blocked.",
+                "REV75 draft-only virtual sheet",
+                MessageBoxButtons.OK,MessageBoxIcon.Warning);
+            return;
+        }
         Settings = new SupportDrawingUiOptions(
             tab, cubeMode.SelectedIndex==0,
             autoSeed.Checked, seed.Text.Trim(), prefix.Text.Trim(), denominator,
