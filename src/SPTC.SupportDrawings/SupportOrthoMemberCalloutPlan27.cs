@@ -210,7 +210,7 @@ public static class SupportOrthoMemberCalloutPlan27
                     if(size<=band.CapacityMm+1e-6)break;
                     var dropped=extras[^1];
                     skips.Add(camera.Name+":"+dropped.Member.Handle+
-                        ":XREF_FILENAME_NO_GEOMETRIC_LABEL_LANE");
+                        ":XREF_FILENAME_NO_LABEL_SPACE");
                     extras.RemoveAt(extras.Count-1);
                 }
                 projected=required.Concat(extras)
