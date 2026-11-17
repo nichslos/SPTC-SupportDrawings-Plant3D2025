@@ -56,6 +56,7 @@ internal static class Program
         TestScrollableDpiLayout();
         TestRev77SessionHistoryAndCollapse();
         TestRev78GuidedSetup();
+        TestRev79ResponsiveUx();
         TestBatchProgressReporting();
         TestProductionPackageCheckboxSaveRoundTrip();
         var surface=manager.Controls.Find(
@@ -169,9 +170,14 @@ internal static class Program
                 "STEP10_ACTUAL_VIEWPORT_OVERLAP_DETECTED=False\n"+
                 "FINAL_STATUS=TEN_NATIVE_VIEWS_AND_TITLES_MEMBER_LEADERS_PASS_DRAFT_ONLY\n");
             ui.RecordGeneratedDwg(first);
+            var openDwg=AllControls(ui).OfType<Button>()
+                .Single(b=>b.Name=="SPTC_OPEN_DWG_79");
             Check(hist.Items.Count==1&&hist.SelectedIndex==0&&
-                  qa.Text.Contains("Dimensions: 33",StringComparison.Ordinal),
-                "actual first DWG and matching report reflected in history");
+                  qa.Text.Contains("Dimensions: 33",StringComparison.Ordinal)&&
+                  openDwg.Enabled&&
+                  (hist.Items[0]?.ToString()??"").Contains("DRAFT",
+                      StringComparison.Ordinal),
+                "real DWG, timestamp/output label, and matching QA navigation available");
             ui.SetRunning(true);
             Check(hist.Items.Count==1,
                 "starting next command preserves project session history");
@@ -186,7 +192,7 @@ internal static class Program
             var tab=AllControls(ui).OfType<TabControl>().Single()
                 .TabPages[0];
             var dim=AllControls(tab).OfType<Button>()
-                .Single(b=>b.Text.EndsWith("Dimensions",
+                .Single(b=>b.Text.Contains("Dimensions",
                     StringComparison.Ordinal));
             Check(dim.Text.StartsWith("[+]",StringComparison.Ordinal),
                 "dimensions start collapsed without discarding controls");
@@ -295,6 +301,88 @@ internal static class Program
             "preflight uses a numbered, readable UI-only setup summary");
         Console.WriteLine(
             "REV78 guided modes, no silent scale changes, clear warnings, basics/all, preflight PASS");
+    }
+
+    private static void TestRev79ResponsiveUx()
+    {
+        using var ui=new SupportDrawingManagerForm35(
+            @"C:\Projects\REV79\MODEL.dwg",
+            @"C:\Projects\REV79",
+            @"C:\Projects\REV79\Orthos");
+        ui.CreateControl();
+        ui.PerformLayout();
+        var workspace=ui.Controls.OfType<Panel>()
+            .Single(p=>p.Dock==DockStyle.Fill);
+        var footer=ui.Controls.OfType<Panel>()
+            .Single(p=>p.Dock==DockStyle.Bottom);
+        var canvas=ui.Controls.Find("SPTC_UI_LAYOUT_SURFACE",true).Single();
+        var tabs=canvas.Controls.OfType<TabControl>().Single();
+        var page=tabs.TabPages[0];
+        var cube=AllControls(page).OfType<ComboBox>()
+            .Single(x=>x.Items.Contains("SupportFocus (recommended)"));
+        var paper=AllControls(page).OfType<ComboBox>()
+            .Single(x=>x.Items.Contains("1:20"));
+        var output=AllControls(page).OfType<ComboBox>()
+            .Single(x=>x.Items.Contains(SupportDrawingOutputMode76.Draft));
+        var selected=AllControls(page).OfType<CheckedListBox>().Single();
+        var sticky=footer.Controls.OfType<Label>()
+            .Single(x=>x.Name=="SPTC_FOOTER_SUMMARY_79");
+        var fix=footer.Controls.OfType<Button>()
+            .Single(x=>x.Name=="SPTC_FIX_SETTINGS_79");
+        var run=footer.Controls.OfType<Button>()
+            .Single(x=>x.Text=="Run selected");
+
+        ui.ClientSize=new Size(410,650);
+        ui.PerformLayout();
+        workspace.PerformLayout();
+        page.PerformLayout();
+        Check(canvas.Width<=workspace.ClientSize.Width+5,
+            "narrow palette shrinks the reference canvas instead of horizontal 805px overflow");
+        Check(cube.Width>=240&&paper.Width>=240&&
+              paper.Top>cube.Top&&
+              page.AutoScrollMinSize.Width<=tabs.Width,
+            "native source and scale controls stack in one usable column");
+        Check(sticky.Text.Contains("10/10 views")&&
+              sticky.Text.Contains("Automatic"),
+            "sticky summary always reflects current views and paper scale");
+
+        paper.SelectedItem="1:10";
+        output.SelectedIndex=(int)SupportDrawingOutputMode76.Mode.Draft;
+        Check(sticky.Text.Contains("1:10")&&
+              sticky.Text.Contains("PDF BLOCKED")&&run.Enabled,
+            "live summary explicitly warns of offsheet draft PDF block");
+
+        var header=AllControls(page).OfType<Button>()
+            .Single(b=>b.Text.Contains("Source, Scale & Seed",
+                StringComparison.Ordinal));
+        Check(header.Text.Contains("1:10")&&
+              AllControls(page).OfType<Button>().Any(b=>
+                  b.Text.Contains("10/10 views",StringComparison.Ordinal)),
+            "collapsed and expanded section headers contain live setting summaries");
+        page.ScrollControlIntoView(header);
+        header.PerformClick();
+        Check(header.Text.StartsWith("[+]",StringComparison.Ordinal),
+            "source section can collapse without clearing data");
+        paper.SelectedItem="Automatic";
+        Check(!run.Enabled&&
+              sticky.Text.Contains("Automatic")&&
+              fix.Text=="Fix setting",
+            "invalid scale disables Run while keeping fix navigation available");
+        var focus=typeof(SupportDrawingManagerForm35).GetMethod(
+            "FocusRequiredSetting",BindingFlags.Instance|BindingFlags.NonPublic)!;
+        focus.Invoke(ui,null);
+        Check(header.Text.StartsWith("[-]",StringComparison.Ordinal)&&
+              paper.SelectedItem?.ToString()=="Automatic",
+            "Fix setting opens source-scale section without changing user scale");
+        paper.SelectedItem="1:10";
+        ui.ClientSize=new Size(805,765);
+        ui.PerformLayout();
+        workspace.PerformLayout();
+        Check(canvas.Width>=740&&
+              cube.Width<240&&run.Enabled&&selected.CheckedItems.Count==10,
+            "undocking restores original two-column source controls and view choices");
+        Console.WriteLine(
+            "REV79 responsive narrow/wide, live summary, section details and Fix Setting PASS");
     }
 
     private static void TestProductionPackageCheckboxSaveRoundTrip()

@@ -50,11 +50,18 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly Panel scrollingWorkspace = new();
     private readonly Panel stickyFooter = new();
     private bool arrangingStickyFooter;
+    private bool arrangingWorkspace;
+    private int lastWorkspaceWidth=-1;
+    private readonly Label stickySummary=new();
+    private readonly Button fixSettings=new();
     private readonly List<CollapsibleSection> uiSections = new();
     private readonly Button essentialsButton=new();
     private readonly Button allSettingsButton=new();
     private readonly ToolTip uiTips=new(){AutoPopDelay=12500,InitialDelay=550,ReshowDelay=250,ShowAlways=true};
     private readonly TabControl tabs = new();
+    private Control? brandingLogo;
+    private readonly Label headingTitle=new();
+    private readonly Label brandSubtitle=new();
     private sealed class CollapsibleSection
     {
         internal readonly Panel Frame=new();
@@ -62,6 +69,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         internal readonly Button Header=new();
         internal int BodyHeight;
         internal bool Expanded;
+        internal Control[] Fields=Array.Empty<Control>();
+        internal readonly Dictionary<Control,Rectangle> WideBounds=new();
+        internal bool Narrow;
     }
     private readonly ComboBox cubeMode = new();
     private readonly CheckBox autoSeed = new();
@@ -90,6 +100,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly TextBox lastQa = new();
     private readonly ListBox generatedHistory = new();
     private readonly Button openDwgFolder = new();
+    private readonly Button openDwg = new();
     private readonly Button openResult = new();
     private readonly Button copyQa = new();
     private readonly Label qaIndicator = new();
@@ -133,6 +144,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         layoutSurface.SetBounds(0,0,805,630);
         layoutSurface.BackColor = Color.White;
         scrollingWorkspace.Controls.Add(layoutSurface);
+        scrollingWorkspace.Resize+=(_,_)=>ResizeResponsivePalette();
         Controls.Add(scrollingWorkspace);
         Controls.Add(stickyFooter);
         stickyFooter.BringToFront();
@@ -141,20 +153,17 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 
         // The supplied SPTC Engineering logo is embedded; no image path needed.
         // A larger top band keeps the full wordmark readable at Windows DPI.
-        layoutSurface.Controls.Add(SupportBranding36.MakeLogo(18, 10, 184, 118));
-        Label heading = new()
-        {
-            Text = "SUPPORT DRAWING MANAGER",
-            Font = new Font("Segoe UI", 13f, FontStyle.Bold),
-            Location = new Point(222, 21), Size = new Size(545, 33)
-        };
-        layoutSurface.Controls.Add(heading);
-        Label brandSubtitle = new()
-        {
-            Text = "SPTC Engineering  |  AutoCAD Plant 3D 2025",
-            ForeColor = Color.DimGray,
-            Location = new Point(222, 57), Size = new Size(545, 25)
-        };
+        brandingLogo=SupportBranding36.MakeLogo(18, 10, 184, 118);
+        layoutSurface.Controls.Add(brandingLogo);
+        headingTitle.Text="SUPPORT DRAWING MANAGER";
+        headingTitle.Font=new Font("Segoe UI",13f,FontStyle.Bold);
+        headingTitle.SetBounds(222,21,545,33);
+        headingTitle.AutoEllipsis=true;
+        layoutSurface.Controls.Add(headingTitle);
+        brandSubtitle.Text="SPTC Engineering  |  AutoCAD Plant 3D 2025";
+        brandSubtitle.ForeColor=Color.DimGray;
+        brandSubtitle.SetBounds(222,57,545,25);
+        brandSubtitle.AutoEllipsis=true;
         layoutSurface.Controls.Add(brandSubtitle);
         sourceLabel.Text = "Source: " + Path.GetFileName(sourceDwg) +
             "     |     Project: " + Path.GetFileName(projectRoot.TrimEnd('\\','/'));
@@ -441,6 +450,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         generatedHistory.SetBounds(18,35,704,91);
         generatedHistory.HorizontalScrollbar=true;
         generatedHistory.SelectedIndexChanged+=(_,_)=>RefreshSelectedQa();
+        generatedHistory.DoubleClick+=(_,_)=>OpenSelectedDwg();
         orthoTab.Controls.Add(generatedHistory);
         qaIndicator.SetBounds(18,135,700,24);
         qaIndicator.ForeColor=Color.DimGray;
@@ -467,12 +477,29 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         copyQa.Enabled=false;
         copyQa.Click+=(_,_)=>CopySelectedQa();
         orthoTab.Controls.Add(copyQa);
+        openDwg.Text="Open DWG";
+        openDwg.Name="SPTC_OPEN_DWG_79";
+        openDwg.SetBounds(521,287,155,30);
+        openDwg.Enabled=false;
+        openDwg.Click+=(_,_)=>OpenSelectedDwg();
+        orthoTab.Controls.Add(openDwg);
 
         outputMode.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
         batch.CheckedChanged+=(_,_)=>UpdateOutputModeUi();
         scale.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
         customScale.ValueChanged+=(_,_)=>UpdateOutputModeUi();
         tabs.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
+        autoSeed.CheckedChanged+=(_,_)=>UpdateOutputModeUi();
+        seed.TextChanged+=(_,_)=>UpdateOutputModeUi();
+        prefix.TextChanged+=(_,_)=>UpdateOutputModeUi();
+        autoDimLinear.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        referenceDimensions.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        line.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        bop.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        tos.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        description.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        xrefNames.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
+        cubeMode.SelectedIndexChanged+=(_,_)=>UpdateSectionSummaries();
 
         // REV77: all settings scroll in their own Ortho tab. The user
         // can collapse any section without losing its values.
@@ -484,15 +511,24 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             new Control[]{outputLabel,outputMode,outputHint,batch,notice,
                 quickDraft,quickPhysical,readinessHint},
             new Control[]{qaHeader,generatedHistory,qaIndicator,lastQa,
-                openDwgFolder,openResult,copyQa},
+                openDwgFolder,openResult,copyQa,openDwg},
             new Control[]{autoDimLinear,referenceDimensions},
             new Control[]{aLabel,line,bop,tos,description,xrefNames},
             new Control[]{settingsCaption,saveSettings,loadSettings,
                 resetSettings,productionSettings,privacy});
         InstallUiGuidance(orthoTab);
 
-        Label previewLabel = L("Preflight / configuration summary",12,6,390);
-        stickyFooter.Controls.Add(previewLabel);
+        stickySummary.Name="SPTC_FOOTER_SUMMARY_79";
+        stickySummary.Font=new Font("Segoe UI",9f,FontStyle.Bold);
+        stickySummary.ForeColor=Color.FromArgb(31,65,103);
+        stickySummary.AutoEllipsis=true;
+        stickyFooter.Controls.Add(stickySummary);
+        fixSettings.Name="SPTC_FIX_SETTINGS_79";
+        fixSettings.Text="Fix setting";
+        fixSettings.Size=new Size(112,29);
+        fixSettings.Visible=false;
+        fixSettings.Click+=(_,_)=>FocusRequiredSetting();
+        stickyFooter.Controls.Add(fixSettings);
         preview.Multiline=true;
         preview.ReadOnly=true;
         preview.ScrollBars=ScrollBars.Vertical;
@@ -518,6 +554,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // or source geometry can be replayed.
         LoadProjectPreferences(showFeedback:false);
         UpdateOutputModeUi();
+        ResizeResponsivePalette();
     }
 
     // REV77: section headers reflow inside the existing Ortho-tab's
@@ -651,7 +688,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private void AddCollapsibleSection(TabPage tab,string name,
         bool expanded,params Control[] children)
     {
-        var section=new CollapsibleSection{Expanded=expanded};
+        var section=new CollapsibleSection{Expanded=expanded,Fields=children};
         int left=children.Min(c=>c.Left);
         int top=children.Min(c=>c.Top);
         section.BodyHeight=children.Max(c=>c.Bottom)-top+14;
@@ -662,6 +699,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         section.Header.FlatAppearance.BorderSize=0;
         section.Header.Font=new Font("Segoe UI",9f,FontStyle.Bold);
         section.Header.TextAlign=ContentAlignment.MiddleLeft;
+        section.Header.AutoEllipsis=true;
         section.Header.BackColor=Color.FromArgb(236,242,248);
         section.Header.SetBounds(0,0,734,33);
         section.Body.SetBounds(0,35,734,section.BodyHeight);
@@ -672,6 +710,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             int dy=child.Top-top+5;
             section.Body.Controls.Add(child);
             child.Location=new Point(dx,dy);
+            section.WideBounds[child]=child.Bounds;
         }
         section.Frame.Controls.Add(section.Header);
         section.Frame.Controls.Add(section.Body);
@@ -685,23 +724,194 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         section.Header.Tag=name;
     }
 
+    // REV79: responsive WinForms layout. Each Ortho group stacks its
+    // existing controls when the PaletteSet is docked narrowly.
+    // No new rendering of native view geometry or model measurements.
+    private void ResizeResponsivePalette()
+    {
+        if(IsDisposed||arrangingWorkspace||uiSections.Count!=7)return;
+        int available=scrollingWorkspace.ClientSize.Width;
+        if(available<=0||available==lastWorkspaceWidth)return;
+        arrangingWorkspace=true;
+        try
+        {
+            lastWorkspaceWidth=available;
+            int canvasW=Math.Max(352,available-3);
+            layoutSurface.Width=canvasW;
+            bool narrow=canvasW<735;
+            if(brandingLogo!=null)
+                brandingLogo.SetBounds(narrow?12:18,10,
+                    narrow?111:184,narrow?74:118);
+            headingTitle.SetBounds(narrow?135:222,narrow?17:21,
+                Math.Max(160,canvasW-(narrow?146:237)),33);
+            brandSubtitle.SetBounds(narrow?135:222,narrow?54:57,
+                Math.Max(160,canvasW-(narrow?146:237)),25);
+            sourceLabel.SetBounds(narrow?135:222,narrow?83:94,
+                Math.Max(160,canvasW-(narrow?146:237)),26);
+            tabs.Left=narrow?8:18;
+            tabs.Top=narrow?119:140;
+            tabs.Width=Math.Max(320,canvasW-(narrow?16:36));
+            tabs.Height=layoutSurface.Height-tabs.Top-15;
+            ReflowSections(tabs.TabPages[0]);
+        }
+        finally{arrangingWorkspace=false;}
+    }
+
+    // Restores wide layout after docking/undocking. Wide positions are
+    // captured from actual WinForms controls to retain DPI scaling.
+    private void LayoutSectionFields(int index,CollapsibleSection section,
+        int frameWidth)
+    {
+        int bodyW=Math.Max(280,frameWidth-4);
+        section.Frame.Width=frameWidth;
+        section.Header.Width=frameWidth-2;
+        section.Body.Width=bodyW;
+        bool narrow=frameWidth<720;
+        if(!narrow)
+        {
+            if(section.Narrow)
+            {
+                foreach(Control control in section.Fields)
+                    if(section.WideBounds.TryGetValue(control,
+                        out Rectangle rectangle))
+                        control.Bounds=rectangle;
+            }
+            else
+                foreach(Control control in section.Fields)
+                    section.WideBounds[control]=control.Bounds;
+            section.Narrow=false;
+            section.BodyHeight=section.Fields.Max(c=>c.Bottom)+14;
+            section.Body.Height=section.BodyHeight;
+            return;
+        }
+        if(!section.Narrow)
+            foreach(Control control in section.Fields)
+                section.WideBounds[control]=control.Bounds;
+        section.Narrow=true;
+        int contentW=Math.Max(240,bodyW-24);
+        int y=9;
+        Control[] f=section.Fields;
+        void Stack(int i,int h)
+        {
+            f[i].SetBounds(9,y,contentW,h);
+            y+=h+7;
+        }
+        void Pair(int a,int b,int h)
+        {
+            int leftW=(contentW-10)/2;
+            int rightW=contentW-leftW-10;
+            f[a].SetBounds(9,y,leftW,h);
+            f[b].SetBounds(9+leftW+10,y,rightW,h);
+            y+=h+8;
+        }
+        switch(index)
+        {
+            case 0:
+                Stack(0,23);Stack(1,29);
+                Stack(2,23);Stack(3,29);
+                if(scale.Text==SupportDrawingPaperScale39.Custom)
+                {
+                    Stack(4,23);Stack(5,29);
+                }
+                Stack(6,23);Stack(7,29);
+                Stack(8,42);Stack(9,29);Stack(10,30);
+                break;
+            case 1:
+                Stack(0,23);Stack(2,23);Stack(1,172);
+                Pair(3,4,31);Pair(5,6,31);
+                break;
+            case 2:
+                Stack(0,23);Stack(1,30);Stack(2,78);
+                Stack(3,53);Stack(4,34);
+                Pair(5,6,32);Stack(7,55);
+                break;
+            case 3:
+                Stack(0,24);Stack(1,92);Stack(2,30);
+                Stack(3,117);Pair(4,5,31);Pair(6,7,31);
+                break;
+            case 4:
+                Stack(0,34);Stack(1,44);
+                break;
+            case 5:
+                Stack(0,23);
+                for(int i=1;i<f.Length;i++)Stack(i,34);
+                break;
+            case 6:
+                Stack(0,24);Pair(1,2,32);Pair(3,4,32);
+                Stack(5,58);
+                break;
+        }
+        section.BodyHeight=y+7;
+        section.Body.Height=section.BodyHeight;
+    }
+
+    private string SectionSummary(int index)
+    {
+        int selected=views.CheckedItems.Count;
+        string scaled=scale.SelectedIndex>=0?
+            scale.Text==SupportDrawingPaperScale39.Custom?
+                "1:"+customScale.Value.ToString("0") :scale.Text:"Automatic";
+        return index switch
+        {
+            0=>(cubeMode.SelectedIndex==0?"SupportFocus":"Original")+
+                " · "+scaled+(autoSeed.Checked?" · Auto seed":" · Manual seed"),
+            1=>selected+"/10 views",
+            2=>SelectedOutputMode() switch {
+                SupportDrawingOutputMode76.Mode.Draft=>"One DWG · Draft / No PDF",
+                SupportDrawingOutputMode76.Mode.Split=>"Multiple sheets · Exact scale",
+                _=>"Single sheet · Fit to paper"},
+            3=>outputHistory.Count==0?
+                "No results":outputHistory.Count+" generated DWG(s)",
+            4=>autoDimLinear.Checked?
+                "H/V ON · "+(referenceDimensions.Checked?
+                    "Chain + overall":"Per-member"):"H/V OFF",
+            5=>"Line "+(line.Checked?"ON":"OFF")+
+                " · BOP "+(bop.Checked?"ON":"OFF")+
+                " · XREF "+(xrefNames.Checked?"ON":"OFF"),
+            6=>"Local project options",
+            _=>""
+        };
+    }
+
+    private void UpdateSectionSummaries()
+    {
+        for(int i=0;i<uiSections.Count;i++)
+        {
+            var section=uiSections[i];
+            string name=section.Header.Tag?.ToString()??"Settings";
+            string summary=SectionSummary(i);
+            string display=section.Frame.Width<530?
+                name+" · "+(i==2?
+                    SelectedOutputMode()==SupportDrawingOutputMode76.Mode.Draft?
+                        "DRAFT / NO PDF":summary:summary):name+"     |     "+summary;
+            section.Header.Text=(section.Expanded?"[-]  ":"[+]  ")+display;
+            uiTips.SetToolTip(section.Header,name+" — "+summary+
+                ". Click to "+(section.Expanded?"collapse":"expand")+".");
+        }
+    }
+
     private void ReflowSections(TabPage tab)
     {
+        if(uiSections.Count!=7)return;
         tab.SuspendLayout();
         try
         {
+            int frameWidth=Math.Max(300,Math.Min(737,tabs.Width-44));
             int y=47;
-            foreach(var section in uiSections)
+            for(int i=0;i<uiSections.Count;i++)
             {
-                string name=section.Header.Tag?.ToString()??"Settings";
-                section.Header.Text=(section.Expanded?"[-]  ":"[+]  ")+name;
+                var section=uiSections[i];
+                LayoutSectionFields(i,section,frameWidth);
                 section.Body.Visible=section.Expanded;
                 section.Frame.Height=section.Expanded?
                     35+section.BodyHeight:34;
                 section.Frame.Location=new Point(8,y);
                 y+=section.Frame.Height+9;
             }
-            tab.AutoScrollMinSize=new Size(755,y+10);
+            // Width adapts to actual panel, preventing unnecessary
+            // horizontal scrolling for narrow docked palettes.
+            tab.AutoScrollMinSize=new Size(frameWidth+14,y+10);
+            UpdateSectionSummaries();
         }
         finally{tab.ResumeLayout();}
     }
@@ -715,17 +925,29 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         arrangingStickyFooter=true;
         try
         {
-            // Use the actual DPI-scaled button dimensions, not their
-            // original 96-DPI values. No CAD/paper measurements used.
-            int buttonWidth=Math.Max(runButton.Width,preflightButton.Width);
-            int right=Math.Max(128,w-buttonWidth-12);
-            int top=Math.Max(10,(h-runButton.Height-
-                preflightButton.Height-9)/2);
+            // The fixed footer always reserves a separate right column
+            // for actions, including at 125/150% DPI.
+            int buttonWidth=Math.Max(fixSettings.Width,
+                Math.Max(runButton.Width,preflightButton.Width));
+            int right=Math.Max(125,w-buttonWidth-12);
+            int gap=Math.Max(5,h/30);
+            int total=runButton.Height+preflightButton.Height+gap;
+            if(fixSettings.Visible)total+=fixSettings.Height+gap;
+            int top=Math.Max(5,(h-total)/2);
+            if(fixSettings.Visible)
+            {
+                fixSettings.Location=new Point(right,top);
+                top+=fixSettings.Height+gap;
+            }
             preflightButton.Location=new Point(right,top);
             runButton.Location=new Point(right,
-                top+preflightButton.Height+9);
-            preview.SetBounds(12,Math.Max(24,top),
-                Math.Max(100,right-25),Math.Max(35,h-Math.Max(24,top)-12));
+                top+preflightButton.Height+gap);
+            int textWidth=Math.Max(95,right-24);
+            stickySummary.SetBounds(12,4,textWidth,
+                Math.Max(20,stickySummary.Height));
+            int textTop=Math.Max(29,stickySummary.Bottom+4);
+            preview.SetBounds(12,textTop,textWidth,
+                Math.Max(35,h-textTop-8));
         }
         finally{arrangingStickyFooter=false;}
     }
@@ -912,26 +1134,38 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                     scale.Text,(int)customScale.Value);
         }
         catch(ArgumentException){denominator=0;}
-        bool valid=SupportDrawingOutputMode76.Eligible(
-            mode,count,denominator,batch.Checked);
         bool isOrtho=tabs.SelectedTab?.Name=="ortho";
+        Control? issue=RequiredSetting(count,denominator,mode,isOrtho);
+        bool eligible=SupportDrawingOutputMode76.Eligible(
+            mode,count,denominator,batch.Checked);
+        bool valid=eligible&&issue==null;
         string modeInfo=SupportDrawingOutputMode76.Explanation(mode);
         outputHint.Text=modeInfo+
-            (!valid?"\r\nTo continue: select all 10 views, "+
-                "choose a 1:N scale, and turn Batch OFF.":"");
+            (!valid?"\r\nTo continue: "+RequiredAction(issue):"");
         outputHint.ForeColor=!valid?Color.Firebrick:
             mode==SupportDrawingOutputMode76.Mode.Draft?
                 Color.DarkGoldenrod:Color.DimGray;
         string scaleText=denominator>0?"1:"+denominator:"Automatic";
+        string modeName=mode switch
+        {
+            SupportDrawingOutputMode76.Mode.Draft=>"Draft DWG · PDF BLOCKED",
+            SupportDrawingOutputMode76.Mode.Split=>"Multiple sheets · Printable",
+            _=>"Single sheet · Paper fit"
+        };
+        stickySummary.Text=count+"/10 views  ·  "+scaleText+
+            "  ·  "+modeName;
+        stickySummary.ForeColor=issue!=null?Color.Firebrick:
+            mode==SupportDrawingOutputMode76.Mode.Draft?
+                Color.DarkGoldenrod:Color.FromArgb(31,65,103);
+        uiTips.SetToolTip(stickySummary,stickySummary.Text+
+            (issue!=null?"  — "+RequiredAction(issue):""));
         string readiness;
         if(IsRunning)
             readiness="Generating... CAD source selection and progress remain in AutoCAD.";
         else if(!isOrtho)
             readiness="Ready: use the original "+tabs.SelectedTab?.Text+" workflow.";
-        else if(count==0)
-            readiness="Select at least one native view before running.";
-        else if(!valid)
-            readiness="Action required: All 10 views, exact 1:N and Batch OFF.";
+        else if(issue!=null)
+            readiness="Action required: "+RequiredAction(issue);
         else if(mode==SupportDrawingOutputMode76.Mode.Draft)
             readiness="Ready: "+count+" views / "+scaleText+
                 " / ONE DWG — DRAFT ONLY (native PDF blocked).";
@@ -942,11 +1176,75 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             readiness="Ready: "+count+" view(s) / "+scaleText+
                 " / physical paper fit enforced.";
         readinessHint.Text=readiness;
-        readinessHint.ForeColor=(!valid||count==0)&&isOrtho?
+        readinessHint.ForeColor=issue!=null&&isOrtho?
             Color.Firebrick:mode==SupportDrawingOutputMode76.Mode.Draft?
                 Color.DarkGoldenrod:Color.DarkGreen;
-        if(runButton!=null)
-            runButton.Enabled=!IsRunning&&(!isOrtho||count>0&&valid);
+        fixSettings.Visible=!IsRunning&&isOrtho&&issue!=null;
+        fixSettings.Enabled=fixSettings.Visible;
+        runButton.Enabled=!IsRunning&&(!isOrtho||valid);
+        if(uiSections.Count==7)
+        {
+            UpdateSectionSummaries();
+            // Custom scale fields become visible without requiring the
+            // user to undock the responsive palette.
+            if(uiSections[0].Narrow)
+                ReflowSections(tabs.TabPages[0]);
+        }
+        ArrangeStickyFooter();
+    }
+
+    // REV79 explicit validation navigation, based solely on selected
+    // WinForms options, never native model/Ortho checks.
+    private Control? RequiredSetting(int count,int denominator,
+        SupportDrawingOutputMode76.Mode mode,bool isOrtho)
+    {
+        if(!isOrtho)return null;
+        if(count==0||mode!=SupportDrawingOutputMode76.Mode.Physical&&
+            count!=10)return views;
+        if(mode!=SupportDrawingOutputMode76.Mode.Physical&&
+           denominator<=0)return scale;
+        if(mode!=SupportDrawingOutputMode76.Mode.Physical&&
+           batch.Checked)return batch;
+        if(!autoSeed.Checked&&!File.Exists(seed.Text.Trim()))return seed;
+        if(!ValidDrawingPrefix())return prefix;
+        return null;
+    }
+
+    private bool ValidDrawingPrefix() =>
+        prefix.Text.Trim().Length<=48&&
+        prefix.Text.IndexOfAny(Path.GetInvalidFileNameChars())<0&&
+        !prefix.Text.Contains("..",StringComparison.Ordinal)&&
+        !prefix.Text.EndsWith(".",StringComparison.Ordinal);
+
+    private string RequiredAction(Control? field)
+    {
+        if(field==views)return "Select the required native views.";
+        if(field==scale)return "Choose an exact 1:N scale (Automatic cannot be used).";
+        if(field==batch)return "Turn Batch Ortho OFF for Draft or Split.";
+        if(field==seed)return "Select an existing registered EMPTY native Ortho seed.";
+        if(field==prefix)return "Correct the drawing prefix (48 characters max).";
+        return "Ready for native validation.";
+    }
+
+    private void FocusRequiredSetting()
+    {
+        if(IsRunning||tabs.SelectedTab?.Name!="ortho")return;
+        int denominator=0;
+        try{denominator=SupportDrawingPaperScale39.Resolve(
+            scale.Text,(int)customScale.Value);}
+        catch(ArgumentException){/* exact scale validated before Run */}
+        Control? target=RequiredSetting(views.CheckedItems.Count,
+            denominator,SelectedOutputMode(),true);
+        if(target==null)return;
+        int section=target==views?1:target==batch?2:0;
+        var page=tabs.TabPages.Cast<TabPage>()
+            .First(p=>p.Name=="ortho");
+        if(!uiSections[section].Expanded)
+            uiSections[section].Expanded=true;
+        ReflowSections(page);
+        page.ScrollControlIntoView(target);
+        target.Focus();
+        SetStatus("Fix setting: "+RequiredAction(target));
     }
 
     private void ClearGeneratedOutput()
@@ -957,6 +1255,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         lastResultTxt=null;
         lastCopiedSummary="";
         openDwgFolder.Enabled=false;
+        openDwg.Enabled=false;
         openResult.Enabled=false;
         copyQa.Enabled=false;
         qaIndicator.Text="QA status: UNVERIFIED";
@@ -999,8 +1298,25 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             generatedHistory.Items.RemoveAt(existing);
         }
         outputHistory.Add(new GeneratedDwg(full,report));
-        generatedHistory.Items.Add(
-            outputHistory.Count.ToString("00")+"  "+Path.GetFileName(full));
+        string kind="REPORT PENDING";
+        try
+        {
+            if(File.Exists(report))
+            {
+                var measured=SupportDrawingQaSummary76.Read(
+                    File.ReadAllText(report));
+                kind=measured.DraftOnly?"DRAFT · NO PDF":"NATIVE SHEET";
+            }
+        }
+        catch(System.Exception ex) when(ex is IOException or
+            UnauthorizedAccessException)
+        {
+            kind="QA UNAVAILABLE";
+        }
+        string savedAt=File.GetLastWriteTime(full).ToString(
+            "MM-dd HH:mm",System.Globalization.CultureInfo.InvariantCulture);
+        generatedHistory.Items.Add(savedAt+"  |  "+
+            Path.GetFileName(full)+"  |  "+kind);
         generatedHistory.SelectedIndex=outputHistory.Count-1;
         // Surface the actual result immediately, even if the QA section
         // was hidden in the simpler essentials-only layout.
@@ -1023,6 +1339,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         lastResultTxt=has?outputHistory[index].ResultPath:null;
         openDwgFolder.Enabled=has&&Directory.Exists(
             Path.GetDirectoryName(lastOutputDwg??""));
+        openDwg.Enabled=has&&File.Exists(lastOutputDwg);
         openResult.Enabled=has&&File.Exists(lastResultTxt);
         copyQa.Enabled=false;
         if(!has)
@@ -1074,6 +1391,29 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             System.Threading.ThreadStateException)
         {
             SetStatus("Clipboard unavailable: "+ex.Message);
+        }
+    }
+
+    // This is explicitly Windows Shell file association; it does not
+    // inject AutoCAD commands or mutate any DWG/project from the palette.
+    private void OpenSelectedDwg()
+    {
+        string? selected=lastOutputDwg;
+        if(string.IsNullOrWhiteSpace(selected)||!File.Exists(selected))
+        {
+            SetStatus("Selected DWG was moved or deleted. Choose another result.");
+            return;
+        }
+        try
+        {
+            Process.Start(new ProcessStartInfo {
+                FileName=selected,UseShellExecute=true
+            });
+        }
+        catch(System.Exception ex) when(ex is System.ComponentModel.Win32Exception or
+            IOException or UnauthorizedAccessException)
+        {
+            SetStatus("Windows could not open the selected DWG: "+ex.Message);
         }
     }
 
