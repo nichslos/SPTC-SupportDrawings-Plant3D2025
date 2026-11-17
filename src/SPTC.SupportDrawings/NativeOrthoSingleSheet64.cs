@@ -19,7 +19,8 @@ internal static class NativeOrthoSingleSheet64
     internal static bool TryExactTenFit(NativeOrthoLayout.Plan layout,
         IReadOnlyList<string> selectedViews,int denominator,
         double widthMm,double heightMm,out string reason,
-        bool bypassTitleBlock=false)
+        bool bypassTitleBlock=false,
+        double mandatoryAnnotationHeightMm=0)
     {
         reason="";
         if(layout==null||denominator<1||
@@ -37,7 +38,8 @@ internal static class NativeOrthoSingleSheet64
             // an oversized sheet has a less conservative auto fit.
             var placement=NativeOrthoExactScalePlacement61.Build(
                 plan,selectedViews,widthMm,heightMm,
-                bypassTitleBlock:bypassTitleBlock);
+                bypassTitleBlock:bypassTitleBlock,
+                mandatoryAnnotationHeightMm:mandatoryAnnotationHeightMm);
             NativeOrthoEffectivePaper59.RequireInsideUsableArea(
                 NativeOrthoEffectivePaper59.FromMedia(widthMm,heightMm,0),
                 placement.Views.Select(v=>
@@ -65,14 +67,16 @@ internal static class NativeOrthoSingleSheet64
     internal static Seed? SmallestFitting(
         NativeOrthoLayout.Plan layout,IReadOnlyList<string> views,
         int denominator,IEnumerable<Seed> candidates,
-        bool bypassTitleBlock=false)
+        bool bypassTitleBlock=false,
+        double mandatoryAnnotationHeightMm=0)
     {
         if(candidates==null)throw new ArgumentNullException(nameof(candidates));
         return candidates.Where(x=>x.RegisteredEmpty&&
                 !string.IsNullOrWhiteSpace(x.Path)&&
                 TryExactTenFit(layout,views,denominator,
                     x.WidthMm,x.HeightMm,out _,
-                    bypassTitleBlock:bypassTitleBlock))
+                    bypassTitleBlock:bypassTitleBlock,
+                    mandatoryAnnotationHeightMm:mandatoryAnnotationHeightMm))
             // Prefer the smallest suitable paper and make tie-breaking
             // deterministic across project sessions.
             .OrderBy(x=>x.WidthMm*x.HeightMm)
