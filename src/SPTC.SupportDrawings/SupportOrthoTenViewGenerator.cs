@@ -490,10 +490,19 @@ public sealed class SupportOrthoTenViewGenerator
             pipeDiscovery.XrefCount+" XREF pipes near the selected support.");
         foreach(string note in pipeDiscovery.Diagnostics)
             ed.WriteMessage("\nREV22.29 SOURCE: "+note);
+        // REV72: scanner reports REV22_28_SCAN_FAILED, not REV22_29.
+        // The old mismatch silently converted a scanner failure into
+        // "no pipes found", allowing false pipe-coverage conclusions.
         if(pipeDiscovery.Diagnostics.Any(s=>
+            s.StartsWith("REV22_28_SCAN_FAILED=",StringComparison.Ordinal)||
             s.StartsWith("REV22_29_SCAN_FAILED=",StringComparison.Ordinal)))
         {
-            ed.WriteMessage("\nREV22.29: Pipe scan failed. No files changed.");
+            ed.WriteMessage("\nREV72: Native/XREF pipe scan failed. "+
+                "Do not generate an Ortho drawing with unverified pipe "+
+                "coverage. Inspect the source diagnostics.");
+            foreach(string note in pipeDiscovery.Diagnostics.Where(s=>
+                s.Contains("SCAN_FAILED",StringComparison.Ordinal)))
+                ed.WriteMessage("\nREV72 SOURCE: "+note);
             return false;
         }
 
@@ -553,6 +562,31 @@ public sealed class SupportOrthoTenViewGenerator
             nativeRead.LinkedRows+xrefRead.LinkedRows,
             pipeDiscovery.Diagnostics.Concat(nativeRead.Diagnostics)
                 .Concat(xrefRead.Diagnostics).ToArray());
+        // REV72: source XREF visibility, real Plant pipe identity, cube
+        // inclusion, metadata and actual plotted geometry are distinct.
+        // Zero discovered XREF pipes must not inherit a structural QA
+        // PASS as evidence that pipe coverage was verified.
+        var pipeCoverage72=new SupportOrthoXrefPipeEvidence72.Counts(
+            pipeDiscovery.ResolvedXrefReferences,
+            pipeDiscovery.UnresolvedXrefReferences,
+            pipeDiscovery.VerifiedXrefPipeEntities,
+            pipeDiscovery.XrefCount,
+            xrefRead.Candidates,
+            xrefRead.Pipes.Count,
+            Math.Max(0,xrefRead.Candidates-xrefRead.Pipes.Count),
+            pipeDiscovery.XrefPipesOutsideProximity,
+            false);
+        ed.WriteMessage("\nSPTC "+
+            SupportOrthoXrefPipeEvidence72.Diagnostic(
+                pipeCoverage72,options.XrefMemberNames));
+        if(SupportOrthoXrefPipeEvidence72.NeedsReview(
+            pipeCoverage72,options.XrefMemberNames))
+            ed.WriteMessage("\nSPTC REV72: Nearby XREF Member is enabled "+
+                "but XREF pipe coverage is NOT verified. "+
+                SupportOrthoXrefPipeEvidence72.Explanation(pipeCoverage72)+
+                ". The drawing may pass structural QA without "+
+                "containing all expected XREF pipe geometry or BOP tags; "+
+                "review the XREF source and PDF before issue.");
         var pipeAnnotations=pipeRead.Pipes.Select(p=>
             new SupportOrthoMemberCalloutPlan27.Member(
                 p.Handle,"Line Number Tag: "+p.LineTag,p.X,p.Y,p.Z,
@@ -1050,6 +1084,22 @@ public sealed class SupportOrthoTenViewGenerator
             Log("REV22_29_PIPE_CANDIDATES="+pipeRead.Candidates);
             Log("REV22_29_PIPE_PNP_LINKED_ROWS="+pipeRead.LinkedRows);
             Log("REV22_29_PIPE_ANNOTATION_SOURCES="+pipeRead.Pipes.Count);
+            Log("REV72_XREF_PIPE_DETECTION_MODE="+
+                "LOADED_SOURCE_NATIVE_RX_DXF_AND_INHERITANCE");
+            Log("REV72_XREF_MEMBER_CHECKBOX_PIPE_RELATION="+
+                "PIPE_DISCOVERY_INDEPENDENT_OF_MEMBER_NAME_TOGGLE");
+            Log("REV72_XREF_PIPE_SOURCE_COVERAGE="+
+                SupportOrthoXrefPipeEvidence72.Coverage(pipeCoverage72));
+            Log(SupportOrthoXrefPipeEvidence72.Diagnostic(
+                pipeCoverage72,options.XrefMemberNames));
+            Log("REV72_XREF_PIPE_VISUAL_NATIVE_ORTHO_VERIFICATION="+
+                (pipeCoverage72.AnnotatedPipeSources>0?
+                    "REQUIRES_PDF_OR_NATIVE_VIEW_INSPECTION":
+                    "NO_VERIFIED_XREF_PIPE_ANNOTATIONS"));
+            Log("REV72_XREF_PIPE_QA_SEPARATE_FROM_STRUCTURE="+
+                (SupportOrthoXrefPipeEvidence72.FullyVerified(pipeCoverage72)?
+                    "SOURCE_METADATA_VERIFIED_VISUAL_PENDING":
+                    "PIPE_COVERAGE_NOT_VERIFIED"));
             foreach(var pipe in pipeRead.Pipes)
                 Log("REV22_29_PIPE_SOURCE="+pipe.Handle+
                     " LINE_TAG="+pipe.LineTag+
