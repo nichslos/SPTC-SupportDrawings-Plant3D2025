@@ -436,6 +436,48 @@ jobs:
              -not $test71.Contains('no hard-coded view rules PASS')) {
             throw 'REV71 crowded 12-object annotation and fail-closed regression missing'
           }
+          # REV72: loaded XREF source evidence must be distinguished
+          # from source-native pipe identity, proximity, final OrthoCube
+          # inclusion, Line/BOP metadata and actually plotted geometry.
+          # Never infer a pipe from a DWG name, generic 3D solid or
+          # presence of XREF structure/support members alone.
+          $pipeScanner72=Get-Content "$root/SupportOrthoPipeDiscovery28.cs" -Raw
+          $pipePolicy72=Get-Content "$root/SupportOrthoXrefPipeEvidence72.cs" -Raw
+          $test72=Get-Content 'tests/SupportSheetSmokeTests/Rev72XrefPipeEvidenceTests.cs' -Raw
+          foreach($token in @('REV72_XREF_SOURCE_AUDIT=',
+              'REV72_XREF_REFERENCES_RESOLVED=',
+              'REV72_XREF_SOURCE_ENTITIES_INSPECTED=',
+              'SupportOrthoXrefPipeEvidence72.VerifiedType(',
+              'audit.Verified', 'audit.Outside')) {
+            if(-not $pipeScanner72.Contains($token)) {
+              throw "REV72 source XREF pipe audit missing: $token"
+            }
+          }
+          foreach($token in @('NO_VERIFIED_NATIVE_PIPE_ENTITIES',
+              'VERIFIED_PIPES_OUTSIDE_SCAN_REGION',
+              'VERIFIED_PIPES_OUTSIDE_ORTHOCUBE',
+              'XREF_PIPE_METADATA_NOT_VERIFIED',
+              'XREF_PIPE_ANNOTATION_COVERAGE_PARTIAL',
+              'XREF_PIPE_METADATA_COVERAGE_VERIFIED')) {
+            if(-not $pipePolicy72.Contains($token)) {
+              throw "REV72 separate pipe QA coverage class missing: $token"
+            }
+          }
+          foreach($token in @('REV22_28_SCAN_FAILED=',
+              'REV72_XREF_PIPE_SOURCE_COVERAGE=',
+              'REV72_XREF_PIPE_QA_SEPARATE_FROM_STRUCTURE=',
+              'REV72_XREF_PIPE_VISUAL_NATIVE_ORTHO_VERIFICATION=',
+              'SupportOrthoXrefPipeEvidence72.Diagnostic(')) {
+            if(-not $gen.Contains($token)) {
+              throw "REV72 no false general QA pass or missed scan exception: $token"
+            }
+          }
+          if(-not $test72.Contains('NO_VERIFIED_NATIVE_PIPE_ENTITIES') -or
+             -not $test72.Contains('XREF_PIPE_ANNOTATION_COVERAGE_PARTIAL') -or
+             -not $test72.Contains('SCAN_FAILED') -or
+             -not $test72.Contains('REV72 dynamic XREF RX/DXF/inheritance')) {
+            throw 'REV72 independent XREF classification and status regression missing'
+          }
           foreach($token in @('GenerateOne','SupportDrawingUiOptions',
               'SupportDrawingPalette40.ShowOrFocus','selectedOverride',
               'options.AutoSeed','options.Views.Count',

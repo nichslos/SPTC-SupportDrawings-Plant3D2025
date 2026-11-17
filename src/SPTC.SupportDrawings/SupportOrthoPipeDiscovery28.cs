@@ -21,13 +21,77 @@ internal static class SupportOrthoPipeDiscovery28
         bool FromXref, Matrix3d ToHost, BoundingBox3 WorldBounds);
 
     internal sealed record Result(IReadOnlyList<Candidate> Candidates,
-        int NativeCount, int XrefCount, IReadOnlyList<string> Diagnostics);
+        int NativeCount,int XrefCount,IReadOnlyList<string> Diagnostics,
+        int ResolvedXrefReferences=0,int UnresolvedXrefReferences=0,
+        int VerifiedXrefPipeEntities=0,int XrefPipesOutsideProximity=0,
+        int XrefInspectedEntities=0);
+
+    private sealed class SourceAudit
+    {
+        internal int Visited,NativePipeTypes,Nearby,Outside,ProxyLike;
+        internal readonly Dictionary<string,int> Classes=
+            new(StringComparer.OrdinalIgnoreCase);
+        internal void Observe(string className,bool verified,bool nearby,bool isProxy)
+        {
+            Visited++;
+            if(verified)
+            {
+                NativePipeTypes++;
+                if(nearby)Nearby++;else Outside++;
+            }
+            if(isProxy)ProxyLike++;
+            string type=string.IsNullOrWhiteSpace(className)?"UNKNOWN":className;
+            Classes[type]=Classes.TryGetValue(type,out int n)?n+1:1;
+        }
+    }
+    private sealed class ScanAudit
+    {
+        internal int Resolved,Unresolved,Verified,Nearby,Outside,Visited;
+        internal readonly Dictionary<string,SourceAudit> Sources=
+            new(StringComparer.OrdinalIgnoreCase);
+        internal SourceAudit ForSource(string? source)
+        {
+            string key=string.IsNullOrWhiteSpace(source)?
+                "XREF_SOURCE_PATH_UNAVAILABLE":source;
+            if(!Sources.TryGetValue(key,out var value))
+                Sources[key]=value=new SourceAudit();
+            return value;
+        }
+        internal void Log(List<string> notes)
+        {
+            notes.Add("REV72_XREF_REFERENCES_RESOLVED="+Resolved+
+                " UNRESOLVED="+Unresolved);
+            notes.Add("REV72_XREF_SOURCE_ENTITIES_INSPECTED="+Visited+
+                " VERIFIED_NATIVE_PIPE_TYPES="+Verified+
+                " NEARBY_PIPE_TYPES="+Nearby+
+                " OUTSIDE_PROXIMITY="+Outside);
+            foreach(var source in Sources.OrderBy(x=>x.Key,
+                StringComparer.OrdinalIgnoreCase))
+            {
+                var a=source.Value;
+                // All source entities inspected; only diagnostic class
+                // frequency display is bounded for large references.
+                string classes=string.Join(",",a.Classes
+                    .OrderByDescending(x=>x.Value)
+                    .ThenBy(x=>x.Key,StringComparer.OrdinalIgnoreCase)
+                    .Take(12).Select(x=>x.Key+":"+x.Value));
+                notes.Add("REV72_XREF_SOURCE_AUDIT="+source.Key+
+                    " ENTITIES="+a.Visited+
+                    " PIPE_TYPES="+a.NativePipeTypes+
+                    " PIPE_NEAR="+a.Nearby+
+                    " PIPE_OUTSIDE="+a.Outside+
+                    " PROXY_LIKE="+a.ProxyLike+
+                    " OBJECT_CLASSES="+classes);
+            }
+        }
+    }
 
     internal static Result Scan(Database host, BoundingBox3 support, double toMm)
     {
         var found=new List<Candidate>();
         var diagnostics=new List<string>();
         int native=0,xref=0;
+        var audit=new ScanAudit();
         if(toMm<=0 || !double.IsFinite(toMm))
             throw new ArgumentException("REV22.28 source drawing units invalid.");
 
@@ -48,22 +112,25 @@ internal static class SupportOrthoPipeDiscovery28
                 bt[BlockTableRecord.ModelSpace],OpenMode.ForRead);
             Walk(host,tr,model,Matrix3d.Identity,"MODEL",false,0,
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                region,found,diagnostics,ref native,ref xref);
+                region,found,diagnostics,ref native,ref xref,audit);
         }
         catch(System.Exception ex)
         {
             diagnostics.Add("REV22_28_SCAN_FAILED="+ex.GetType().Name+
                 ":"+ex.Message);
         }
+        audit.Log(diagnostics);
         return new Result(found.OrderBy(x=>x.Key,
             StringComparer.OrdinalIgnoreCase).ToArray(),
-            native,xref,diagnostics);
+            native,xref,diagnostics,audit.Resolved,audit.Unresolved,
+            audit.Verified,audit.Outside,audit.Visited);
     }
 
     private static void Walk(Database db,Transaction tr,
         BlockTableRecord record,Matrix3d toHost,string path,bool fromXref,
         int depth,HashSet<string> ancestors,BoundingBox3 region,
-        List<Candidate> found,List<string> notes,ref int native,ref int xref)
+        List<Candidate> found,List<string> notes,ref int native,ref int xref,
+        ScanAudit audit)
     {
         if(depth>12){notes.Add("XREF_DEPTH_LIMIT="+path);return;}
         foreach(ObjectId id in record)
@@ -74,6 +141,7 @@ internal static class SupportOrthoPipeDiscovery28
             if(entity==null)continue;
             if(entity is BlockReference br)
             {
+                bool attemptedXref=false;
                 try
                 {
                     var def=tr.GetObject(br.BlockTableRecord,
@@ -82,12 +150,16 @@ internal static class SupportOrthoPipeDiscovery28
                     var next=toHost*br.BlockTransform;
                     if(def.IsFromExternalReference || def.IsFromOverlayReference)
                     {
+                        attemptedXref=true;
                         Database xdb=def.GetXrefDatabase(false);
                         if(xdb==null)
                         {
+                            audit.Unresolved++;
                             notes.Add("XREF_UNRESOLVED="+def.Name);
                             continue;
                         }
+                        audit.Resolved++;
+                        audit.ForSource(xdb.Filename);
                         string key=xdb.Filename+"|"+def.Name;
                         if(ancestors.Contains(key))
                         {
@@ -103,7 +175,7 @@ internal static class SupportOrthoPipeDiscovery28
                             xb[BlockTableRecord.ModelSpace],OpenMode.ForRead);
                         Walk(xdb,xt,xm,next,path+"/XREF:"+
                             br.Handle.ToString()+":"+def.Name,true,depth+1,
-                            nextAncestors,region,found,notes,ref native,ref xref);
+                            nextAncestors,region,found,notes,ref native,ref xref,audit);
                     }
                     else
                     {
@@ -115,24 +187,52 @@ internal static class SupportOrthoPipeDiscovery28
                             StringComparer.OrdinalIgnoreCase){token};
                         Walk(db,tr,def,next,path+"/BLOCK:"+
                             br.Handle.ToString(),fromXref,depth+1,
-                            nextAncestors,region,found,notes,ref native,ref xref);
+                            nextAncestors,region,found,notes,ref native,ref xref,audit);
                     }
                 }
                 catch(System.Exception ex)
                 {
+                    if(attemptedXref)audit.Unresolved++;
                     notes.Add("XREF_REFERENCE_SKIPPED="+path+"/"+
                         br.Handle+":"+ex.GetType().Name+":"+ex.Message);
                 }
                 continue;
             }
+            // REV72: use actual source AutoCAD RX/DXF identity and
+            // managed inheritance, not file names, geometry or layers.
             string cls=entity.GetType().Name;
-            string rx="";
-            try{rx=id.ObjectClass?.Name??"";}catch{}
-            if(!SupportOrthoPipeLabel27.IsNativePipeType(cls) &&
-                !SupportOrthoPipeLabel27.IsNativePipeType(rx))continue;
-            // Native pipes from ordinary blocks are not first-class selectable
-            // pipes in the host model and need a valid XREF source context.
-            if(!fromXref && path!="MODEL")continue;
+            string rx="",dxf="";
+            try
+            {
+                var nativeClass=id.ObjectClass;
+                rx=nativeClass?.Name??"";
+                dxf=nativeClass?.GetType().GetProperty("DxfName")?
+                    .GetValue(nativeClass)?.ToString()??"";
+            }
+            catch{}
+            var runtimeBaseTypes=new List<string>();
+            for(Type? type=entity.GetType().BaseType;
+                type!=null&&type!=typeof(object);type=type.BaseType)
+                runtimeBaseTypes.Add(type.Name);
+            bool verified=SupportOrthoXrefPipeEvidence72.VerifiedType(
+                cls,rx,dxf,runtimeBaseTypes);
+            // Preserve original isolation: host block contents are not
+            // selectable native pipes unless in a real loaded XREF.
+            if(!fromXref&&path!="MODEL")continue;
+            if(fromXref)
+            {
+                audit.Visited++;
+                if(!verified)
+                {
+                    audit.ForSource(db.Filename).Observe(
+                        rx.Length>0?rx:cls,false,false,
+                        cls.Contains("Proxy",StringComparison.OrdinalIgnoreCase)||
+                        rx.Contains("Proxy",StringComparison.OrdinalIgnoreCase));
+                    continue;
+                }
+                audit.Verified++;
+            }
+            if(!verified)continue;
             try
             {
                 Extents3d ext=entity.GeometricExtents;
@@ -140,7 +240,14 @@ internal static class SupportOrthoPipeDiscovery28
                 var world=new BoundingBox3(ext.MinPoint.X,ext.MinPoint.Y,
                     ext.MinPoint.Z,ext.MaxPoint.X,ext.MaxPoint.Y,
                     ext.MaxPoint.Z);
-                if(!Intersects(world,region))continue;
+                bool near=Intersects(world,region);
+                if(fromXref)
+                {
+                    if(near)audit.Nearby++;else audit.Outside++;
+                    audit.ForSource(db.Filename).Observe(
+                        rx.Length>0?rx:cls,true,near,false);
+                }
+                if(!near)continue;
                 string sourcePath=fromXref?path:"MODEL";
                 string unique=(fromXref?"XREF:":"PIPE:")+
                     sourcePath+"/"+id.Handle;
@@ -152,6 +259,9 @@ internal static class SupportOrthoPipeDiscovery28
             {
                 notes.Add("PIPE_EXTENTS_SKIPPED="+path+"/"+id.Handle+
                     ":"+ex.GetType().Name);
+                if(fromXref)
+                    audit.ForSource(db.Filename).Observe(
+                        rx.Length>0?rx:cls,true,false,false);
             }
         }
     }
