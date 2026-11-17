@@ -210,12 +210,12 @@ internal static class SupportOrthoPipeDiscovery28
                     .GetValue(nativeClass)?.ToString()??"";
             }
             catch{}
-            var ancestors=new List<string>();
+            var runtimeBaseTypes=new List<string>();
             for(Type? type=entity.GetType().BaseType;
                 type!=null&&type!=typeof(object);type=type.BaseType)
-                ancestors.Add(type.Name);
+                runtimeBaseTypes.Add(type.Name);
             bool verified=SupportOrthoXrefPipeEvidence72.VerifiedType(
-                cls,rx,dxf,ancestors);
+                cls,rx,dxf,runtimeBaseTypes);
             // Preserve original isolation: host block contents are not
             // selectable native pipes unless in a real loaded XREF.
             if(!fromXref&&path!="MODEL")continue;
