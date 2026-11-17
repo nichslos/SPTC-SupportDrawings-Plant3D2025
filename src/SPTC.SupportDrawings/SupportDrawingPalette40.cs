@@ -38,6 +38,7 @@ internal static class SupportDrawingPalette40
                 Dock=System.Windows.Forms.DockStyle.Fill
             };
             manager.RunRequested+=QueueFromPalette;
+            manager.NativeModeCaptureRequested+=CaptureNativeMode87;
             // Fixed floating dimensions; user may dock left or right.
             // No AutoHide: remain open while CAD selection/generation runs.
             palette=new PaletteSet("SPTC Support Drawing Manager",
@@ -65,6 +66,35 @@ internal static class SupportDrawingPalette40
         sourceDocument=doc;
         sourceProjectRoot=projectRoot;
         palette.Visible=true;
+    }
+
+    // REV87 read-only native Ortho Editor capture from existing modeless
+    // palette. This is NOT an AutoCAD command and does not mutate a DWG,
+    // its ViewDef, host system variables, source model or Ortho database.
+    private static void CaptureNativeMode87(string operatorRibbonLabel)
+    {
+        if(manager==null||manager.IsDisposed)return;
+        if(busy)
+        {
+            manager.SetStatus("REV87 capture unavailable during generation.");
+            return;
+        }
+        Document? active=AcadApp.DocumentManager.MdiActiveDocument;
+        if(active==null)
+        {
+            manager.SetStatus("REV87 capture: no active native Ortho drawing.");
+            return;
+        }
+        try
+        {
+            manager.SetStatus(NativeOrthoContextCapture87.Capture(
+                active,operatorRibbonLabel));
+        }
+        catch(System.Exception ex)
+        {
+            manager.SetStatus("REV87 capture failed: "+
+                ex.GetType().Name+": "+ex.Message);
+        }
     }
 
     private static void QueueFromPalette(SupportDrawingUiOptions options)
@@ -210,6 +240,7 @@ internal static class SupportDrawingPalette40
         if(manager!=null && !manager.IsDisposed)
         {
             manager.RunRequested-=QueueFromPalette;
+            manager.NativeModeCaptureRequested-=CaptureNativeMode87;
         }
         try {palette?.Dispose();}catch(System.Exception){}
         palette=null;
