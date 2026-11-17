@@ -36,7 +36,8 @@ internal static class NativeOrthoExactScalePlacement61
         NativeOrthoTenViewPlan.Plan plan,
         IReadOnlyList<string> selectedViews,
         double paperWidth,double paperHeight,
-        bool bypassTitleBlock=false)
+        bool bypassTitleBlock=false,
+        double mandatoryAnnotationHeightMm=0)
     {
         if(bypassTitleBlock&&!NativeOrthoTitleBlockBypass69.Eligible(
             paperWidth,paperHeight,plan?.Denominator??0,
@@ -214,6 +215,25 @@ internal static class NativeOrthoExactScalePlacement61
                             overlap=true;
                     }
                 if(overlap)continue;
+                // REV71: views and native titles fitting on a registered
+                // paper sheet does not guarantee that every mandatory
+                // member/pipe annotation fits. Check real free paper
+                // rectangles BEFORE returning the best candidate; try
+                // the next exact-scale grid on insufficient capacity.
+                if(mandatoryAnnotationHeightMm>0&&
+                   !SupportOrthoAnnotationCapacity71.TryPreflight(
+                       frames.Select(v=>new NativeOrthoViewTitlePlan.Frame(
+                           v.Name,v.CenterX,v.CenterY,
+                           v.PaperFrameWidth,v.PaperFrameHeight)).ToArray(),
+                       titles,paperWidth,paperHeight,
+                       bypassTitleBlock,mandatoryAnnotationHeightMm,
+                       out string capacityReason))
+                {
+                    if(firstTitleCollision.Length==0)
+                        firstTitleCollision=cols+"x"+rows+" "+order.Label+
+                            ": "+capacityReason;
+                    continue;
+                }
                 var first=frames[0];
                 return new NativeOrthoTenViewAutoPlacement26.Result(
                     first.CenterX,first.CenterY,

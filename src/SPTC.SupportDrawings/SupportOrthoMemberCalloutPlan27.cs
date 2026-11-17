@@ -71,31 +71,26 @@ public static class SupportOrthoMemberCalloutPlan27
             paperW,paperH);
         double widthCap=SupportOrthoPaperTypography66.WidthCap(
             paperW,paperH);
+        var frames=cameras.Select(c=>
+            new NativeOrthoViewTitlePlan.Frame(
+                c.Name,c.X,c.Y,c.W,c.H)).ToArray();
         var notes=new List<Callout>();
         var skips=new List<string>();
         var empty=new List<string>();
         foreach(var camera in cameras)
         {
             double viewRight=camera.X+camera.W/2;
-            // Reserve 17.5mm for orthogonal leader dogleg lanes. Labels
-            // remain outside every native viewport, not on top of its lines.
-            double x=viewRight+LabelGapFromFrameMm;
-            // REV62: only a viewport whose ACTUAL paper rectangle
-            // overlaps this row can limit the right annotation gutter.
-            // The old Math.Max(height) test treated the next, disjoint
-            // 1:10 row as a horizontal neighbor, hiding TOP/BOTTOM labels.
-            // Keep all downstream frame/title/label collision guards.
-            var rightNeighbor=cameras.Where(v=>v.X>camera.X+1e-5 &&
-                    Math.Abs(v.Y-camera.Y)<(v.H+camera.H)/2)
-                .OrderBy(v=>v.X).FirstOrDefault();
-            double rightLimit=rightNeighbor!=null?
-                rightNeighbor.X-rightNeighbor.W/2-5:
-                (bypassTitleBlock?
-                    NativeOrthoTitleBlockBypass69.Right(paperW,true)-3:
-                    SupportOrthoPaperTypography66.IsLargePaper(paperW,paperH)?
-                        paperW*.75-3:paperW*.78-3);
-            double width=Math.Min(widthCap,rightLimit-x);
-            if(width<54)
+            // REV71: same real gutter geometry is used by the
+            // pre-registration capacity test and actual member writer.
+            // Only horizontally intersecting viewports can terminate
+            // this view's independent right annotation column.
+            bool hasGutter=SupportOrthoAnnotationCapacity71.TryGutter(
+                frames.Single(v=>v.Name==camera.Name),
+                frames,paperW,paperH,bypassTitleBlock,
+                out var gutter);
+            double x=gutter.X;
+            double width=Math.Min(widthCap,gutter.Width);
+            if(!hasGutter)
             {
                 skips.Add(camera.Name+":NO_SAFE_TEXT_GUTTER");
                 empty.Add(camera.Name);
@@ -168,44 +163,65 @@ public static class SupportOrthoMemberCalloutPlan27
                     paperH,bypassTitleBlock)+8);
             double total=projected.Sum(t=>t.Height)+
                 Math.Max(0,projected.Count-1)*rowSpacing;
-            if(total>topSafe-bottomSafe+1e-6)
+            double originalRowTop=Math.Min(topSafe,
+                Math.Max(bottomSafe+total,camera.Y+total/2));
+            var reserved=notes.Select(n=>
+                new SupportOrthoAnnotationCapacity71.Rect(
+                    n.LabelX,n.LabelTop-n.LabelHeight,
+                    n.LabelX+n.LabelWidth,n.LabelTop)).ToArray();
+            // Preserve REV70 positions unchanged whenever the entire
+            // old label stack is geometrically safe. Otherwise find
+            // actual free vertical intervals for this column. The old
+            // nearest-row-center rule incorrectly restricted disjoint
+            // columns on the 12-object sample.
+            bool oldFits=total<=topSafe-bottomSafe+1e-6&&
+                SupportOrthoAnnotationCapacity71.IsFree(
+                    frames,titles,reserved,x,width,
+                    originalRowTop-total,originalRowTop);
+            if(!oldFits)
             {
-                // Optional XREF filenames must NEVER crowd out previously
-                // validated native steel/support and pipe annotations.
-                // Keep original ten-view behavior when no XREFs are present.
                 var required=projected.Where(t=>
                     t.Member.XrefDrawingName==null).ToList();
                 var extras=projected.Where(t=>
                     t.Member.XrefDrawingName!=null).ToList();
                 double needed=required.Sum(t=>t.Height)+
                     Math.Max(0,required.Count-1)*rowSpacing;
-                if(needed>topSafe-bottomSafe+1e-6)
+                if(!SupportOrthoAnnotationCapacity71.TryFindBand(
+                    frames,titles,reserved,x,width,camera.Y,
+                    needed,total,paperW,paperH,bypassTitleBlock,
+                    out var band))
                 {
-                    skips.Add(camera.Name+":NOT_ENOUGH_LABEL_HEIGHT");
+                    skips.Add(camera.Name+":NOT_ENOUGH_LABEL_HEIGHT"+
+                        "_AFTER_GEOMETRY_BANDS");
                     empty.Add(camera.Name);
                     continue;
                 }
+                topSafe=band.Top;
+                bottomSafe=band.Bottom;
+                // Native member/pipe labels are mandatory. Only XREF
+                // filenames can be dropped and only when their full
+                // measured-height stack cannot fit any free band.
                 while(extras.Count>0)
                 {
                     int count=required.Count+extras.Count;
                     double size=needed+extras.Sum(t=>t.Height)+
-                        (count>1?Math.Max(0,count-1)*rowSpacing-
-                            Math.Max(0,required.Count-1)*rowSpacing:0);
-                    if(size<=topSafe-bottomSafe+1e-6)break;
+                        Math.Max(0,count-1)*rowSpacing-
+                        Math.Max(0,required.Count-1)*rowSpacing;
+                    if(size<=band.CapacityMm+1e-6)break;
                     var dropped=extras[^1];
                     skips.Add(camera.Name+":"+dropped.Member.Handle+
                         ":XREF_FILENAME_NO_LABEL_SPACE");
                     extras.RemoveAt(extras.Count-1);
                 }
-                projected=required.Concat(extras).OrderByDescending(t=>t.Y)
+                projected=required.Concat(extras)
+                    .OrderByDescending(t=>t.Y)
                     .ThenBy(t=>t.Member.Handle,
                         StringComparer.OrdinalIgnoreCase).ToList();
                 total=projected.Sum(t=>t.Height)+
                     Math.Max(0,projected.Count-1)*rowSpacing;
             }
             double rowTop=Math.Min(topSafe,
-                Math.Max(bottomSafe+total,
-                    camera.Y+total/2));
+                Math.Max(bottomSafe+total,camera.Y+total/2));
             int placed=0;
             foreach(var item in projected)
             {
