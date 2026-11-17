@@ -1,0 +1,42 @@
+name: Build Harvey Preview Addon
+on:
+  push:
+    branches:
+      - feature/harvey-preview-addon-20261117
+    paths:
+      - 'addon/**'
+      - '.github/workflows/build-harvey-preview.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore addon/HarveyTools.PreviewAddon.csproj
+      - name: Build
+        run: dotnet build addon/HarveyTools.PreviewAddon.csproj --configuration Release --no-restore
+      - name: Capture build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path output | Out-Null
+          Copy-Item addon/bin/Release/net8.0-windows/HarveyTools.PreviewAddon.dll output/HarveyTools.PreviewAddon.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HarveyTools-PreviewAddon
+          path: output/HarveyTools.PreviewAddon.dll
+      - name: Commit DLL to this feature branch
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add output/HarveyTools.PreviewAddon.dll
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "Build generic preview addon DLL"
+            git push
+          }
