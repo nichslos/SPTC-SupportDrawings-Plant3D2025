@@ -1105,6 +1105,23 @@ public sealed class SupportOrthoTenViewGenerator
                 string previewLayout=FindPaperLayout(previewDb);
                 var previewSheet=CurrentPaperDetails(previewDb,previewLayout);
                 (double w,double h)=(previewSheet.WidthMm,previewSheet.HeightMm);
+                var previewArea=previewSheet;
+                if(draftOverflow75)
+                {
+                    var virtualCanvas=DraftCanvas75(
+                        layout,sourceAnnotations,options.Views,
+                        options.ScaleDenominator,w,h);
+                    w=virtualCanvas.WidthMm;
+                    h=virtualCanvas.HeightMm;
+                    previewArea=NativeOrthoEffectivePaper59.FromMedia(w,h,0);
+                    ed.WriteMessage("\nSPTC REV75: Actual native media "+
+                        previewSheet.WidthMm.ToString("0.###",CultureInfo.InvariantCulture)+
+                        "x"+previewSheet.HeightMm.ToString("0.###",CultureInfo.InvariantCulture)+
+                        " mm; virtual DRAFT layout "+
+                        w.ToString("0.###",CultureInfo.InvariantCulture)+
+                        "x"+h.ToString("0.###",CultureInfo.InvariantCulture)+
+                        " mm. Off-sheet content is unprintable on the seed.");
+                }
                 var fit=NativeOrthoTenViewPlan.Build(layout,w,h);
                 int autoDenominator=fit.Denominator;
                 bool exactReflow=exactTenOnOneSheet64||
@@ -1172,7 +1189,7 @@ public sealed class SupportOrthoTenViewGenerator
                 else
                     proof=NativeOrthoTenViewAutoPlacement26.Build(fit,w,h);
                 NativeOrthoEffectivePaper59.RequireInsideUsableArea(
-                    previewSheet,
+                    previewArea,
                     proof.Views.Select(v=>
                         new NativeOrthoEffectivePaper59.ViewFrame(
                             v.Name,v.CenterX,v.CenterY,
@@ -1455,9 +1472,21 @@ public sealed class SupportOrthoTenViewGenerator
             }
             if (targetDoc.Database.TileMode)
                 throw new InvalidOperationException("AutoCAD remains in model space after paper layout selection.");
-            var effectiveSheet=CurrentPaperDetails(targetDoc.Database,paperLayout);
+            var physicalSheet=CurrentPaperDetails(
+                targetDoc.Database,paperLayout);
+            var effectiveSheet=physicalSheet;
             (double paperWidth,double paperHeight)=
                 (effectiveSheet.WidthMm,effectiveSheet.HeightMm);
+            if(draftOverflow75)
+            {
+                var virtualCanvas=DraftCanvas75(layout,sourceAnnotations,
+                    options.Views,options.ScaleDenominator,
+                    physicalSheet.WidthMm,physicalSheet.HeightMm);
+                paperWidth=virtualCanvas.WidthMm;
+                paperHeight=virtualCanvas.HeightMm;
+                effectiveSheet=NativeOrthoEffectivePaper59.FromMedia(
+                    paperWidth,paperHeight,0);
+            }
             NativeOrthoTenViewPlan.Plan candidate =
                 NativeOrthoTenViewPlan.Build(layout, paperWidth, paperHeight);
             int autoDenominator61=candidate.Denominator;
@@ -1472,11 +1501,19 @@ public sealed class SupportOrthoTenViewGenerator
             Log("STEP4_SHEET_LAYOUT=" + paperLayout);
             Log("STEP4_SHEET_MM=" + Point(paperWidth,paperHeight,0));
             Log("REV59_RAW_MEDIA_MM="+Point(
-                effectiveSheet.MediaWidthMm,effectiveSheet.MediaHeightMm,0));
+                physicalSheet.MediaWidthMm,physicalSheet.MediaHeightMm,0));
             Log("REV59_NATIVE_PLOT_ROTATION_DEG="+
-                effectiveSheet.RotationDegrees);
+                physicalSheet.RotationDegrees);
             Log("REV59_EFFECTIVE_PAPER_MM="+Point(
-                effectiveSheet.WidthMm,effectiveSheet.HeightMm,0));
+                physicalSheet.WidthMm,physicalSheet.HeightMm,0));
+            Log("REV75_DRAFT_OVERFLOW_ACTIVE="+draftOverflow75);
+            Log("REV75_VIRTUAL_LAYOUT_MM="+Point(paperWidth,paperHeight,0));
+            Log("REV75_ACTUAL_NATIVE_PLOT_MM="+
+                Point(physicalSheet.WidthMm,physicalSheet.HeightMm,0));
+            Log("REV75_PLOT_FIT_STATUS="+
+                (draftOverflow75?
+                    "OUTSIDE_REAL_PAGE_DRAFT_ONLY_NO_PDF":
+                    "NORMAL_PHYSICAL_SHEET_VALIDATION"));
             Log("REV59_TITLE_BLOCK_SAFE_RIGHT_MM="+
                 (paperWidth*NativeOrthoEffectivePaper59
                     .RightTitleBlockStartRatio).ToString(
@@ -1748,7 +1785,8 @@ public sealed class SupportOrthoTenViewGenerator
                         t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
                 requireTen:options.Views.Count==10,
                 bypassTitleBlock:bypassTitleBlock69);
-            Log("REV59_PREFLIGHT_ALL_TEN_INSIDE_EFFECTIVE_SHEET=PASS");
+            Log("REV59_PREFLIGHT_ALL_TEN_INSIDE_EFFECTIVE_SHEET="+
+                (draftOverflow75?"VIRTUAL_DRAFT_ONLY":"PASS"));
             if(bypassTitleBlock69)
                 Log("REV69_TITLEBLOCK_OVERPRINT_POSSIBLE="+
                     NativeOrthoTitleBlockBypass69.EntersOldTitleBlockZone(
@@ -2118,7 +2156,8 @@ public sealed class SupportOrthoTenViewGenerator
                         v.Handle,v.X,v.Y,v.W,v.H)).ToArray(),
                 requireTen:options.Views.Count==10,
                 bypassTitleBlock:bypassTitleBlock69);
-            Log("REV59_ACTUAL_NATIVE_VIEWPORTS_IN_SAFE_SHEET=PASS");
+            Log("REV59_ACTUAL_NATIVE_VIEWPORTS_IN_SAFE_SHEET="+
+                (draftOverflow75?"VIRTUAL_DRAFT_ONLY":"PASS"));
             bool overlaps=false,possibleTitleBlock=false;
             for(int i=0;i<newFrames.Count;i++)
             {
@@ -2165,7 +2204,8 @@ public sealed class SupportOrthoTenViewGenerator
                         t.Name,t.CenterX,t.TopY,t.Width,t.Height)).ToArray(),
                 requireTen:options.Views.Count==10,
                 bypassTitleBlock:bypassTitleBlock69);
-            Log("REV59_ACTUAL_NATIVE_TITLES_IN_SAFE_SHEET=PASS");
+            Log("REV59_ACTUAL_NATIVE_TITLES_IN_SAFE_SHEET="+
+                (draftOverflow75?"VIRTUAL_DRAFT_ONLY":"PASS"));
             Log("STEP10_TITLE_LAYER="+NativeOrthoViewTitlePlan.TitleLayer);
             var titleHandles=CreateNativePaperTitles(
                 targetDoc.Database,paperLayout,titles,
@@ -2922,7 +2962,8 @@ public sealed class SupportOrthoTenViewGenerator
             Log("REV22_41_DIMENSIONS_STATIC_ON_MANUAL_UPDATE=FALSE_FOR_REV22_49_REGISTERED_DWGS");
             Log("UPDATE_VIEW_MANUAL_TEST_REQUIRED=TRUE");
             Log("FINAL_STATUS=TEN_NATIVE_VIEWS_AND_TITLES_MEMBER_LEADERS_"+
-                annotationStatus);
+                annotationStatus+
+                (draftOverflow75?"_DRAFT_ONLY_PAPER_OVERFLOW_UNPRINTABLE":""));
             succeeded=annotationStatus=="PASS" ||
                 annotationStatus=="NO_NATIVE_STEEL_OR_PLANT_SUPPORTS";
 
@@ -2931,7 +2972,7 @@ public sealed class SupportOrthoTenViewGenerator
             // one matching paper-space title block can be changed.
             // No title block geometry, manual text, XREF or Ortho view
             // is guessed or rewritten.
-            if(packageSettings.Enabled)
+            if(packageSettings.Enabled&&!draftOverflow75)
             {
                 try
                 {
@@ -3073,6 +3114,12 @@ public sealed class SupportOrthoTenViewGenerator
                     entry=entry with {
                         QaStatus="FAIL",IssueStatus="GENERATION_FAILED",
                         IssueNote="GENERATION_DID_NOT_COMPLETE"
+                    };
+                else if(draftOverflow75)
+                    entry=entry with {
+                        QaStatus="REVIEW",
+                        IssueStatus="DRAFT_OVERFLOW_NOT_FOR_ISSUE",
+                        IssueNote="VIEWPORTS_OR_ANNOTATIONS_OUTSIDE_PHYSICAL_PAGE_NO_PDF"
                     };
                 SupportProductionPackagePlan.SaveEntry(entry);
                 onProductionEntry?.Invoke(entry);
