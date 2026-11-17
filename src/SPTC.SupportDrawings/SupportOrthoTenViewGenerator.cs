@@ -709,10 +709,15 @@ public sealed class SupportOrthoTenViewGenerator
                             previewDb.CloseInput(true);
                             var previewSheet=CurrentPaperDetails(previewDb,
                                 FindPaperLayout(previewDb));
+                            double requiredLabels71=
+                                SupportOrthoAnnotationCapacity71.RequiredHeight(
+                                    sourceAnnotations,
+                                    previewSheet.WidthMm,previewSheet.HeightMm);
                             bool fits=NativeOrthoSingleSheet64.TryExactTenFit(
                                 layout,options.Views,options.ScaleDenominator,
                                 previewSheet.WidthMm,previewSheet.HeightMm,
-                                out string reason);
+                                out string reason,
+                                mandatoryAnnotationHeightMm:requiredLabels71);
                             bool relaxed69=false;
                             string bypassReason="";
                             if(!fits&&NativeOrthoTitleBlockBypass69.Eligible(
@@ -721,7 +726,8 @@ public sealed class SupportOrthoTenViewGenerator
                                 relaxed69=NativeOrthoSingleSheet64.TryExactTenFit(
                                     layout,options.Views,options.ScaleDenominator,
                                     previewSheet.WidthMm,previewSheet.HeightMm,
-                                    out bypassReason,bypassTitleBlock:true);
+                                    out bypassReason,bypassTitleBlock:true,
+                                    mandatoryAnnotationHeightMm:requiredLabels71);
                             reviews.Add(new NativeOrthoSeedDiagnostics65.Result(
                                 name,fits?"PASS":relaxed69?"REV69_BYPASS_FIT":"NO_FIT",
                                 previewSheet.WidthMm,previewSheet.HeightMm,
@@ -889,12 +895,16 @@ public sealed class SupportOrthoTenViewGenerator
                 // selected-view grid, with native titles and label reserve.
                 // No auto-rescale or native/project writes on failure.
                 NativeOrthoTenViewAutoPlacement26.Result proof;
+                double mandatoryHeight71=
+                    SupportOrthoAnnotationCapacity71.RequiredHeight(
+                        sourceAnnotations,w,h);
                 if(exactReflow)
                 {
                     try
                     {
                         proof=NativeOrthoExactScalePlacement61.Build(
-                            fit,options.Views,w,h);
+                            fit,options.Views,w,h,
+                            mandatoryAnnotationHeightMm:mandatoryHeight71);
                         // The strict planner passed, so all older
                         // successful drawings on ANY project paper remain identical.
                         bypassTitleBlock69=false;
@@ -906,7 +916,8 @@ public sealed class SupportOrthoTenViewGenerator
                                 options.Views.Count))
                     {
                         proof=NativeOrthoExactScalePlacement61.Build(
-                            fit,options.Views,w,h,bypassTitleBlock:true);
+                            fit,options.Views,w,h,bypassTitleBlock:true,
+                            mandatoryAnnotationHeightMm:mandatoryHeight71);
                         bypassTitleBlock69=true;
                         ed.WriteMessage("\nSPTC REV70: Existing registered "+
                             "Ortho sheet's title-block "+
@@ -1465,10 +1476,17 @@ public sealed class SupportOrthoTenViewGenerator
             // Derive the entire two-column x five-row arrangement from
             // the native ten-view candidate, preserve camera/scale and
             // reserve all ten title bands before ANY native generation.
+            double mandatoryHeight71=
+                SupportOrthoAnnotationCapacity71.RequiredHeight(
+                    sourceAnnotations,paperWidth,paperHeight);
+            Log("REV71_MANDATORY_NATIVE_LABEL_STACK_MM="+
+                mandatoryHeight71.ToString("0.###",
+                    CultureInfo.InvariantCulture));
             var autoPlacement=exactReflow61?
                 NativeOrthoExactScalePlacement61.Build(
                     candidate,options.Views,paperWidth,paperHeight,
-                    bypassTitleBlock:bypassTitleBlock69):
+                    bypassTitleBlock:bypassTitleBlock69,
+                    mandatoryAnnotationHeightMm:mandatoryHeight71):
                 NativeOrthoTenViewAutoPlacement26.Build(
                     candidate,paperWidth,paperHeight);
             var group=autoPlacement.Views;
@@ -1947,6 +1965,13 @@ public sealed class SupportOrthoTenViewGenerator
                     memberCameras,titles,sourceAnnotations,paperWidth,paperHeight,
                     allowSubset:options.Views.Count!=10,
                     bypassTitleBlock:bypassTitleBlock69);
+                Log("REV71_ANNOTATION_CAPACITY_POLICY="+
+                    "GEOMETRY_DERIVED_FREE_PAPER_BANDS");
+                Log("REV71_REQUIRED_MEMBER_ANNOTATIONS="+
+                    (sourceAnnotations.Count(m=>
+                        m.XrefDrawingName==null)*memberCameras.Count));
+                Log("REV71_PLANNED_NATIVE_MEMBER_ANNOTATIONS="+
+                    plan.Callouts.Count(n=>!n.IsXrefMember));
                 // REV22.29: preserve full source XREF key in the diagnostics;
                 // ONLY change the actual visible two-line PIPE annotation.
                 // Structural members and Support TOS retain their REV22.28 text.
