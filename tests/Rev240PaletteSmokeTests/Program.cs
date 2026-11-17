@@ -98,6 +98,9 @@ internal static class Program
                 .Single(p=>p.Dock==DockStyle.Fill);
             var footer=ui.Controls.OfType<Panel>()
                 .Single(p=>p.Dock==DockStyle.Bottom);
+            ui.CreateControl();
+            ui.PerformLayout();
+            footer.PerformLayout();
             Check(ui.AutoScaleMode==AutoScaleMode.Dpi&&workspace.AutoScroll,
                 "only the workspace scrolls; footer stays docked");
             Check(tabs.TabCount==4&&tabs.TabPages[0].AutoScroll,
@@ -112,7 +115,9 @@ internal static class Program
                 run.Bounds.Bottom<=footer.ClientSize.Height&&
                 preflight.Bounds.Right<=footer.ClientSize.Width&&
                 preflight.Bounds.Bottom<=footer.ClientSize.Height,
-                "sticky commands remain fully visible in footer");
+                "sticky commands remain fully visible in footer"+
+                $" (scale={scale}, footer={footer.ClientSize}, "+
+                $"run={run.Bounds}, preflight={preflight.Bounds})");
             Check(!run.Bounds.IntersectsWith(summary.Bounds)&&
                 !preflight.Bounds.IntersectsWith(summary.Bounds),
                 "sticky actions cannot obscure the preflight text");
