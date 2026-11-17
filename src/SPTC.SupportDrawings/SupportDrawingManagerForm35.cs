@@ -51,6 +51,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly Panel stickyFooter = new();
     private bool arrangingStickyFooter;
     private readonly List<CollapsibleSection> uiSections = new();
+    private readonly Button essentialsButton=new();
+    private readonly Button allSettingsButton=new();
+    private readonly ToolTip uiTips=new(){AutoPopDelay=12500,InitialDelay=550,ReshowDelay=250,ShowAlways=true};
     private readonly TabControl tabs = new();
     private sealed class CollapsibleSection
     {
@@ -67,6 +70,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly ComboBox outputMode = new();
     private readonly Label outputHint = new();
     private readonly Label selectedViewCount = new();
+    private readonly Label readinessHint = new();
+    private readonly Button quickDraft = new();
+    private readonly Button quickPhysical = new();
     private readonly TextBox seed = new();
     private readonly TextBox prefix = new();
     private readonly ComboBox scale = new();
@@ -254,6 +260,25 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         outputHint.AutoEllipsis=false;
         outputHint.ForeColor=Color.DimGray;
         orthoTab.Controls.Add(outputHint);
+        quickDraft.Text="Draft: All 10 Views";
+        quickDraft.Name="SPTC_QUICK_DRAFT_78";
+        quickDraft.SetBounds(18,144,170,30);
+        quickDraft.Click+=(_,_)=>PrepareDraftViews();
+        orthoTab.Controls.Add(quickDraft);
+        quickPhysical.Text="Printable Sheet";
+        quickPhysical.Name="SPTC_QUICK_PHYSICAL_78";
+        quickPhysical.SetBounds(202,144,160,30);
+        quickPhysical.Click+=(_,_)=>{
+            outputMode.SelectedIndex=0;
+            UpdateOutputModeUi();
+            SetStatus("Printable single-sheet mode selected. "+
+                "The generator will enforce the real sheet boundary.");
+        };
+        orthoTab.Controls.Add(quickPhysical);
+        readinessHint.Name="SPTC_READINESS_HINT_78";
+        readinessHint.SetBounds(18,190,700,27);
+        readinessHint.ForeColor=Color.DimGray;
+        orthoTab.Controls.Add(readinessHint);
         seed.SetBounds(18, 152, 568, 27);
         seed.PlaceholderText = "Auto: select a registered empty project Ortho DWG";
         seed.Enabled = false;
@@ -454,13 +479,15 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 customLabel,customScale,prefixLabel,prefix,
                 autoSeed,seed,browse},
             new Control[]{vLabel,views,selectedViewCount,all,six,four,none},
-            new Control[]{outputLabel,outputMode,outputHint,batch,notice},
+            new Control[]{outputLabel,outputMode,outputHint,batch,notice,
+                quickDraft,quickPhysical,readinessHint},
             new Control[]{qaHeader,generatedHistory,qaIndicator,lastQa,
                 openDwgFolder,openResult,copyQa},
             new Control[]{autoDimLinear,referenceDimensions},
             new Control[]{aLabel,line,bop,tos,description,xrefNames},
             new Control[]{settingsCaption,saveSettings,loadSettings,
                 resetSettings,productionSettings,privacy});
+        InstallUiGuidance(orthoTab);
 
         Label previewLabel = L("Preflight / configuration summary",12,6,390);
         stickyFooter.Controls.Add(previewLabel);
@@ -506,6 +533,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         outputFields[2].SetBounds(368,30,352,63);
         outputFields[3].SetBounds(18,91,330,45);
         outputFields[4].SetBounds(368,99,350,31);
+        outputFields[5].SetBounds(18,153,166,30);
+        outputFields[6].SetBounds(196,153,166,30);
+        outputFields[7].SetBounds(18,198,686,26);
         dimensions[0].SetBounds(18,8,390,27);
         dimensions[1].SetBounds(18,43,415,31);
         annotations[0].SetBounds(18,8,306,24);
@@ -571,7 +601,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         tab.SuspendLayout();
         try
         {
-            int y=10;
+            int y=47;
             foreach(var section in uiSections)
             {
                 string name=section.Header.Tag?.ToString()??"Settings";
