@@ -130,8 +130,15 @@ jobs:
           $callout62=Get-Content "$root/SupportOrthoMemberCalloutPlan27.cs" -Raw
           $audit62=Get-Content "$root/SupportOrthoDrawingQualityAudit61.cs" -Raw
           $subsetTest62=Get-Content 'tests/Rev241DimLinearSmokeTests/Rev262NativeSubsetQaTests.cs' -Raw
-          if(-not $callout62.Contains('Math.Abs(v.Y-camera.Y)<(v.H+camera.H)/2')) {
-            throw 'REV62 actual vertical viewport-neighbor overlap policy missing'
+          # REV71 moves the equivalent rectangle-row intersection
+          # test into the shared annotation-capacity helper; asserting
+          # the old literal source expression would prohibit safe
+          # refactoring while the original REV62 invariant remains.
+          $capacity62=Get-Content "$root/SupportOrthoAnnotationCapacity71.cs" -Raw
+          if(-not $callout62.Contains('SupportOrthoAnnotationCapacity71.TryGutter(') -or
+             -not $capacity62.Contains('v.Y-v.H/2<view.Y+view.H/2') -or
+             -not $capacity62.Contains('view.Y-view.H/2<v.Y+v.H/2')) {
+            throw 'REV62 real horizontal viewport-row intersection guard missing'
           }
           if(-not $audit62.Contains('validIsoOnly') -or
              -not $audit62.Contains('NO_NATIVE_MEMBER_EVIDENCE') -or
