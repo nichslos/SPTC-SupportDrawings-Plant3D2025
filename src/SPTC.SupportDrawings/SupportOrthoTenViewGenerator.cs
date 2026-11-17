@@ -295,6 +295,7 @@ public sealed class SupportOrthoTenViewGenerator
                         " retained; splitting native view groups into "+
                         "independently checked Ortho DWGs.");
 
+                    int attemptedPartNumber=0;
                     async Task<bool> GeneratePartition(
                         IReadOnlyList<string> subset)
                     {
@@ -306,7 +307,7 @@ public sealed class SupportOrthoTenViewGenerator
                         // Use the existing validated native -Snn package
                         // identifier so separate sheets never share one
                         // project drawing number in the production register.
-                        string partSuffix="-S"+(completedSheets+1)
+                        string partSuffix="-S"+(++attemptedPartNumber)
                             .ToString("00",CultureInfo.InvariantCulture);
                         bool generated=await GenerateOne(
                             sourceDoc,singleSourceIds,subOptions,progress,
