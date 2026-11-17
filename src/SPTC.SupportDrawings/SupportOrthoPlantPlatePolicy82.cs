@@ -16,7 +16,7 @@ public static class SupportOrthoPlantPlatePolicy82
         string? runtimeClass,string? pnpClass)
     {
         static string Canonical(string? s)=>
-            new((s??"").Where(char.IsLetterOrDigit).ToArray())
+            new string((s??"").Where(char.IsLetterOrDigit).ToArray())
                 .ToUpperInvariant();
         string pnp=Canonical(pnpClass);
         if(pnp=="STRUCTUREPLATE")return true;
