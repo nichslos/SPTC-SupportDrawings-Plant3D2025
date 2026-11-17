@@ -9,6 +9,7 @@
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoViewTitlePlan.cs" Link="NativeOrthoViewTitlePlan.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan17.cs" Link="SupportOrthoMemberCalloutPlan17.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan27.cs" Link="SupportOrthoMemberCalloutPlan27.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoAnnotationCapacity71.cs" Link="SupportOrthoAnnotationCapacity71.cs" />
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoPaperTypography66.cs" Link="SupportOrthoPaperTypography66.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoTitleBlockBypass69.cs" Link="NativeOrthoTitleBlockBypass69.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoEffectivePaper59.cs" Link="NativeOrthoEffectivePaper59.cs"/>
