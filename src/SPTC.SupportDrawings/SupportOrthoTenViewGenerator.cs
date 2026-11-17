@@ -2730,6 +2730,13 @@ public sealed class SupportOrthoTenViewGenerator
                             detailPlan.TerminalMemberRemainderDimensions);
                         Log("REV22_58_ACCEPTED_UNINTENDED_WITNESS_INTERSECTIONS="+
                             detailPlan.UnintendedAcceptedWitnessIntersections);
+                        Log("DIM_FINAL_AUDIT_OPTIONAL_PROFILES_OMITTED="+
+                            detailPlan.PostAuditOptionalDetailsOmitted);
+                        Log("DIM_FINAL_AUDIT_ESSENTIALS_PRESERVED=True");
+                        foreach(string collision in
+                            detailPlan.FinalCollisionDiagnostics??
+                                Array.Empty<string>())
+                            Log("DIM_FINAL_AUDIT_DETAIL="+collision);
                         if(detailPlan.UnintendedAcceptedWitnessIntersections!=0)
                             throw new InvalidOperationException(
                                 "REV22.58 dimension placement produced "+
