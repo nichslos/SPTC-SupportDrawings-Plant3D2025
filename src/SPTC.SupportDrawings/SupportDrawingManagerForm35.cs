@@ -47,7 +47,18 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     // docked narrow or Windows display scaling is 125%/150%.
     // Geometry and commands are untouched; only WinForms layout changes.
     private readonly Panel layoutSurface = new();
+    private readonly Panel scrollingWorkspace = new();
+    private readonly Panel stickyFooter = new();
+    private readonly List<CollapsibleSection> uiSections = new();
     private readonly TabControl tabs = new();
+    private sealed class CollapsibleSection
+    {
+        internal readonly Panel Frame=new();
+        internal readonly Panel Body=new();
+        internal readonly Button Header=new();
+        internal int BodyHeight;
+        internal bool Expanded;
+    }
     private readonly ComboBox cubeMode = new();
     private readonly CheckBox autoSeed = new();
     // REV76: one unambiguous UI choice maps to the existing two
@@ -70,11 +81,16 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly CheckBox referenceDimensions = new();
     private readonly TextBox preview = new();
     private readonly TextBox lastQa = new();
+    private readonly ListBox generatedHistory = new();
     private readonly Button openDwgFolder = new();
     private readonly Button openResult = new();
+    private readonly Button copyQa = new();
+    private readonly Label qaIndicator = new();
+    private sealed record GeneratedDwg(string Path,string ResultPath);
+    private readonly List<GeneratedDwg> outputHistory = new();
     private string? lastOutputDwg;
     private string? lastResultTxt;
-    private int completedOutputCount;
+    private string lastCopiedSummary = "";
     private readonly Button runButton = new();
     private readonly Button preflightButton = new();
     private readonly Label sourceLabel = new();
@@ -97,15 +113,22 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         MinimumSize = new Size(360, 420);
         BackColor = Color.White;
         AutoScaleMode = AutoScaleMode.Dpi;
-        AutoScroll = true;
-        // The scrollable reference canvas retains the established 805px
-        // layout, including all four operation tabs and footer controls.
-        // Docking below its width exposes horizontal/vertical scrollbars
-        // rather than overlapping columns or hiding action buttons.
+        AutoScroll = false;
+        // REV77: only the workspace scrolls. Run, Preflight and status
+        // belong to the separate docked footer and remain visible.
+        scrollingWorkspace.Dock=DockStyle.Fill;
+        scrollingWorkspace.AutoScroll=true;
+        scrollingWorkspace.BackColor=Color.White;
+        stickyFooter.Dock=DockStyle.Bottom;
+        stickyFooter.Height=116;
+        stickyFooter.BackColor=Color.FromArgb(239,244,249);
         layoutSurface.Name = "SPTC_UI_LAYOUT_SURFACE";
-        layoutSurface.SetBounds(0,0,805,765);
+        layoutSurface.SetBounds(0,0,805,630);
         layoutSurface.BackColor = Color.White;
-        Controls.Add(layoutSurface);
+        scrollingWorkspace.Controls.Add(layoutSurface);
+        Controls.Add(scrollingWorkspace);
+        Controls.Add(stickyFooter);
+        stickyFooter.BringToFront();
         // REV22.40: Hosted permanently as a modeless AutoCAD PaletteSet
         // UserControl. No WinForms DialogResult or Close() on Run.
 
@@ -145,7 +168,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // The settings area extends below the original tab viewport.
         // Explicit scroll extent makes the save/load/default controls
         // reachable at narrow palette sizes and higher Windows DPI.
-        orthoTab.AutoScrollMinSize = new Size(735,850);
+        orthoTab.AutoScrollMinSize = new Size(755,850);
         tabs.TabPages.Add(orthoTab);
         tabs.TabPages.Add(MakeInfoTab("export", "Support Export",
             "Export ONE selected support as an independent DWG.\r\n" +
