@@ -29,7 +29,8 @@ internal sealed record SupportDrawingUiOptions(
     bool XrefMemberNames,
     bool AutoDimLinear,
     bool ReferenceDetailDimensions=true,
-    bool BypassOneSheetLimit=false)
+    bool BypassOneSheetLimit=false,
+    bool AllowDraftOverflow=false)
 {
     public static readonly string[] AllViews =
         {"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK","NW","NE","SW","SE"};
@@ -49,6 +50,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly ComboBox cubeMode = new();
     private readonly CheckBox autoSeed = new();
     private readonly CheckBox bypassOneSheetLimit = new();
+    private readonly CheckBox allowDraftOverflow = new();
     private readonly TextBox seed = new();
     private readonly TextBox prefix = new();
     private readonly ComboBox scale = new();
@@ -205,6 +207,16 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         bypassOneSheetLimit.Text = "If All 10 won't fit, split across sheets";
         bypassOneSheetLimit.Checked = false;
         orthoTab.Controls.Add(bypassOneSheetLimit);
+        allowDraftOverflow.SetBounds(407, 469, 320, 27);
+        allowDraftOverflow.Text = "All 10 on one DWG, outside paper (DRAFT)";
+        allowDraftOverflow.Checked = false;
+        allowDraftOverflow.CheckedChanged+=(_,_)=>{
+            if(allowDraftOverflow.Checked)bypassOneSheetLimit.Checked=false;
+        };
+        bypassOneSheetLimit.CheckedChanged+=(_,_)=>{
+            if(bypassOneSheetLimit.Checked)allowDraftOverflow.Checked=false;
+        };
+        orthoTab.Controls.Add(allowDraftOverflow);
         seed.SetBounds(18, 152, 568, 27);
         seed.PlaceholderText = "Auto: select a registered empty project Ortho DWG";
         seed.Enabled = false;
@@ -473,6 +485,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // Deliberately NOT persisted: overflow fallback needs fresh opt-in
         // after project change, Load settings or Restore defaults.
         bypassOneSheetLimit.Checked=false;
+        allowDraftOverflow.Checked=false;
         // Never persist manual DWG/seed paths.
         autoSeed.Checked=true;
         seed.Text="";
@@ -554,6 +567,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             "   |   Batch Ortho: "+(batch.Checked?"Sequential":"Off")+
             "   |   One-sheet bypass: "+
             (bypassOneSheetLimit.Checked?"Multi-sheet at exact scale":"Off")+
+            "   |   Draft overflow: "+allowDraftOverflow.Checked+
             "   |   Annotations: Line="+line.Checked+
             " BOP="+bop.Checked+" TOS="+tos.Checked+
             " Description="+description.Checked+
@@ -561,7 +575,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 "Automatic unique name":prefix.Text)+
             "\r\nREV74: All 10 prefer ONE native sheet at exact 1:N. "+
             "Opt-in fallback splits only when sheet-fit preflight fails; "+
-            "each resulting native sheet must still pass its own page checks.";
+            "each resulting native sheet must still pass its own page checks."+
+            "\r\nREV75: Draft overflow makes ONE native DWG with "+
+            "all ten views at exact scale, possibly outside the actual "+
+            "printable page. Never issue or publish an off-sheet draft PDF.";
     }
 
     private void RunSelected()
@@ -615,7 +632,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             selected, line.Checked,bop.Checked,tos.Checked,
             description.Checked,batch.Checked,xrefNames.Checked,
             autoDimLinear.Checked,referenceDimensions.Checked,
-            bypassOneSheetLimit.Checked);
+            bypassOneSheetLimit.Checked,allowDraftOverflow.Checked);
         // Modeless palette remains open; dispatch in a fresh AutoCAD
         // command context rather than accessing Editor from this UI callback.
         RunRequested?.Invoke(Settings);
