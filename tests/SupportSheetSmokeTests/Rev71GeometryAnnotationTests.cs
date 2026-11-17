@@ -71,9 +71,7 @@ internal static class Rev71GeometryAnnotationTests
         Need(legacyHalf*2<required,
             "reproduce the historic spurious TOP height rejection");
         Need(SupportOrthoAnnotationCapacity71.TryPreflight(
-            frames.Select(f=>new NativeOrthoTenViewPlan.Placement(
-                f.Name,f.X,f.Y,f.W,f.H)).ToArray(),
-            titles,1189,841,true,required,out string reason),
+            frames,titles,1189,841,true,required,out string reason),
             "real geometry allows mandatory labels on all 10 views: "+reason);
         var result=SupportOrthoMemberCalloutPlan27.Build(
             cameras,titles,all,1189,841,bypassTitleBlock:true);
@@ -113,9 +111,7 @@ internal static class Rev71GeometryAnnotationTests
         // Explicit negative test: no label capacity must still fail
         // BEFORE a native Ortho DWG can be registered.
         Need(!SupportOrthoAnnotationCapacity71.TryPreflight(
-            frames.Select(f=>new NativeOrthoTenViewPlan.Placement(
-                f.Name,f.X,f.Y,f.W,f.H)).ToArray(),
-            titles,1189,841,true,required*100,out _),
+            frames,titles,1189,841,true,required*100,out _),
             "physically impossible member annotation count must fail closed");
         Console.WriteLine(
             "REV71 geometry bands: 12-object TEST5 ten-view frame fixture, "+
