@@ -189,9 +189,13 @@ internal static class Program
                     StringComparison.Ordinal));
             Check(dim.Text.StartsWith("[+]",StringComparison.Ordinal),
                 "dimensions start collapsed without discarding controls");
+            ui.CreateControl();
+            ui.PerformLayout();
+            tab.ScrollControlIntoView(dim);
             dim.PerformClick();
             Check(dim.Text.StartsWith("[-]",StringComparison.Ordinal),
-                "collapsible section expands on actual UI interaction");
+                "collapsible section expands when clicked after scrolling"+
+                $" (Visible={dim.Visible}, CanSelect={dim.CanSelect})");
             dim.PerformClick();
             Check(dim.Text.StartsWith("[+]",StringComparison.Ordinal),
                 "collapsible section closes again");
