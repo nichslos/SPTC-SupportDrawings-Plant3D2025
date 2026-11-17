@@ -15,6 +15,8 @@
              Link="NativeOrthoHiddenCalibration84.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoAppearanceRecovery85.cs"
              Link="NativeOrthoAppearanceRecovery85.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoAppearanceProbe86.cs"
+             Link="NativeOrthoAppearanceProbe86.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPdfPolicy.cs"
              Link="SupportProductionPdfPolicy.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPackagePlan.cs"
