@@ -816,8 +816,13 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         string full=Path.GetFullPath(dwg);
         // Avoid reusing an output from another project if a callback
         // reaches this palette after its source project was switched.
-        if(!NativeOrthoRegistrationNames.IsInsideProjectDirectory(
-            full,projectRoot))
+        string relative=Path.GetRelativePath(projectRoot,full);
+        if(Path.IsPathRooted(relative)||
+           relative==".."||
+           relative.StartsWith(".."+Path.DirectorySeparatorChar,
+               StringComparison.Ordinal)||
+           relative.StartsWith(".."+Path.AltDirectorySeparatorChar,
+               StringComparison.Ordinal))
             return;
         string report=Path.Combine(Path.GetDirectoryName(full)??"",
             Path.GetFileNameWithoutExtension(full)+"_RESULT.txt");
