@@ -1424,6 +1424,18 @@ public sealed class SupportOrthoTenViewGenerator
                 " DESCRIPTION:"+options.Description);
             Log("REV22_35_BATCH_MODE="+options.BatchOrtho);
 
+            // REV80: Verify a native Project Manager drawing in this SAME
+            // active project supplies an unambiguous Ortho DwgVersion.
+            // Read only here: no new DWG or PnP row exists yet. This
+            // must never choose a hard-coded release/schema version.
+            string referenceDwgVersion80=
+                NativeOrthoVersionHandshake80.Preflight(
+                    part.OrthoPart,part.ProjectRoot,part.OrthoFolder,seed,
+                    path=>IsNativeOrthoValid(part.OrthoPart,path));
+            Log("REV80_NATIVE_ORTHO_VERSION_REFERENCE=VERIFIED_PROJECT_NATIVE");
+            Log("REV80_DWG_VERSION_SOURCE=REGISTERED_ORTHO_PNP_DRAWINGS");
+            Log("REV80_DWG_VERSION_POLICY=NO_HARDCODE_NO_DIRECT_DCF_SQL");
+
             // REV16-proven native DWG seed clone; never clone a DWT.
             using (var db = new Database(false, true))
             {
@@ -1451,7 +1463,7 @@ public sealed class SupportOrthoTenViewGenerator
             Log("STEP2_ADD_RETURN=" + guid);
             Log("STEP2_ALREADY_EXISTS=" + addArgs[3]);
             Log("STEP2_ILLEGAL_XREFS=" + addArgs[4]);
-            if (!Guid.TryParse(guid?.ToString(), out _) ||
+            if (!Guid.TryParse(guid?.ToString(),out Guid newDrawingGuid) ||
                 addArgs[3] is true || addArgs[4] is true)
                 throw new InvalidOperationException("Native Ortho project registration did not return a new valid drawing GUID.");
             if (!IsNativeOrthoValid(part.OrthoPart, dest))
@@ -1459,6 +1471,22 @@ public sealed class SupportOrthoTenViewGenerator
             if (ViewCatalog(part.OrthoPart, dest) != "EMPTY_REGISTERED_ORTHO")
                 throw new InvalidOperationException("New DWG is not proven empty after native registration.");
             Log("STEP2_PROJECT_REGISTERED_EMPTY_ORTHO=PASS");
+
+            // Native AddPnPDrawingFile can register a DWG with NULL
+            // PnPDrawings.DwgVersion; Plant then rejects Edit View as
+            // "earlier version" even for a current AutoCAD SaveAs DWG.
+            // Resolve the exact newly registered GUID/path, copy ONLY
+            // the version from the real registered seed through native
+            // DataLinksManager and verify readback before any views exist.
+            Log("REV80_EDIT_VIEW_VERSION_CHECK_ENTERED");
+            string nativeVersion80=
+                NativeOrthoVersionHandshake80.EnsureNewDrawing(
+                    part.OrthoPart,part.ProjectRoot,part.OrthoFolder,
+                    seed,dest,newDrawingGuid,referenceDwgVersion80,
+                    path=>IsNativeOrthoValid(part.OrthoPart,path));
+            Log("REV80_EDIT_VIEW_VERSION_METADATA="+nativeVersion80);
+            Log("REV80_EDIT_VIEW_VERSION_READBACK=PASS");
+            Log("REV80_ACTUAL_EDIT_VIEW_UI_TEST=REQUIRED_IN_PLANT_3D_2025");
 
             // Session command can switch AutoCAD documents. Do not close or
             // edit the source 3D model; retain it for native model linking.
