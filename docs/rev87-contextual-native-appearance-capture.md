@@ -55,7 +55,10 @@ before actual runtime verification.
 7. Exit via the native **OK**, save drawing and reopen TOP Edit View.
    Confirm which mode persisted. Send the capture TXT.
 
-If the Manager is inaccessible during the native Ortho Editor session,\n**do not bypass native controls**. Report this limitation and send\nscreenshots of each selected mode. The four production commands\nremain exactly unchanged.
+If the Manager is inaccessible during the native Ortho Editor session,
+**do not bypass native controls**. Report this limitation and send
+screenshots of each selected mode. The four production commands
+remain exactly unchanged.
 
 ## Acceptance / known limitation
 
