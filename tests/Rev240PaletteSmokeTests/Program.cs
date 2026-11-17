@@ -55,6 +55,7 @@ internal static class Program
 
         TestScrollableDpiLayout();
         TestRev77SessionHistoryAndCollapse();
+        TestRev78GuidedSetup();
         TestBatchProgressReporting();
         TestProductionPackageCheckboxSaveRoundTrip();
         var surface=manager.Controls.Find(
@@ -213,6 +214,87 @@ internal static class Program
             try{Directory.Delete(root,recursive:true);}
             catch(IOException){/* no native DWG files held by this test */}
         }
+    }
+
+    private static void TestRev78GuidedSetup()
+    {
+        using var ui=new SupportDrawingManagerForm35(
+            @"C:\Projects\REV78\MODEL.dwg",
+            @"C:\Projects\REV78",
+            @"C:\Projects\REV78\Orthos");
+        ui.CreateControl();
+        ui.PerformLayout();
+        var draft=AllControls(ui).OfType<Button>()
+            .Single(b=>b.Name=="SPTC_QUICK_DRAFT_78");
+        var normal=AllControls(ui).OfType<Button>()
+            .Single(b=>b.Name=="SPTC_QUICK_PHYSICAL_78");
+        var basics=AllControls(ui).OfType<Button>()
+            .Single(b=>b.Name=="SPTC_SHOW_BASICS_78");
+        var all=AllControls(ui).OfType<Button>()
+            .Single(b=>b.Name=="SPTC_SHOW_ALL_78");
+        var readiness=AllControls(ui).OfType<Label>()
+            .Single(x=>x.Name=="SPTC_READINESS_HINT_78");
+        var checks=AllControls(ui).OfType<CheckedListBox>().Single();
+        var output=AllControls(ui).OfType<ComboBox>()
+            .Single(x=>x.Items.Contains(SupportDrawingOutputMode76.Draft));
+        var scale=AllControls(ui).OfType<ComboBox>()
+            .Single(x=>x.Items.Contains("1:20"));
+        Check(output.SelectedIndex==0&&checks.CheckedItems.Count==10,
+            "safe physical mode and ten native view defaults are preserved");
+        scale.SelectedItem="1:20";
+        AllControls(ui).OfType<Button>()
+            .Single(b=>b.Text=="Ortho 6").PerformClick();
+        Check(checks.CheckedItems.Count==6,
+            "native view subset still works before guided shortcut");
+        draft.PerformClick();
+        Check(checks.CheckedItems.Count==10&&
+              output.SelectedIndex==1&&scale.Text=="1:20",
+            "guided draft checks all ten without silently overriding 1:20");
+        Check(readiness.Text.Contains("DRAFT ONLY",
+            StringComparison.Ordinal)&&
+            readiness.Text.Contains("native PDF blocked",
+                StringComparison.Ordinal),
+            "draft readiness shows an unambiguous no-PDF warning");
+        SupportDrawingUiOptions? queued=null;
+        ui.RunRequested+=options=>queued=options;
+        typeof(SupportDrawingManagerForm35).GetMethod(
+            "RunSelected",BindingFlags.Instance|BindingFlags.NonPublic)!
+            .Invoke(ui,null);
+        Check(queued?.AllowDraftOverflow==true&&
+              queued.BypassOneSheetLimit==false&&
+              queued.ScaleDenominator==20&&queued.Views.Count==10,
+            "guided draft reaches the original native options unchanged");
+        scale.SelectedItem="Automatic";
+        var footer=AllControls(ui).OfType<Panel>()
+            .Single(x=>x.Dock==DockStyle.Bottom);
+        var run=footer.Controls.OfType<Button>()
+            .Single(x=>x.Text=="Run selected");
+        Check(!run.Enabled&&readiness.Text.Contains("Action required",
+            StringComparison.Ordinal),
+            "automatic scale is clearly blocked for draft rather than silently changed");
+        scale.SelectedItem="1:20";
+        all.PerformClick();
+        Check(AllControls(ui).OfType<Button>()
+                .Count(b=>b.Text.StartsWith("[-]"))==7,
+            "Show all reveals all seven existing setting groups");
+        basics.PerformClick();
+        Check(AllControls(ui).OfType<Button>()
+                .Count(b=>b.Text.StartsWith("[-]"))==3,
+            "Show essentials reduces clutter without resetting values");
+        normal.PerformClick();
+        Check(output.SelectedIndex==0&&scale.Text=="1:20"&&
+              checks.CheckedItems.Count==10&&run.Enabled,
+            "printable shortcut returns to safe physical mode without changing scale/views");
+        footer.Controls.OfType<Button>()
+            .Single(b=>b.Text=="Preflight").PerformClick();
+        var summary=footer.Controls.OfType<TextBox>()
+            .Single(x=>x.Multiline&&x.ReadOnly);
+        Check(summary.Text.Contains("READ-ONLY CONFIGURATION PREFLIGHT")&&
+              summary.Text.Contains("1. VIEWS:")&&
+              summary.Text.Contains("3. OUTPUT:"),
+            "preflight uses a numbered, readable UI-only setup summary");
+        Console.WriteLine(
+            "REV78 guided modes, no silent scale changes, clear warnings, basics/all, preflight PASS");
     }
 
     private static void TestProductionPackageCheckboxSaveRoundTrip()

@@ -51,6 +51,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly Panel stickyFooter = new();
     private bool arrangingStickyFooter;
     private readonly List<CollapsibleSection> uiSections = new();
+    private readonly Button essentialsButton=new();
+    private readonly Button allSettingsButton=new();
+    private readonly ToolTip uiTips=new(){AutoPopDelay=12500,InitialDelay=550,ReshowDelay=250,ShowAlways=true};
     private readonly TabControl tabs = new();
     private sealed class CollapsibleSection
     {
@@ -67,6 +70,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly ComboBox outputMode = new();
     private readonly Label outputHint = new();
     private readonly Label selectedViewCount = new();
+    private readonly Label readinessHint = new();
+    private readonly Button quickDraft = new();
+    private readonly Button quickPhysical = new();
     private readonly TextBox seed = new();
     private readonly TextBox prefix = new();
     private readonly ComboBox scale = new();
@@ -156,6 +162,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         sourceLabel.Size = new Size(545, 24);
         sourceLabel.AutoEllipsis = true;
         layoutSurface.Controls.Add(sourceLabel);
+        uiTips.SetToolTip(sourceLabel,
+            "Active source drawing and Plant 3D project. Changes update with the modeless palette.");
 
         tabs.Location = new Point(18, 140);
         tabs.Size = new Size(770, 475);
@@ -254,6 +262,25 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         outputHint.AutoEllipsis=false;
         outputHint.ForeColor=Color.DimGray;
         orthoTab.Controls.Add(outputHint);
+        quickDraft.Text="Draft: All 10 Views";
+        quickDraft.Name="SPTC_QUICK_DRAFT_78";
+        quickDraft.SetBounds(18,144,170,30);
+        quickDraft.Click+=(_,_)=>PrepareDraftViews();
+        orthoTab.Controls.Add(quickDraft);
+        quickPhysical.Text="Printable Sheet";
+        quickPhysical.Name="SPTC_QUICK_PHYSICAL_78";
+        quickPhysical.SetBounds(202,144,160,30);
+        quickPhysical.Click+=(_,_)=>{
+            outputMode.SelectedIndex=0;
+            UpdateOutputModeUi();
+            SetStatus("Printable single-sheet mode selected. "+
+                "The generator will enforce the real sheet boundary.");
+        };
+        orthoTab.Controls.Add(quickPhysical);
+        readinessHint.Name="SPTC_READINESS_HINT_78";
+        readinessHint.SetBounds(18,190,700,27);
+        readinessHint.ForeColor=Color.DimGray;
+        orthoTab.Controls.Add(readinessHint);
         seed.SetBounds(18, 152, 568, 27);
         seed.PlaceholderText = "Auto: select a registered empty project Ortho DWG";
         seed.Enabled = false;
@@ -454,13 +481,15 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 customLabel,customScale,prefixLabel,prefix,
                 autoSeed,seed,browse},
             new Control[]{vLabel,views,selectedViewCount,all,six,four,none},
-            new Control[]{outputLabel,outputMode,outputHint,batch,notice},
+            new Control[]{outputLabel,outputMode,outputHint,batch,notice,
+                quickDraft,quickPhysical,readinessHint},
             new Control[]{qaHeader,generatedHistory,qaIndicator,lastQa,
                 openDwgFolder,openResult,copyQa},
             new Control[]{autoDimLinear,referenceDimensions},
             new Control[]{aLabel,line,bop,tos,description,xrefNames},
             new Control[]{settingsCaption,saveSettings,loadSettings,
                 resetSettings,productionSettings,privacy});
+        InstallUiGuidance(orthoTab);
 
         Label previewLabel = L("Preflight / configuration summary",12,6,390);
         stickyFooter.Controls.Add(previewLabel);
@@ -506,6 +535,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         outputFields[2].SetBounds(368,30,352,63);
         outputFields[3].SetBounds(18,91,330,45);
         outputFields[4].SetBounds(368,99,350,31);
+        outputFields[5].SetBounds(18,153,166,30);
+        outputFields[6].SetBounds(196,153,166,30);
+        outputFields[7].SetBounds(18,198,686,26);
         dimensions[0].SetBounds(18,8,390,27);
         dimensions[1].SetBounds(18,43,415,31);
         annotations[0].SetBounds(18,8,306,24);
@@ -519,14 +551,101 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         preferences[4].SetBounds(409,40,220,30);
         preferences[5].SetBounds(18,84,700,24);
 
-        AddCollapsibleSection(tab,"Source & OrthoCube",true,sourceFields);
-        AddCollapsibleSection(tab,"Native Views & Scale",true,nativeViews);
-        AddCollapsibleSection(tab,"Drawing Output",true,outputFields);
-        AddCollapsibleSection(tab,"Generation History & QA",true,qaFields);
+        AddCollapsibleSection(tab,"1. Source, Scale & Seed",true,sourceFields);
+        AddCollapsibleSection(tab,"2. Choose Native Views",true,nativeViews);
+        AddCollapsibleSection(tab,"3. Drawing Output",true,outputFields);
+        AddCollapsibleSection(tab,"Generation History & QA",false,qaFields);
         AddCollapsibleSection(tab,"Dimensions",false,dimensions);
         AddCollapsibleSection(tab,"Annotations & XREF",false,annotations);
         AddCollapsibleSection(tab,"Project Settings",false,preferences);
         ReflowSections(tab);
+    }
+
+    // REV78: guided discovery of essential fields and a safe, explicit
+    // shortcut for the already-supported native ten-view draft flow.
+    // No project coordinates, model paths or drawing dimensions are used.
+    private void InstallUiGuidance(TabPage tab)
+    {
+        essentialsButton.Name="SPTC_SHOW_BASICS_78";
+        essentialsButton.Text="Show essentials";
+        essentialsButton.SetBounds(8,7,159,31);
+        essentialsButton.Click+=(_,_)=>SetSectionVisibility(
+            tab,showAdvanced:false);
+        tab.Controls.Add(essentialsButton);
+
+        allSettingsButton.Name="SPTC_SHOW_ALL_78";
+        allSettingsButton.Text="Show all settings";
+        allSettingsButton.SetBounds(181,7,164,31);
+        allSettingsButton.Click+=(_,_)=>SetSectionVisibility(
+            tab,showAdvanced:true);
+        tab.Controls.Add(allSettingsButton);
+
+        uiTips.SetToolTip(essentialsButton,
+            "Show Source, Views and Output. Your hidden settings are preserved.");
+        uiTips.SetToolTip(allSettingsButton,
+            "Expand all sections to review dimensions, annotations and project settings.");
+        uiTips.SetToolTip(cubeMode,
+            "SupportFocus limits the native OrthoCube around the selected support.");
+        uiTips.SetToolTip(scale,
+            "Automatic allows standard output; Draft and Multiple Sheets require an explicit 1:N.");
+        uiTips.SetToolTip(customScale,
+            "Enter the exact 1:N denominator. It is not a paper dimension.");
+        uiTips.SetToolTip(autoSeed,
+            "Use an empty Ortho seed already registered in this Plant 3D project.");
+        uiTips.SetToolTip(prefix,
+            "Optional filename prefix. Leave blank to use native automatic naming.");
+        uiTips.SetToolTip(outputMode,
+            "Printable sheet, single-DWG Draft Overflow, or split sheets without changing scale.");
+        uiTips.SetToolTip(quickDraft,
+            "Select all ten views and Draft Overflow; keep your selected exact drawing scale.");
+        uiTips.SetToolTip(quickPhysical,
+            "Return to normal printable-sheet constraints without changing your view choices.");
+        uiTips.SetToolTip(batch,
+            "Run sequentially for support BLOCK references. Incompatible with Draft and Split.");
+        uiTips.SetToolTip(xrefNames,
+            "Annotate nearby verified XREF structural/support members with source drawing names.");
+        uiTips.SetToolTip(generatedHistory,
+            "Select any DWG from this project's current session to inspect its RESULT.txt.");
+        uiTips.SetToolTip(copyQa,
+            "Copy only the chosen DWG's measured QA summary to the clipboard.");
+        uiTips.SetToolTip(preflightButton,
+            "Review current selections. Physical page fit is verified during generation.");
+        uiTips.SetToolTip(runButton,
+            "Start the existing AutoCAD command using exactly the selected options.");
+    }
+
+    private void SetSectionVisibility(TabPage tab,bool showAdvanced)
+    {
+        if(IsRunning)return;
+        // First three sections are the primary drawing workflow.
+        // On the basics layout, retain results when outputs exist.
+        for(int i=0;i<uiSections.Count;i++)
+            uiSections[i].Expanded=showAdvanced||i<3||
+                (i==3&&outputHistory.Count>0);
+        ReflowSections(tab);
+    }
+
+    private void PrepareDraftViews()
+    {
+        if(IsRunning)return;
+        SetViewPreset("All");
+        batch.Checked=false;
+        outputMode.SelectedIndex=(int)SupportDrawingOutputMode76.Mode.Draft;
+        var tab=tabs.TabPages.Cast<TabPage>()
+            .First(p=>p.Name=="ortho");
+        uiSections[0].Expanded=true;
+        uiSections[1].Expanded=true;
+        uiSections[2].Expanded=true;
+        ReflowSections(tab);
+        UpdateOutputModeUi();
+        // An explicit scale is a user decision, never silently changed.
+        int denominator=SupportDrawingPaperScale39.Resolve(
+            scale.Text,(int)customScale.Value);
+        SetStatus(denominator>0?
+            "Draft configured: All 10 / 1:"+denominator+
+            ". PDF remains disabled for off-sheet drawings. Click Preflight to review.":
+            "All 10 Draft selected. Choose an exact 1:N scale "+
+            "before Run (Automatic is not valid for Draft Overflow).");
     }
 
     private void AddCollapsibleSection(TabPage tab,string name,
@@ -571,7 +690,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         tab.SuspendLayout();
         try
         {
-            int y=10;
+            int y=47;
             foreach(var section in uiSections)
             {
                 string name=section.Header.Tag?.ToString()??"Settings";
@@ -796,11 +915,36 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         bool valid=SupportDrawingOutputMode76.Eligible(
             mode,count,denominator,batch.Checked);
         bool isOrtho=tabs.SelectedTab?.Name=="ortho";
-        outputHint.Text=SupportDrawingOutputMode76.Explanation(mode)+
-            (!valid?"  Requires All 10, exact 1:N, Batch OFF.":"");
+        string modeInfo=SupportDrawingOutputMode76.Explanation(mode);
+        outputHint.Text=modeInfo+
+            (!valid?"\r\nTo continue: select all 10 views, "+
+                "choose a 1:N scale, and turn Batch OFF.":"");
         outputHint.ForeColor=!valid?Color.Firebrick:
             mode==SupportDrawingOutputMode76.Mode.Draft?
                 Color.DarkGoldenrod:Color.DimGray;
+        string scaleText=denominator>0?"1:"+denominator:"Automatic";
+        string readiness;
+        if(IsRunning)
+            readiness="Generating... CAD source selection and progress remain in AutoCAD.";
+        else if(!isOrtho)
+            readiness="Ready: use the original "+tabs.SelectedTab?.Text+" workflow.";
+        else if(count==0)
+            readiness="Select at least one native view before running.";
+        else if(!valid)
+            readiness="Action required: All 10 views, exact 1:N and Batch OFF.";
+        else if(mode==SupportDrawingOutputMode76.Mode.Draft)
+            readiness="Ready: "+count+" views / "+scaleText+
+                " / ONE DWG — DRAFT ONLY (native PDF blocked).";
+        else if(mode==SupportDrawingOutputMode76.Mode.Split)
+            readiness="Ready: "+count+" views / "+scaleText+
+                " / separate printable sheets if needed.";
+        else
+            readiness="Ready: "+count+" view(s) / "+scaleText+
+                " / physical paper fit enforced.";
+        readinessHint.Text=readiness;
+        readinessHint.ForeColor=(!valid||count==0)&&isOrtho?
+            Color.Firebrick:mode==SupportDrawingOutputMode76.Mode.Draft?
+                Color.DarkGoldenrod:Color.DarkGreen;
         if(runButton!=null)
             runButton.Enabled=!IsRunning&&(!isOrtho||count>0&&valid);
     }
@@ -858,6 +1002,15 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         generatedHistory.Items.Add(
             outputHistory.Count.ToString("00")+"  "+Path.GetFileName(full));
         generatedHistory.SelectedIndex=outputHistory.Count-1;
+        // Surface the actual result immediately, even if the QA section
+        // was hidden in the simpler essentials-only layout.
+        if(uiSections.Count>3&&!uiSections[3].Expanded)
+        {
+            uiSections[3].Expanded=true;
+            var orthoTab=tabs.TabPages.Cast<TabPage>()
+                .First(p=>p.Name=="ortho");
+            ReflowSections(orthoTab);
+        }
     }
 
     // Selection-only read; no mutation of a DWG, source file, project
@@ -958,28 +1111,36 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         }
         string[] chosen=views.CheckedItems.Cast<object>()
             .Select(v=>v.ToString() ?? "").Where(v=>v.Length>0).ToArray();
-        preview.Text = "Read-only configuration preflight: " +
-            Path.GetFileName(source) + "\r\n" +
-            "Project Ortho folder: " + orthoFolder + "\r\n" +
-            "Seed: " + (autoSeed.Checked ? "Auto (registered / empty)" : seed.Text) +
-            "   |   Views ("+chosen.Length+"): " + string.Join(",",chosen) +
-            "   |   Scale: " + SupportDrawingPaperScale39.Display(
-                SupportDrawingPaperScale39.Resolve(scale.Text,(int)customScale.Value)) +
-            "   |   XREF member names: " + (xrefNames.Checked?"On":"Off") +
-            "   |   Auto DIMLINEAR: " + (autoDimLinear.Checked?"On":"Off") +
-            "   |   Detail style: " +
-            (referenceDimensions.Checked?"Chain + overall":"All member H/V")+
-            "   |   Batch Ortho: "+(batch.Checked?"Sequential":"Off")+
-            "   |   Output: "+outputMode.Text+
-            "   |   Annotations: Line="+line.Checked+
-            " BOP="+bop.Checked+" TOS="+tos.Checked+
-            " Description="+description.Checked+
-            "   |   Prefix: "+(prefix.Text.Length==0?
-                "Automatic unique name":prefix.Text)+
-            "\r\n"+SupportDrawingOutputMode76.Explanation(
-                SelectedOutputMode())+
-            "\r\nConfiguration preview only. Actual paper fit and QA "+
-            "are verified by the Plant 3D generator after Run.";
+        var selectedMode=SelectedOutputMode();
+        int d=SupportDrawingPaperScale39.Resolve(
+            scale.Text,(int)customScale.Value);
+        bool eligible=SupportDrawingOutputMode76.Eligible(
+            selectedMode,chosen.Length,d,batch.Checked);
+        preview.Text =
+            "READ-ONLY CONFIGURATION PREFLIGHT\r\n"+
+            "Source: "+Path.GetFileName(source)+"\r\n"+
+            "1. VIEWS: "+chosen.Length+" / 10 | "+
+                string.Join(", ",chosen)+"\r\n"+
+            "2. SCALE: "+SupportDrawingPaperScale39.Display(d)+"\r\n"+
+            "3. OUTPUT: "+outputMode.Text+"\r\n"+
+            "4. SEED: "+(autoSeed.Checked?
+                "Automatic registered empty Ortho seed":seed.Text)+"\r\n"+
+            "5. ANNOTATIONS: Line="+line.Checked+
+                " | BOP="+bop.Checked+" | TOS="+tos.Checked+
+                " | Description="+description.Checked+
+                " | XREF Names="+xrefNames.Checked+"\r\n"+
+            "6. DIMENSIONS: "+(autoDimLinear.Checked?
+                (referenceDimensions.Checked?
+                    "Native H/V chain + overall":"Native H/V all members"):"OFF")+
+                " | Batch: "+(batch.Checked?"ON":"OFF")+"\r\n"+
+            "PREFIX: "+(prefix.Text.Length==0?
+                "Automatic":prefix.Text)+"\r\n"+
+            (eligible?
+                "READY FOR NATIVE VALIDATION. ":
+                "CHECK SETTINGS: Draft/Split need All 10, 1:N, Batch OFF. ")+
+            SupportDrawingOutputMode76.Explanation(selectedMode)+
+            "\r\nNote: this checks UI settings only. Actual paper fit, "+
+            "source geometry and QA are verified during generation.";
     }
 
     private void RunSelected()
