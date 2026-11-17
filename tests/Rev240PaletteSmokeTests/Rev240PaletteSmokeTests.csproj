@@ -19,6 +19,10 @@
              Link="SupportProductionPackageDialog.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingManagerForm35.cs"
              Link="SupportDrawingManagerForm35.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingOutputMode76.cs"
+             Link="SupportDrawingOutputMode76.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingQaSummary76.cs"
+             Link="SupportDrawingQaSummary76.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportDrawingPaperScale39.cs"
              Link="SupportDrawingPaperScale39.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportBranding36.cs"

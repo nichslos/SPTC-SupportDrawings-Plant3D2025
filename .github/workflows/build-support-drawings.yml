@@ -1732,21 +1732,37 @@ jobs:
                    $ui.Contains('autoDimLinear.Checked,referenceDimensions.Checked,'))) {
             throw 'REV22.41 persistent UI option must be default ON and retained'
           }
-          # REV74 opt-in: the original default and native dimension option
-          # remain mandatory even with an additional, non-persisted checkbox.
-          foreach($token in @('If All 10 won''t fit, split across sheets',
-              'bypassOneSheetLimit.Checked = false',
-              'bypassOneSheetLimit.Checked,allowDraftOverflow.Checked);')) {
+          # REV76 consolidates REV74/75 checkboxes into one UI choice.
+          # Check that the default still maps to the normal fit,
+          # and the underlying generator's native flags are unchanged.
+          $mode76=Get-Content "$root/SupportDrawingOutputMode76.cs" -Raw
+          $qa76=Get-Content "$root/SupportDrawingQaSummary76.cs" -Raw
+          foreach($token in @('SupportDrawingOutputMode76.Physical',
+              'SupportDrawingOutputMode76.Draft',
+              'SupportDrawingOutputMode76.Split',
+              'outputMode.SelectedIndex=0',
+              'SupportDrawingOutputMode76.BypassOneSheetLimit(chosenOutput)',
+              'SupportDrawingOutputMode76.AllowDraftOverflow(chosenOutput)',
+              'SupportDrawingQaSummary76.Read(',
+              'OpenGeneratedOutput(true)',
+              'OpenGeneratedOutput(false)',
+              'RecordGeneratedDwg(string dwg)')) {
             if(-not $ui.Contains($token)) {
-              throw "REV74 opt-in native page split UI option missing: $token"
+              throw "REV76 output mode or live QA UI wiring missing: $token"
             }
           }
-          foreach($token in @('All 10 on one DWG, outside paper (DRAFT)',
-              'allowDraftOverflow.Checked = false',
-              'allowDraftOverflow.Checked);')) {
-            if(-not $ui.Contains($token)) {
-              throw "REV75 opt-in offsheet DRAFT mode missing: $token"
+          foreach($token in @('Mode.Physical', 'Mode.Draft', 'Mode.Split',
+              'mode==Mode.Physical', 'mode==Mode.Draft', 'mode==Mode.Split',
+              'count==10&&denominator>0&&!batch')) {
+            if(-not $mode76.Contains($token)) {
+              throw "REV76 mode-eligibility policy missing: $token"
             }
+          }
+          if(-not $qa76.Contains('NATIVE_ORTHO_VIEW_COUNT') -or
+             -not $qa76.Contains('REV22_41_DIMENSIONS_CREATED') -or
+             -not $qa76.Contains('STEP10_ACTUAL_VIEWPORT_OVERLAP_DETECTED') -or
+             -not $gen.Contains('onOutputDwg:SupportDrawingPalette40.RecordGeneratedOrthoDwg')) {
+            throw "REV76 source-verified QA or generation callback wiring missing"
           }
           foreach($token in @('SupportOrthoPipeDiscovery28.ReadXrefs',
               'SupportOrthoMemberCalloutPlan27.Build',
