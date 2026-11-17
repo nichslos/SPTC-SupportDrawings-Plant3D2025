@@ -405,27 +405,40 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         };
         orthoTab.Controls.Add(productionSettings);
 
-        // REV76: show only the actual completed output's RESULT.txt, never
-        // guess counts from the selected view checkboxes or saved settings.
-        Label qaHeader=L("Last generated DWG / QA",18,671,430);
+        // REV77: one actual-result entry per generated output. Selection
+        // is always backed by a real DWG path, never by a guessed name.
+        Label qaHeader=L("Session DWG history / measured QA",18,8,460);
         qaHeader.Font=new Font("Segoe UI",9f,FontStyle.Bold);
         orthoTab.Controls.Add(qaHeader);
-        lastQa.SetBounds(18,699,704,77);
+        generatedHistory.SetBounds(18,35,704,91);
+        generatedHistory.HorizontalScrollbar=true;
+        generatedHistory.SelectedIndexChanged+=(_,_)=>RefreshSelectedQa();
+        orthoTab.Controls.Add(generatedHistory);
+        qaIndicator.SetBounds(18,135,700,24);
+        qaIndicator.ForeColor=Color.DimGray;
+        qaIndicator.Text="QA status: UNVERIFIED";
+        orthoTab.Controls.Add(qaIndicator);
+        lastQa.SetBounds(18,165,704,113);
         lastQa.Multiline=true;
         lastQa.ReadOnly=true;
         lastQa.ScrollBars=ScrollBars.Vertical;
         lastQa.Text="No completed Ortho drawing in this session.";
         orthoTab.Controls.Add(lastQa);
         openDwgFolder.Text="Open DWG folder";
-        openDwgFolder.SetBounds(18,787,160,30);
+        openDwgFolder.SetBounds(18,287,151,30);
         openDwgFolder.Enabled=false;
         openDwgFolder.Click+=(_,_)=>OpenGeneratedOutput(false);
         orthoTab.Controls.Add(openDwgFolder);
         openResult.Text="Open RESULT.txt";
-        openResult.SetBounds(190,787,160,30);
+        openResult.SetBounds(179,287,151,30);
         openResult.Enabled=false;
         openResult.Click+=(_,_)=>OpenGeneratedOutput(true);
         orthoTab.Controls.Add(openResult);
+        copyQa.Text="Copy QA summary";
+        copyQa.SetBounds(340,287,165,30);
+        copyQa.Enabled=false;
+        copyQa.Click+=(_,_)=>CopySelectedQa();
+        orthoTab.Controls.Add(copyQa);
 
         outputMode.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
         batch.CheckedChanged+=(_,_)=>UpdateOutputModeUi();
@@ -433,31 +446,39 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         customScale.ValueChanged+=(_,_)=>UpdateOutputModeUi();
         tabs.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
 
-        Label previewLabel = L("Preflight / configuration summary", 22, 630, 420);
-        previewLabel.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-        layoutSurface.Controls.Add(previewLabel);
-        preview.SetBounds(20, 652, 600, 73);
-        preview.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        preview.Multiline = true;
-        preview.ReadOnly = true;
-        preview.ScrollBars = ScrollBars.Vertical;
-        preview.Text = "Project: " + projectRoot +
+        // REV77: all settings scroll in their own Ortho tab. The user
+        // can collapse any section without losing its values.
+        BuildCollapsibleSections(orthoTab,
+            new Control[]{modeLabel,cubeMode,scaleLabel,scale,
+                customLabel,customScale,prefixLabel,prefix,
+                autoSeed,seed,browse},
+            new Control[]{vLabel,views,selectedViewCount,all,six,four,none},
+            new Control[]{outputLabel,outputMode,outputHint,batch,notice},
+            new Control[]{qaHeader,generatedHistory,qaIndicator,lastQa,
+                openDwgFolder,openResult,copyQa},
+            new Control[]{autoDimLinear,referenceDimensions},
+            new Control[]{aLabel,line,bop,tos,description,xrefNames},
+            new Control[]{settingsCaption,saveSettings,loadSettings,
+                resetSettings,productionSettings,privacy});
+
+        Label previewLabel = L("Preflight / configuration summary",12,6,390);
+        stickyFooter.Controls.Add(previewLabel);
+        preview.Multiline=true;
+        preview.ReadOnly=true;
+        preview.ScrollBars=ScrollBars.Vertical;
+        preview.Text="Project: "+projectRoot+
             "\r\nNo drawing writes occur until validation has passed.";
-        layoutSurface.Controls.Add(preview);
-
-        preflightButton.Text = "Preflight";
-        preflightButton.Size = new Size(110, 29);
-        preflightButton.Location = new Point(637, 652);
-        preflightButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-        preflightButton.Click += (_,_) => ShowPreflight();
-        layoutSurface.Controls.Add(preflightButton);
-
-        runButton.Text = "Run selected";
-        runButton.Size = new Size(112, 30);
-        runButton.Location = new Point(637, 689);
-        runButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-        runButton.Click += (_,_) => RunSelected();
-        layoutSurface.Controls.Add(runButton);
+        stickyFooter.Controls.Add(preview);
+        preflightButton.Text="Preflight";
+        preflightButton.Size=new Size(110,29);
+        preflightButton.Click+=(_,_)=>ShowPreflight();
+        stickyFooter.Controls.Add(preflightButton);
+        runButton.Text="Run selected";
+        runButton.Size=new Size(112,30);
+        runButton.Click+=(_,_)=>RunSelected();
+        stickyFooter.Controls.Add(runButton);
+        stickyFooter.Resize+=(_,_)=>ArrangeStickyFooter();
+        ArrangeStickyFooter();
         // A newly opened palette restores only settings explicitly
         // saved for this Plant 3D project. No persisted queued command
         // or source geometry can be replayed.
