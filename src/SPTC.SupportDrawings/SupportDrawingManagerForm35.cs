@@ -28,7 +28,8 @@ internal sealed record SupportDrawingUiOptions(
     bool BatchOrtho,
     bool XrefMemberNames,
     bool AutoDimLinear,
-    bool ReferenceDetailDimensions=true)
+    bool ReferenceDetailDimensions=true,
+    bool BypassOneSheetLimit=false)
 {
     public static readonly string[] AllViews =
         {"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK","NW","NE","SW","SE"};
@@ -47,6 +48,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
     private readonly TabControl tabs = new();
     private readonly ComboBox cubeMode = new();
     private readonly CheckBox autoSeed = new();
+    private readonly CheckBox bypassOneSheetLimit = new();
     private readonly TextBox seed = new();
     private readonly TextBox prefix = new();
     private readonly ComboBox scale = new();
@@ -197,6 +199,12 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         autoSeed.Text = "Automatically select a verified empty Ortho seed";
         autoSeed.Checked = true;
         orthoTab.Controls.Add(autoSeed);
+        // REV74: opt-in safe fallback, not a bypass of native viewport
+        // borders, exact scale, collisions or sheet metadata.
+        bypassOneSheetLimit.SetBounds(395, 120, 338, 26);
+        bypassOneSheetLimit.Text = "If All 10 won't fit, split across sheets";
+        bypassOneSheetLimit.Checked = false;
+        orthoTab.Controls.Add(bypassOneSheetLimit);
         seed.SetBounds(18, 152, 568, 27);
         seed.PlaceholderText = "Auto: select a registered empty project Ortho DWG";
         seed.Enabled = false;
@@ -541,14 +549,16 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             "   |   Detail style: " +
             (referenceDimensions.Checked?"Chain + overall":"All member H/V")+
             "   |   Batch Ortho: "+(batch.Checked?"Sequential":"Off")+
+            "   |   One-sheet bypass: "+
+            (bypassOneSheetLimit.Checked?"Multi-sheet at exact scale":"Off")+
             "   |   Annotations: Line="+line.Checked+
             " BOP="+bop.Checked+" TOS="+tos.Checked+
             " Description="+description.Checked+
             "   |   Prefix: "+(prefix.Text.Length==0?
                 "Automatic unique name":prefix.Text)+
-            "\r\nREV65: All 10 = ONE native sheet at exact 1:N. "+
-            "Bounded view rearrangement chooses the smallest safe "+
-            "registered paper; failed seeds list sizes and reasons in command log.";
+            "\r\nREV74: All 10 prefer ONE native sheet at exact 1:N. "+
+            "Opt-in fallback splits only when sheet-fit preflight fails; "+
+            "each resulting native sheet must still pass its own page checks.";
     }
 
     private void RunSelected()
@@ -601,7 +611,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             autoSeed.Checked, seed.Text.Trim(), prefix.Text.Trim(), denominator,
             selected, line.Checked,bop.Checked,tos.Checked,
             description.Checked,batch.Checked,xrefNames.Checked,
-            autoDimLinear.Checked,referenceDimensions.Checked);
+            autoDimLinear.Checked,referenceDimensions.Checked,
+            bypassOneSheetLimit.Checked);
         // Modeless palette remains open; dispatch in a fresh AutoCAD
         // command context rather than accessing Editor from this UI callback.
         RunRequested?.Invoke(Settings);
