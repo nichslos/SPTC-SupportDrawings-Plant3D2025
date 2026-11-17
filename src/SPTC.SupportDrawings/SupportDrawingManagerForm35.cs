@@ -162,6 +162,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         sourceLabel.Size = new Size(545, 24);
         sourceLabel.AutoEllipsis = true;
         layoutSurface.Controls.Add(sourceLabel);
+        uiTips.SetToolTip(sourceLabel,
+            "Active source drawing and Plant 3D project. Changes update with the modeless palette.");
 
         tabs.Location = new Point(18, 140);
         tabs.Size = new Size(770, 475);
@@ -913,11 +915,36 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         bool valid=SupportDrawingOutputMode76.Eligible(
             mode,count,denominator,batch.Checked);
         bool isOrtho=tabs.SelectedTab?.Name=="ortho";
-        outputHint.Text=SupportDrawingOutputMode76.Explanation(mode)+
-            (!valid?"  Requires All 10, exact 1:N, Batch OFF.":"");
+        string modeInfo=SupportDrawingOutputMode76.Explanation(mode);
+        outputHint.Text=modeInfo+
+            (!valid?"\r\nTo continue: select all 10 views, "+
+                "choose a 1:N scale, and turn Batch OFF.":"");
         outputHint.ForeColor=!valid?Color.Firebrick:
             mode==SupportDrawingOutputMode76.Mode.Draft?
                 Color.DarkGoldenrod:Color.DimGray;
+        string scaleText=denominator>0?"1:"+denominator:"Automatic";
+        string readiness;
+        if(IsRunning)
+            readiness="Generating... CAD source selection and progress remain in AutoCAD.";
+        else if(!isOrtho)
+            readiness="Ready: use the original "+tabs.SelectedTab?.Text+" workflow.";
+        else if(count==0)
+            readiness="Select at least one native view before running.";
+        else if(!valid)
+            readiness="Action required: All 10 views, exact 1:N and Batch OFF.";
+        else if(mode==SupportDrawingOutputMode76.Mode.Draft)
+            readiness="Ready: "+count+" views / "+scaleText+
+                " / ONE DWG — DRAFT ONLY (native PDF blocked).";
+        else if(mode==SupportDrawingOutputMode76.Mode.Split)
+            readiness="Ready: "+count+" views / "+scaleText+
+                " / separate printable sheets if needed.";
+        else
+            readiness="Ready: "+count+" view(s) / "+scaleText+
+                " / physical paper fit enforced.";
+        readinessHint.Text=readiness;
+        readinessHint.ForeColor=(!valid||count==0)&&isOrtho?
+            Color.Firebrick:mode==SupportDrawingOutputMode76.Mode.Draft?
+                Color.DarkGoldenrod:Color.DarkGreen;
         if(runButton!=null)
             runButton.Enabled=!IsRunning&&(!isOrtho||count>0&&valid);
     }
@@ -975,6 +1002,15 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         generatedHistory.Items.Add(
             outputHistory.Count.ToString("00")+"  "+Path.GetFileName(full));
         generatedHistory.SelectedIndex=outputHistory.Count-1;
+        // Surface the actual result immediately, even if the QA section
+        // was hidden in the simpler essentials-only layout.
+        if(uiSections.Count>3&&!uiSections[3].Expanded)
+        {
+            uiSections[3].Expanded=true;
+            var orthoTab=tabs.TabPages.Cast<TabPage>()
+                .First(p=>p.Name=="ortho");
+            ReflowSections(orthoTab);
+        }
     }
 
     // Selection-only read; no mutation of a DWG, source file, project
