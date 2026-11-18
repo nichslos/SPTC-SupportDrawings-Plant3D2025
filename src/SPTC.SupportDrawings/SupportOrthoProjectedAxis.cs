@@ -9,6 +9,7 @@ internal readonly record struct SupportOrthoProjectedAxis(
     (double X,double Y) Start,(double X,double Y) End)
 {
     internal const string Provenance="PROJECTED_NATIVE_ENDPOINT_SPAN_NOT_CUT_LENGTH";
+    internal const string UnplacedLength=":MEMBER_LENGTH_UNPLACED_";
     internal double Dx => End.X-Start.X;
     internal double Dy => End.Y-Start.Y;
     internal double X => Start.X+Dx/2;
@@ -22,7 +23,22 @@ internal readonly record struct SupportOrthoProjectedAxis(
         ProjectionTolerance(Math.Max(Math.Abs(Dx),Math.Abs(Dy)));
 
     internal readonly record struct Span(
-        double From,double To,double FirstWitness,double LastWitness);
+        double From,double To,double FirstWitness,double LastWitness)
+    {
+        // Equal numeric lengths at different stations describe different members.
+        internal bool ShownBy(SupportOrthoDimLinearPlan41.Dimension d,bool horizontal)
+        {
+            double a=horizontal?d.Ax:d.Ay,b=horizontal?d.Bx:d.By;
+            if(d.Horizontal!=horizontal||Math.Abs(Math.Min(a,b)-From)>=1e-7||
+                Math.Abs(Math.Max(a,b)-To)>=1e-7)return false;
+            if(d.Source.EndsWith("/OVERALL",StringComparison.Ordinal)||
+                d.Source.Contains("/CHAIN_",StringComparison.Ordinal)||
+                d.Source.Contains("/TERMINAL_REMAINDER_",StringComparison.Ordinal))return true;
+            double wa=horizontal?d.Ay:d.Ax,wb=horizontal?d.By:d.Bx;
+            if(a>b)(wa,wb)=(wb,wa);
+            return Math.Abs(wa-FirstWitness)<1e-7&&Math.Abs(wb-LastWitness)<1e-7;
+        }
+    }
 
     internal Span Along(bool horizontal)
     {

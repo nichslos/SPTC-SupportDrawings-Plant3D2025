@@ -461,8 +461,8 @@ internal static class SupportOrthoDimensionRefresh49
            original.LastOwnedDimensionCount>fastState.OwnedDimensions&&
            original.SourceWriteUtcTicks==sourceWriteTicks&&
            original.SourceFileLength==sourceLength&&
-           string.Equals(original.LastViewPoseSignature,
-               fastState.PoseSignature,StringComparison.Ordinal))
+           SupportOrthoDimensionUpdatePlan49.SameViewGeometry(
+               original.LastViewPoseSignature,fastState.PoseSignature))
         {
             timings.Mode="COUNT_AMBIGUOUS_UNOWNED_PRESERVED";
             Message(target,"DIM_INTEGRITY_REPAIR=BLOCKED_UNOWNED_ON_AUTO_LAYER "+
@@ -716,6 +716,9 @@ internal static class SupportOrthoDimensionRefresh49
             qaBefore.ExpectedOverallAxes+
             " OPTIONAL_OMITTED="+qaBefore.OptionalOmissions+
             " REVIEW_ISSUES="+qaBefore.ReviewIssues);
+        foreach(var issue in qaBefore.Issues.Where(i=>i.Code=="MISSING_MEMBER_LENGTH"))
+            Message(target,issue.Description+
+                " — Regenerate the sheet in Support Drawing Manager to coordinate callout placement.");
         if(dimensions.Count==0)
             throw new InvalidOperationException(
                 "No safe regenerated dimensions; old dimensions kept.");
@@ -736,9 +739,9 @@ internal static class SupportOrthoDimensionRefresh49
         if(original.LastOwnedDimensionCount>dimensions.Count&&
            original.SourceWriteUtcTicks==sourceWriteTicks&&
            original.SourceFileLength==sourceLength&&
-           string.Equals(original.LastViewPoseSignature,
+           SupportOrthoDimensionUpdatePlan49.SameViewGeometry(original.LastViewPoseSignature,
                SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
-                   cameras,paperW,paperH),StringComparison.Ordinal))
+                   cameras,paperW,paperH)))
         {
             timings.Mode="COUNT_REGRESSION_BLOCKED";
             Message(target,"DIM_INTEGRITY_REPLAN_BLOCKED="+

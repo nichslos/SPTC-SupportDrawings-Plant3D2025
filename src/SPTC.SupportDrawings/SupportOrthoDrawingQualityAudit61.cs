@@ -277,7 +277,11 @@ public static class SupportOrthoDrawingQualityAudit61
             Flag("WRITTEN_DIMENSION_COUNT_MISMATCH","SHEET",
                 "Paper-space writer did not create the complete approved dimension plan.");
         }
-        int optional=(plannerSkipped??Array.Empty<string>())
+        var omissions=plannerSkipped??Array.Empty<string>();
+        foreach(string omission in omissions.Where(s=>
+            s.Contains(SupportOrthoProjectedAxis.UnplacedLength,StringComparison.Ordinal)))
+            Flag("MISSING_MEMBER_LENGTH",omission.Split('/')[0],omission);
+        int optional=omissions
             .Count(s=>s.Contains(
                     "REV22_60_OPTIONAL_PROFILE_NO_COMPATIBLE_LAYOUT",
                     StringComparison.Ordinal)||

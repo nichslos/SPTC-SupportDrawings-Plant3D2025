@@ -278,6 +278,14 @@ public static class SupportOrthoDimensionUpdatePlan49
             saved.LastOwnedDimensionCount==currentOwnedDimensionCount;
     }
 
+    // Keep the geometric digest comparable with existing drawings while
+    // requiring one replan before a cached dimension layout can be reused.
+    private const string LayoutSchema="NATIVE_MEMBER_SPANS/";
+
+    internal static bool SameViewGeometry(string? saved,string current) =>
+        string.Equals(saved,current,StringComparison.Ordinal)||
+        string.Equals(LayoutSchema+saved,current,StringComparison.Ordinal);
+
     public static string ViewPoseSignature(
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
         double paperW,double paperH)
@@ -295,7 +303,7 @@ public static class SupportOrthoDimensionUpdatePlan49
             .OrderBy(x=>x,StringComparer.Ordinal).ToArray();
         var bytes=SHA256.HashData(Encoding.UTF8.GetBytes(
             string.Join("\n",rows)+"|PAPER|"+N(paperW)+"|"+N(paperH)));
-        return Convert.ToHexString(bytes);
+        return LayoutSchema+Convert.ToHexString(bytes);
     }
 
     public static bool NeedsReplace(string? lastSignature,

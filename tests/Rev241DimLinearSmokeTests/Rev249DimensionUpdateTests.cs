@@ -85,6 +85,13 @@ internal static class Rev249DimensionUpdateTests
             SourceFileLength=12345678,
             LastViewPoseSignature=pose,
             LastOwnedDimensionCount=2};
+        string legacyPose=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(
+                "TOP|118.8|723.26|63.732|48.134|0|0|1|7956.295|3484.858|0|0.03333|0|0|0|PAPER|594|841")));
+        Check(SupportOrthoDimensionUpdatePlan49.SameViewGeometry(legacyPose,pose)&&
+            !SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(cached with {LastViewPoseSignature=legacyPose},
+                cached.SourceWriteUtcTicks,cached.SourceFileLength,pose,2),
+            "an existing drawing retains its geometry protection and replans the old layout once");
         Check(SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
             cached,cached.SourceWriteUtcTicks,cached.SourceFileLength,
             pose,2),

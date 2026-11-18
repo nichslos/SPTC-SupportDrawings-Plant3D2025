@@ -192,7 +192,8 @@ public static class SupportOrthoReferenceDimPlan47
             PlacementPreference? preference=null;
             if(lanePreferences!=null)
                 lanePreferences.TryGetValue(camera.Name,out preference);
-            var blocks=FixedZones(camera,cameras,callouts,titles);
+            double labelAdvance=SupportOrthoPaperTypography66.LineAdvance(paperW,paperH);
+            var blocks=FixedZones(camera,cameras,callouts,titles,labelAdvance);
             if(additionalKeepouts!=null)
                 blocks.AddRange(additionalKeepouts.Where(x=>x.IsFinite)
                     .Select(x=>new Obstacle(x,"RESERVED_PAPER_AREA")));
@@ -216,6 +217,16 @@ public static class SupportOrthoReferenceDimPlan47
             bool ObliqueStructure(SupportOrthoAllViewDimPlan44.Member member) =>
                 member.Kind=="STRUCTURE"&&nativeAxisMidpoints.TryGetValue(
                     member.Key,out var axis)&&axis.IsOblique;
+            var axialMembers=projectedMembers.Where(m=>m.Member.Kind=="STRUCTURE"&&
+                    nativeAxisMidpoints.TryGetValue(m.Member.Key,out var a)&&!a.IsOblique)
+                .Select(m=>
+                {
+                    var a=nativeAxisMidpoints[m.Member.Key];
+                    bool horizontal=Math.Abs(a.Dx)>Math.Abs(a.Dy);
+                    return (m.Member.Key,m.Bounds,Horizontal:horizontal,Span:a.Along(horizontal));
+                }).Where(m=>m.Span.To-m.Span.From>=.25)
+                .OrderBy(m=>m.Key,StringComparer.OrdinalIgnoreCase).ToArray();
+            var deferredRemainders=new List<Request>();
 
             // Actual points on sloping members can attain different ends of
             // an envelope at different transverse positions.
@@ -404,12 +415,23 @@ public static class SupportOrthoReferenceDimPlan47
                             camera.Name,horizontal))
                     {
                         var datum=terminalDatum.Value;
-                        steps.Add(MakeRequest(horizontal,
+                        var remainder=MakeRequest(horizontal,
                             datum.RemainingFrom,datum.RemainingTo,
                             false,0,camera.Scale,unitsToMm) with {
                                 SourceKey=datum.SourceKey,
                                 TerminalRemainder=true
-                            });
+                            };
+                        // A second parallel member ending partway along the
+                        // remainder needs its own length. Fit that length first.
+                        bool Interior(double at)=>at>datum.RemainingFrom+.25&&at<datum.RemainingTo-.25;
+                        var parallel=axialMembers.Where(m=>m.Horizontal==horizontal).ToArray();
+                        bool stepped=parallel.Any(longer=>
+                            longer.Span.From<=min+.25&&longer.Span.To>=max-.25&&
+                            parallel.Any(other=>Math.Abs(other.Span.FirstWitness-
+                                longer.Span.FirstWitness)>.25&&
+                                (Interior(other.Span.From)||Interior(other.Span.To))));
+                        if(stepped)deferredRemainders.Add(remainder);
+                        else steps.Add(remainder);
                     }
                     else
                     {
@@ -831,7 +853,7 @@ public static class SupportOrthoReferenceDimPlan47
                     if(alternatives.Count==0)
                     {
                         var adaptiveBlocks=FixedZones(
-                            camera,cameras,callouts,titles,
+                            camera,cameras,callouts,titles,labelAdvance,
                             compactTitleKeepout:true);
                         if(additionalKeepouts!=null)
                             adaptiveBlocks.AddRange(
@@ -950,7 +972,7 @@ public static class SupportOrthoReferenceDimPlan47
                         if(transverseStations.Count>0)
                         {
                             var stationBlocks=FixedZones(
-                                camera,cameras,callouts,titles,
+                                camera,cameras,callouts,titles,labelAdvance,
                                 compactTitleKeepout:true);
                             if(additionalKeepouts!=null)
                                 stationBlocks.AddRange(additionalKeepouts
@@ -1267,6 +1289,65 @@ public static class SupportOrthoReferenceDimPlan47
             // A nonzero number here means essential dimensions still
             // collide; the existing writer guard MUST stop generation.
             acceptedIntersections+=audit.RemainingConflicts;
+            // Check the two stations of an axial member against the dimensions
+            // actually accepted in this view. Reserve the existing overall,
+            // chain and profile geometry before looking for a local length.
+            (SupportOrthoDimLinearPlan41.Dimension D,Placed P)? FindClearDetail(
+                Request request,IEnumerable<double> offsets)
+            {
+                bool horizontal=request.Horizontal;
+                double preferred=SupportOrthoReferenceLayout51.PreferredSide(camera.Name,horizontal);
+                foreach(double offset in offsets)
+                foreach(double sign in new[]{preferred,-preferred})
+                for(int tier=0;tier<5;tier++)
+                {
+                    var candidate=Candidate(camera,assembly,ResolveWitness,request,sign,offset,tier);
+                    if(candidate is not {} c||!InnerThanReservedOverall(c.P)||
+                        projected.Any(b=>c.P.Line.Intersects(b,.2))||
+                        placed.Any(p=>p.Horizontal==horizontal&&p.Line.Intersects(c.P.Line,.35))||
+                        !Fits(c.P,blocks,paper,placed,projected))continue;
+                    return c;
+                }
+                return null;
+            }
+            foreach(var item in axialMembers)
+            {
+                if(dimensions.Skip(dimensionsAtViewStart).Any(d=>item.Span.ShownBy(d,item.Horizontal)))
+                    continue;
+                requested++;
+                var request=MakeRequest(item.Horizontal,item.Span.From,item.Span.To,false,0,
+                    camera.Scale,unitsToMm) with {SourceKey=item.Key,LocalBounds=item.Bounds,
+                    AxisSpan=item.Span,CompactLocalLabel=true};
+                coordinatedGroups++;
+                if(FindClearDetail(request,SupportOrthoReferenceLayout51.LocalMemberLaneOffsets()) is {} match)
+                {
+                    dimensions.Add(match.D);
+                    placed.Add(match.P);
+                    localCount++;
+                    coordinatedPlaced++;
+                }
+                else coordinatedOmitted++;
+            }
+            foreach(var remainder in deferredRemainders)
+            {
+                var offsets=remainder.Horizontal?SupportOrthoReferenceLayout51.LocalChainLaneOffsets():
+                    SupportOrthoReferenceLayout51.IntermediateMemberLaneOffsets();
+                requested++;
+                if(FindClearDetail(remainder,offsets) is {} match)
+                {
+                    dimensions.Add(match.D);
+                    placed.Add(match.P);
+                    terminalRemainders++;
+                }
+                else skipped.Add(camera.Name+"/"+(remainder.Horizontal?"H":"V")+
+                    ":TERMINAL_REMAINDER_NO_CLEAR_LANE");
+            }
+
+            foreach(var length in axialMembers)
+                if(!dimensions.Skip(dimensionsAtViewStart).Any(d=>
+                    length.Span.ShownBy(d,length.Horizontal)))
+                    skipped.Add(camera.Name+"/"+length.Key+
+                        SupportOrthoProjectedAxis.UnplacedLength+(length.Horizontal?"H":"V"));
         }
         return new Result(dimensions,skipped,views,chain,overall,rejected,
             requested,localCount,priorityOverallCount,
@@ -1415,8 +1496,9 @@ public static class SupportOrthoReferenceDimPlan47
         double printedWidth=Math.Max(7,request.Measurement.Length*1.85+3);
         double textAt=center;
         bool shortSpan=request.To-request.From<printedWidth+2;
-        if((request.Overall||request.TerminalRemainder)&&
-           !request.Horizontal&&!shortSpan)
+        bool axialSpan=request.AxisSpan is {} span&&
+            Math.Abs(span.FirstWitness-span.LastWitness)<1e-7;
+        if(!shortSpan&&(axialSpan||!request.Horizontal&&(request.Overall||request.TerminalRemainder)))
         {
             // Shifting text normal to a vertical dimension merely
             // drives it into neighboring LEFT VIEW labels. Explore
@@ -1619,6 +1701,7 @@ public static class SupportOrthoReferenceDimPlan47
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles,
+        double labelAdvance,
         bool compactTitleKeepout=false)
     {
         var zones=new List<Obstacle>();
@@ -1658,8 +1741,7 @@ public static class SupportOrthoReferenceDimPlan47
                 c.LabelX-1,c.LabelTop-c.LabelHeight-1,
                 c.LabelX+c.LabelWidth+1,c.LabelTop+1),
                 "ANNOTATION_TEXT_"+kind));
-            double land=c.LabelTop-
-                SupportOrthoMemberCalloutPlan27.TextLineHeightMm*.5;
+            double land=c.LabelTop-labelAdvance*.5;
             zones.Add(new Obstacle(
                 LineZone(c.AnchorX,c.AnchorY,c.LaneX,c.AnchorY),
                 "LEADER_"+kind));
