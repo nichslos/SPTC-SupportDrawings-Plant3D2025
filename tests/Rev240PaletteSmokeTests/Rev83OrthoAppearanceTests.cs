@@ -27,17 +27,29 @@ internal static class Rev83OrthoAppearanceTests
             @"C:\Projects\REV83",
             @"C:\Projects\REV83\Orthos");
         ui.CreateControl();
+        var pages=(TabControl)ui.Controls.Find("SPTC_ORTHO_SETTINGS",true).Single();
+        pages.SelectedTab=pages.TabPages["appearance"];
         var h=ui.Controls.Find("SPTC_HIDDEN_LINES_83",true)
-            .OfType<ComboBox>().Single();
+            .OfType<SupportDrawingChoiceGroup>().Single();
         var ins=ui.Controls.Find("SPTC_INSULATION_83",true)
-            .OfType<ComboBox>().Single();
-        Need(h.SelectedItem?.ToString()==
+            .OfType<SupportDrawingChoiceGroup>().Single();
+        Need(h.SelectedValue==
             NativeOrthoAppearance83.ProjectDefault&&
-            ins.SelectedItem?.ToString()==
+            ins.SelectedValue==
             NativeOrthoAppearance83.ProjectDefault,
             "REV82 visible outputs unchanged by default");
-        h.SelectedItem=NativeOrthoAppearance83.AllHidden;
-        ins.SelectedItem=NativeOrthoAppearance83.SolidInsulation;
+        foreach(var hidden in h.Controls.OfType<RadioButton>())
+        foreach(var jacket in ins.Controls.OfType<RadioButton>())
+        {
+            hidden.PerformClick();
+            jacket.PerformClick();
+            Need(h.SelectedValue==(string)hidden.Tag!&&ins.SelectedValue==(string)jacket.Tag!&&
+                h.Controls.OfType<RadioButton>().Count(x=>x.Checked)==1&&
+                ins.Controls.OfType<RadioButton>().Count(x=>x.Checked)==1,
+                "both visible mode groups select independently");
+        }
+        h.SelectedValue=NativeOrthoAppearance83.AllHidden;
+        ins.SelectedValue=NativeOrthoAppearance83.SolidInsulation;
         var footer=ui.Controls.OfType<Panel>()
             .Single(p=>p.Dock==DockStyle.Bottom);
         footer.Controls.OfType<Button>()

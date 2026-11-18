@@ -54,9 +54,10 @@ internal static class Program
             "settings persist and Run can repeat with new source");
 
         TestScrollableDpiLayout();
-        TestRev77SessionHistoryAndCollapse();
+        TestSessionHistoryAndNavigation();
         TestRev78GuidedSetup();
         TestRev79ResponsiveUx();
+        TestVisiblePreferencesRoundTrip();
         Rev83OrthoAppearanceTests.Run();
         Rev88OutputAppearanceTests.Run();
         TestBatchProgressReporting();
@@ -87,65 +88,68 @@ internal static class Program
         }
     }
 
-    private static void TestScrollableDpiLayout()
+    private static TabControl SettingsPages(SupportDrawingManagerForm35 ui)=>
+        (TabControl)ui.Controls.Find("SPTC_ORTHO_SETTINGS",true).Single();
+
+    private static TabPage SelectPage(SupportDrawingManagerForm35 ui,string key)
     {
-        foreach(float scale in new[]{1f,1.25f,1.5f})
-        {
-            using var ui=new SupportDrawingManagerForm35(
-                @"C:\Projects\TEST_DPI\SOURCE.dwg",
-                @"C:\Projects\TEST_DPI",
-                @"C:\Projects\TEST_DPI\Orthos");
-            if(scale>1f)ui.Scale(new SizeF(scale,scale));
-            var canvas=ui.Controls.Find("SPTC_UI_LAYOUT_SURFACE",
-                searchAllChildren:true).Single();
-            var tabs=canvas.Controls.OfType<TabControl>().Single();
-            var workspace=ui.Controls.OfType<Panel>()
-                .Single(p=>p.Dock==DockStyle.Fill);
-            var footer=ui.Controls.OfType<Panel>()
-                .Single(p=>p.Dock==DockStyle.Bottom);
-            ui.CreateControl();
-            ui.PerformLayout();
-            footer.PerformLayout();
-            Check(ui.AutoScaleMode==AutoScaleMode.Dpi&&workspace.AutoScroll,
-                "only the workspace scrolls; footer stays docked");
-            Check(tabs.TabCount==4&&tabs.TabPages[0].AutoScroll,
-                "all four production tabs and inner Ortho scrolling retained");
-            var run=footer.Controls.OfType<Button>()
-                .Single(x=>x.Text=="Run selected");
-            var preflight=footer.Controls.OfType<Button>()
-                .Single(x=>x.Text=="Preflight");
-            var summary=footer.Controls.OfType<TextBox>()
-                .Single(x=>x.Multiline&&x.ReadOnly);
-            Check(run.Bounds.Right<=footer.ClientSize.Width&&
-                run.Bounds.Bottom<=footer.ClientSize.Height&&
-                preflight.Bounds.Right<=footer.ClientSize.Width&&
-                preflight.Bounds.Bottom<=footer.ClientSize.Height,
-                "sticky commands remain fully visible in footer"+
-                $" (scale={scale}, footer={footer.ClientSize}, "+
-                $"run={run.Bounds}, preflight={preflight.Bounds})");
-            Check(!run.Bounds.IntersectsWith(summary.Bounds)&&
-                !preflight.Bounds.IntersectsWith(summary.Bounds),
-                "sticky actions cannot obscure the preflight text");
-            Check(AllControls(tabs.TabPages[0])
-                .OfType<Button>()
-                .Count(b=>b.Text.StartsWith("[-]")||b.Text.StartsWith("[+]"))==7,
-                "all seven collapsible sections preserved");
-            int narrowW=Math.Max(ui.MinimumSize.Width+15,
-                canvas.Width/2);
-            int narrowH=Math.Max(ui.MinimumSize.Height+15,
-                canvas.Height/2);
-            ui.ClientSize=new Size(narrowW,narrowH);
-            ui.PerformLayout();
-            Check(workspace.AutoScroll&&tabs.TabPages[0].AutoScroll,
-                "narrow palette retains working independent scroll areas");
-            Check(run.Parent==footer&&preflight.Parent==footer,
-                "Run and Preflight never scroll out of the palette");
-        }
-        Console.WriteLine(
-            "REV77 sticky footer and seven collapsible sections at 100/125/150% DPI PASS");
+        var pages=SettingsPages(ui);
+        var page=pages.TabPages[key]??throw new Exception("Missing settings page "+key);
+        pages.SelectedTab=page;
+        ui.PerformLayout();
+        page.PerformLayout();
+        Application.DoEvents();
+        return page;
     }
 
-    private static void TestRev77SessionHistoryAndCollapse()
+    private static SupportDrawingChoiceGroup Choice(Control parent,string name)=>
+        (SupportDrawingChoiceGroup)parent.Controls.Find(name,true).Single();
+
+    private static void TestScrollableDpiLayout()
+    {
+        foreach(float factor in new[]{1f,1.25f,1.5f})
+        {
+            using var ui=new SupportDrawingManagerForm35(
+                @"C:\Projects\TEST_DPI\SOURCE.dwg",@"C:\Projects\TEST_DPI",@"C:\Projects\TEST_DPI\Orthos");
+            if(factor>1f)ui.Scale(new SizeF(factor,factor));
+            ui.CreateControl();
+            var pages=SettingsPages(ui);
+            Check(pages.TabPages.Cast<TabPage>().Select(p=>p.Name).SequenceEqual(
+                new[]{"setup","views","output","appearance","details","project","results"}),
+                "all drawing settings have a direct tab");
+            Check(!AllControls(ui).OfType<ComboBox>().Any(),"manager has no dropdowns");
+            var footer=ui.Controls.OfType<Panel>().Single(p=>p.Dock==DockStyle.Bottom);
+            var run=footer.Controls.OfType<Button>().Single(b=>b.Text=="Run selected");
+            var preflight=footer.Controls.OfType<Button>().Single(b=>b.Text=="Preflight");
+            var status=footer.Controls.OfType<TextBox>().Single(b=>b.Multiline);
+            foreach(int width in new[]{400,805})
+            {
+                ui.ClientSize=new Size((int)(width*factor),(int)(630*factor));
+                foreach(string key in new[]{"setup","output","appearance"})
+                {
+                    var page=SelectPage(ui,key);
+                    Check(page.AutoScroll&&pages.Multiline,"settings stay reachable when docked");
+                    foreach(var group in AllControls(page).OfType<SupportDrawingChoiceGroup>())
+                    {
+                        var radios=group.Controls.OfType<RadioButton>().ToArray();
+                        Check(radios.Length>=2&&radios.Count(r=>r.Checked)==1,
+                            group.Name+" has one selected option");
+                        Check(group.Width<=page.ClientSize.Width&&radios.All(r=>
+                            r.Left>=0&&r.Right<=group.ClientSize.Width+1&&r.Bottom<=group.ClientSize.Height+1),
+                            group.Name+" fits at width "+width+" and scale "+factor+
+                            " (page "+page.ClientSize+", group "+group.ClientSize+")");
+                    }
+                }
+                footer.PerformLayout();
+                Check(footer.ClientRectangle.Contains(run.Bounds)&&footer.ClientRectangle.Contains(preflight.Bounds)&&
+                    !status.Bounds.IntersectsWith(run.Bounds)&&!status.Bounds.IntersectsWith(preflight.Bounds),
+                    "Run and Preflight stay visible at every tested size");
+            }
+        }
+        Console.WriteLine("Direct settings tabs, wrapping choices and fixed actions at 100/125/150% scaling PASS");
+    }
+
+    private static void TestSessionHistoryAndNavigation()
     {
         string root=Path.Combine(Path.GetTempPath(),
             "SPTC_REV77_UI_"+Guid.NewGuid().ToString("N"));
@@ -191,23 +195,13 @@ internal static class Program
             Check(qa.Text.Contains("OFF-SHEET DRAFT",
                      StringComparison.Ordinal),
                 "history selection restores original DWG-specific QA");
-            var tab=AllControls(ui).OfType<TabControl>().Single()
-                .TabPages[0];
-            var dim=AllControls(tab).OfType<Button>()
-                .Single(b=>b.Text.Contains("Dimensions",
-                    StringComparison.Ordinal));
-            Check(dim.Text.StartsWith("[+]",StringComparison.Ordinal),
-                "dimensions start collapsed without discarding controls");
             ui.CreateControl();
-            ui.PerformLayout();
-            tab.ScrollControlIntoView(dim);
-            dim.PerformClick();
-            Check(dim.Text.StartsWith("[-]",StringComparison.Ordinal),
-                "collapsible section expands when clicked after scrolling"+
-                $" (Visible={dim.Visible}, CanSelect={dim.CanSelect})");
-            dim.PerformClick();
-            Check(dim.Text.StartsWith("[+]",StringComparison.Ordinal),
-                "collapsible section closes again");
+            var results=SelectPage(ui,"results");
+            Check(results.Text.Contains("2")&&hist.SelectedIndex==0,"results show the project drawing count");
+            SelectPage(ui,"details");
+            SelectPage(ui,"results");
+            Check(hist.SelectedIndex==0&&qa.Text.Contains("OFF-SHEET DRAFT",StringComparison.Ordinal),
+                "switching settings pages retains the selected drawing and its QA");
             string next=Path.Combine(Path.GetTempPath(),
                 "SPTC_REV77_OTHER_"+Guid.NewGuid().ToString("N"));
             ui.UpdateProjectContext(Path.Combine(next,"MODEL.dwg"),
@@ -215,7 +209,7 @@ internal static class Program
             Check(hist.Items.Count==0,
                 "switching projects clears all previous project history");
             Console.WriteLine(
-                "REV77 history, real QA selection, retention, collapse and project isolation PASS");
+                "History, real QA, page navigation and project isolation PASS");
         }
         finally
         {
@@ -236,27 +230,23 @@ internal static class Program
             .Single(b=>b.Name=="SPTC_QUICK_DRAFT_78");
         var normal=AllControls(ui).OfType<Button>()
             .Single(b=>b.Name=="SPTC_QUICK_PHYSICAL_78");
-        var basics=AllControls(ui).OfType<Button>()
-            .Single(b=>b.Name=="SPTC_SHOW_BASICS_78");
-        var all=AllControls(ui).OfType<Button>()
-            .Single(b=>b.Name=="SPTC_SHOW_ALL_78");
         var readiness=AllControls(ui).OfType<Label>()
             .Single(x=>x.Name=="SPTC_READINESS_HINT_78");
         var checks=AllControls(ui).OfType<CheckedListBox>().Single();
-        var output=AllControls(ui).OfType<ComboBox>()
-            .Single(x=>x.Items.Contains(SupportDrawingOutputMode76.Draft));
-        var scale=AllControls(ui).OfType<ComboBox>()
-            .Single(x=>x.Items.Contains("1:20"));
+        var output=Choice(ui,"SPTC_OUTPUT_MODE");
+        var scale=Choice(ui,"SPTC_PAPER_SCALE");
         Check(output.SelectedIndex==0&&checks.CheckedItems.Count==10,
             "safe physical mode and ten native view defaults are preserved");
-        scale.SelectedItem="1:20";
+        scale.SelectedValue="1:20";
+        SelectPage(ui,"views");
         AllControls(ui).OfType<Button>()
             .Single(b=>b.Text=="Ortho 6").PerformClick();
         Check(checks.CheckedItems.Count==6,
             "native view subset still works before guided shortcut");
+        SelectPage(ui,"output");
         draft.PerformClick();
         Check(checks.CheckedItems.Count==10&&
-              output.SelectedIndex==1&&scale.Text=="1:20",
+              output.SelectedIndex==1&&scale.SelectedValue=="1:20",
             "guided draft checks all ten without silently overriding 1:20");
         Check(readiness.Text.Contains("DRAFT ONLY",
             StringComparison.Ordinal)&&
@@ -272,7 +262,7 @@ internal static class Program
               queued.BypassOneSheetLimit==false&&
               queued.ScaleDenominator==20&&queued.Views.Count==10,
             "guided draft reaches the original native options unchanged");
-        scale.SelectedItem="Automatic";
+        scale.SelectedValue="Automatic";
         var footer=AllControls(ui).OfType<Panel>()
             .Single(x=>x.Dock==DockStyle.Bottom);
         var run=footer.Controls.OfType<Button>()
@@ -280,17 +270,11 @@ internal static class Program
         Check(!run.Enabled&&readiness.Text.Contains("Action required",
             StringComparison.Ordinal),
             "automatic scale is clearly blocked for draft rather than silently changed");
-        scale.SelectedItem="1:20";
-        all.PerformClick();
-        Check(AllControls(ui).OfType<Button>()
-                .Count(b=>b.Text.StartsWith("[-]"))==7,
-            "Show all reveals all seven existing setting groups");
-        basics.PerformClick();
-        Check(AllControls(ui).OfType<Button>()
-                .Count(b=>b.Text.StartsWith("[-]"))==3,
-            "Show essentials reduces clutter without resetting values");
+        scale.SelectedValue="1:20";
+        SelectPage(ui,"project");
+        SelectPage(ui,"output");
         normal.PerformClick();
-        Check(output.SelectedIndex==0&&scale.Text=="1:20"&&
+        Check(output.SelectedIndex==0&&scale.SelectedValue=="1:20"&&
               checks.CheckedItems.Count==10&&run.Enabled,
             "printable shortcut returns to safe physical mode without changing scale/views");
         footer.Controls.OfType<Button>()
@@ -302,7 +286,7 @@ internal static class Program
               summary.Text.Contains("3. OUTPUT:"),
             "preflight uses a numbered, readable UI-only setup summary");
         Console.WriteLine(
-            "REV78 guided modes, no silent scale changes, clear warnings, basics/all, preflight PASS");
+            "REV78 guided modes, no silent scale changes, clear warnings, page navigation and preflight PASS");
     }
 
     private static void TestRev79ResponsiveUx()
@@ -313,19 +297,10 @@ internal static class Program
             @"C:\Projects\REV79\Orthos");
         ui.CreateControl();
         ui.PerformLayout();
-        var workspace=ui.Controls.OfType<Panel>()
-            .Single(p=>p.Dock==DockStyle.Fill);
-        var footer=ui.Controls.OfType<Panel>()
-            .Single(p=>p.Dock==DockStyle.Bottom);
-        var canvas=ui.Controls.Find("SPTC_UI_LAYOUT_SURFACE",true).Single();
-        var tabs=canvas.Controls.OfType<TabControl>().Single();
-        var page=tabs.TabPages[0];
-        var cube=AllControls(page).OfType<ComboBox>()
-            .Single(x=>x.Items.Contains("SupportFocus (recommended)"));
-        var paper=AllControls(page).OfType<ComboBox>()
-            .Single(x=>x.Items.Contains("1:20"));
-        var output=AllControls(page).OfType<ComboBox>()
-            .Single(x=>x.Items.Contains(SupportDrawingOutputMode76.Draft));
+        var footer=ui.Controls.OfType<Panel>().Single(p=>p.Dock==DockStyle.Bottom);
+        var page=SelectPage(ui,"views");
+        var paper=Choice(ui,"SPTC_PAPER_SCALE");
+        var output=Choice(ui,"SPTC_OUTPUT_MODE");
         var selected=AllControls(page).OfType<CheckedListBox>().Single();
         var sticky=footer.Controls.OfType<Label>()
             .Single(x=>x.Name=="SPTC_FOOTER_SUMMARY_79");
@@ -336,36 +311,19 @@ internal static class Program
 
         ui.ClientSize=new Size(410,650);
         ui.PerformLayout();
-        workspace.PerformLayout();
-        page.PerformLayout();
-        Check(canvas.Width<=workspace.ClientSize.Width+5,
-            "narrow palette shrinks the reference canvas instead of horizontal 805px overflow");
-        Check(cube.Width>=240&&paper.Width>=240&&
-              paper.Top>cube.Top&&
-              page.AutoScrollMinSize.Width<=tabs.Width,
-            "native source and scale controls stack in one usable column");
+        SelectPage(ui,"setup");
         Check(sticky.Text.Contains("10/10 views")&&
               sticky.Text.Contains("Automatic"),
             "sticky summary always reflects current views and paper scale");
 
-        paper.SelectedItem="1:10";
+        paper.SelectedValue="1:10";
         output.SelectedIndex=(int)SupportDrawingOutputMode76.Mode.Draft;
         Check(sticky.Text.Contains("1:10")&&
               sticky.Text.Contains("PDF BLOCKED")&&run.Enabled,
             "live summary explicitly warns of offsheet draft PDF block");
 
-        var header=AllControls(page).OfType<Button>()
-            .Single(b=>b.Text.Contains("Source, Scale & Seed",
-                StringComparison.Ordinal));
-        Check(header.Text.Contains("1:10")&&
-              AllControls(page).OfType<Button>().Any(b=>
-                  b.Text.Contains("10/10 views",StringComparison.Ordinal)),
-            "collapsed and expanded section headers contain live setting summaries");
-        page.ScrollControlIntoView(header);
-        header.PerformClick();
-        Check(header.Text.StartsWith("[+]",StringComparison.Ordinal),
-            "source section can collapse without clearing data");
-        paper.SelectedItem="Automatic";
+        SelectPage(ui,"output");
+        paper.SelectedValue="Automatic";
         Check(!run.Enabled&&
               sticky.Text.Contains("Automatic")&&
               fix.Text=="Fix setting",
@@ -373,18 +331,50 @@ internal static class Program
         var focus=typeof(SupportDrawingManagerForm35).GetMethod(
             "FocusRequiredSetting",BindingFlags.Instance|BindingFlags.NonPublic)!;
         focus.Invoke(ui,null);
-        Check(header.Text.StartsWith("[-]",StringComparison.Ordinal)&&
-              paper.SelectedItem?.ToString()=="Automatic",
-            "Fix setting opens source-scale section without changing user scale");
-        paper.SelectedItem="1:10";
+        Check(SettingsPages(ui).SelectedTab?.Name=="setup"&&paper.SelectedValue=="Automatic",
+            "Fix setting navigates directly to the exact-scale choice");
+        paper.SelectedValue="1:10";
         ui.ClientSize=new Size(805,765);
         ui.PerformLayout();
-        workspace.PerformLayout();
-        Check(canvas.Width>=740&&
-              cube.Width<240&&run.Enabled&&selected.CheckedItems.Count==10,
-            "undocking restores original two-column source controls and view choices");
-        Console.WriteLine(
-            "REV79 responsive narrow/wide, live summary, section details and Fix Setting PASS");
+        Check(run.Enabled&&selected.CheckedItems.Count==10&&paper.SelectedValue=="1:10",
+            "changing the palette width preserves the scale and views");
+        Console.WriteLine("Responsive palette, live summary and direct Fix setting navigation PASS");
+    }
+
+    private static void TestVisiblePreferencesRoundTrip()
+    {
+        string root=Path.Combine(Path.GetTempPath(),"SPTC_UI_"+Guid.NewGuid().ToString("N"));
+        string saved=SupportDrawingUiPreferences.StoragePath(root);
+        try
+        {
+            using(var ui=new SupportDrawingManagerForm35(Path.Combine(root,"model.dwg"),root,root))
+            {
+                ui.CreateControl();
+                SelectPage(ui,"setup");
+                var scales=Choice(ui,"SPTC_PAPER_SCALE");
+                var denominator=AllControls(ui).OfType<NumericUpDown>().Single();
+                Check(scales.Controls.OfType<RadioButton>().Select(c=>(string)c.Tag!)
+                    .SequenceEqual(SupportDrawingUiPreferences.ScaleChoices),"every supported scale is a visible preset");
+                scales.Controls.OfType<RadioButton>().Last().PerformClick();
+                Check(denominator.Visible&&denominator.Enabled,"custom denominator is available immediately");
+                denominator.Value=37;
+                Choice(ui,"SPTC_CUBE_MODE").SelectedIndex=1;
+                SelectPage(ui,"appearance");
+                Choice(ui,"SPTC_HIDDEN_LINES_83").SelectedValue=NativeOrthoAppearance83.PipeHidden;
+                Choice(ui,"SPTC_INSULATION_83").SelectedValue=NativeOrthoAppearance83.HiddenInsulation;
+                var project=SelectPage(ui,"project");
+                AllControls(project).OfType<Button>().Single(b=>b.Text=="Save settings").PerformClick();
+            }
+            using var reopened=new SupportDrawingManagerForm35(Path.Combine(root,"model.dwg"),root,root);
+            reopened.CreateControl();
+            SupportDrawingUiOptions? queued=null;
+            reopened.RunRequested+=settings=>queued=settings;
+            AllControls(reopened).OfType<Button>().Single(b=>b.Text=="Run selected").PerformClick();
+            Check(queued?.ScaleDenominator==37&&!queued.SupportFocus&&queued.HiddenLineMode==NativeOrthoAppearance83.PipeHidden&&
+                queued.InsulationMode==NativeOrthoAppearance83.HiddenInsulation,
+                "saved visible choices reach the drawing command after reopening the manager");
+        }
+        finally {if(File.Exists(saved))File.Delete(saved);}
     }
 
     private static void TestProductionPackageCheckboxSaveRoundTrip()
@@ -420,6 +410,10 @@ internal static class Program
                 SetField("series","SUP");
                 SetField("revision","A");
                 SetField("title","SUPPORT DRAWING");
+                var devices=Choice(dialog,"SPTC_PDF_PLOTTER");
+                Check(!AllControls(dialog).OfType<ComboBox>().Any()&&devices.Controls.Count==2,
+                    "both approved PDF plotters are visible choices");
+                devices.Controls.OfType<RadioButton>().Last().Checked=true;
                 // Invoke the exact dialog Save button handler, not a
                 // synthetic settings-only serializer test.
                 typeof(SupportProductionPackageDialog).GetMethod(
@@ -445,6 +439,8 @@ internal static class Program
                     "SPTC_PUBLISH_PDF_ENABLED",true).OfType<CheckBox>().Single();
                 Check(enabled.Checked&&pdf.Checked,
                     "reopening dialog restores both checked states");
+                Check(Choice(reopened,"SPTC_PDF_PLOTTER").SelectedValue==SupportProductionPdfPolicy.ApprovedPdfDevices[1],
+                    "the selected PDF plotter survives saving and reopening");
                 enabled.Checked=false;
                 Check(!pdf.Checked,
                     "explicitly disabling production also disables PDF");

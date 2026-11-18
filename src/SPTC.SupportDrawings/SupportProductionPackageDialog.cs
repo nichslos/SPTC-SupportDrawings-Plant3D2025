@@ -27,7 +27,8 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
     private readonly CheckBox fullDimensions=new();
     private readonly CheckBox skipExisting=new();
     private readonly CheckBox publishPdf=new();
-    private readonly ComboBox pdfDevice=new();
+    private readonly SupportDrawingChoiceGroup pdfDevice=new("PDF plotter",
+        SupportProductionPdfPolicy.ApprovedPdfDevices);
     private readonly Label saveStatus=new();
     internal SupportProductionPackagePlan.Settings? VerifiedSettings{
         get;private set;
@@ -48,7 +49,7 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
 
         var panel=new Panel{
             AutoScroll=true,Dock=DockStyle.Fill,
-            AutoScrollMinSize=new Size(670,782)};
+            AutoScrollMinSize=new Size(670,816)};
         Controls.Add(panel);
 
         void LabelAt(string caption,int y) => panel.Controls.Add(new Label {
@@ -116,32 +117,33 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
                 publishPdf.Checked=false;
         };
         panel.Controls.Add(new Label {
-            Text="PDF plotter:",Location=new Point(20,618),Size=new Size(240,24)
+            Text="PDF plotter",Location=new Point(20,618),Size=new Size(240,24)
         });
-        pdfDevice.SetBounds(270,613,415,29);
-        pdfDevice.DropDownStyle=ComboBoxStyle.DropDownList;
-        pdfDevice.Items.AddRange(
-            SupportProductionPdfPolicy.ApprovedPdfDevices.Cast<object>().ToArray());
-        pdfDevice.SelectedIndex=0;
+        pdfDevice.Name="SPTC_PDF_PLOTTER";
+        pdfDevice.AutoSize=false;
+        pdfDevice.FlowDirection=FlowDirection.TopDown;
+        pdfDevice.WrapContents=false;
+        pdfDevice.SetBounds(270,611,415,62);
+        pdfDevice.Anchor=AnchorStyles.Top|AnchorStyles.Left|AnchorStyles.Right;
         panel.Controls.Add(pdfDevice);
         panel.Controls.Add(new Label {
             Text="Publishing is gated by native QA and exact sheet media. Draft PDF is never automatically issued.",
             ForeColor=Color.DarkGoldenrod,
-            Location=new Point(20,660),Size=new Size(655,38)
+            Location=new Point(20,682),Size=new Size(655,38)
         });
         var save=new Button{
-            Text="Save configuration",Location=new Point(378,712),
+            Text="Save configuration",Location=new Point(378,738),
             Size=new Size(170,34),Anchor=AnchorStyles.Top|AnchorStyles.Right
         };
         var cancel=new Button{
-            Text="Cancel",Location=new Point(558,712),
+            Text="Cancel",Location=new Point(558,738),
             Size=new Size(127,34),DialogResult=WinForms.DialogResult.Cancel,
             Anchor=AnchorStyles.Top|AnchorStyles.Right
         };
         panel.Controls.Add(save);
         panel.Controls.Add(cancel);
         saveStatus.Name="SPTC_PRODUCTION_SAVE_STATUS";
-        saveStatus.SetBounds(20,752,663,25);
+        saveStatus.SetBounds(20,782,663,25);
         saveStatus.ForeColor=Color.DarkSlateGray;
         panel.Controls.Add(saveStatus);
         AcceptButton=save;
@@ -172,7 +174,7 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
         fullDimensions.Checked=config.RequireFullDimensionCoverage;
         skipExisting.Checked=config.SkipVerifiedExisting;
         publishPdf.Checked=config.PublishPdf;
-        pdfDevice.SelectedItem=
+        pdfDevice.SelectedValue=
             SupportProductionPdfPolicy.AllowedDevice(config.PdfPlotDevice)
             ?config.PdfPlotDevice
             :SupportProductionPdfPolicy.ApprovedPdfDevices[0];
@@ -201,7 +203,7 @@ internal sealed class SupportProductionPackageDialog : WinForms.Form
                 revision.Text,title.Text,titleBlock.Text,tags,
                 overwrite.Checked,requirePdf.Checked,
                 fullDimensions.Checked,skipExisting.Checked,
-                supportTagAttribute.Text,publishPdf.Checked,pdfDevice.Text);
+                supportTagAttribute.Text,publishPdf.Checked,pdfDevice.SelectedValue);
             // Never report success or close until the same project and
             // both checkbox values have been round-trip verified from disk.
             var verified=SupportProductionPackageSettingsStore.SaveAndVerify(
