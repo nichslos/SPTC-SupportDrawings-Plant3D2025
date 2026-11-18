@@ -665,9 +665,9 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         uiTips.SetToolTip(outputMode,
             "Printable sheet, single-DWG Draft Overflow, or split sheets without changing scale.");
         uiTips.SetToolTip(hiddenLineMode,
-            "Requested hidden-line output is best-effort after native drawing generation. If Plant cannot verify the native command, set appearance using Edit View > Output Appearance. DWG generation continues. Other views sharing the model can be affected on refresh.");
+            "Sets the hidden-line mode as Plant generates each selected view. Edit View reads the mode saved with that view.");
         uiTips.SetToolTip(insulationMode,
-            "Requested insulation mode is checked independently after generating the native DWG. Saved view appearance must be verified in Plant Edit View; unsupported modes do not block drawing creation. Project Default makes no changes.");
+            "Sets the native Ortho insulation mode for generation. Plant shares this setting across views. Visible insulation requires insulated model parts.");
         uiTips.SetToolTip(quickDraft,
             "Select all ten views and Draft Overflow; keep your selected exact drawing scale.");
         uiTips.SetToolTip(quickPhysical,
@@ -1512,10 +1512,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
                 " | XREF Names="+xrefNames.Checked+"\r\n"+
             "6. HIDDEN LINES: "+hiddenLineMode.Text+"\r\n"+
             "7. INSULATION: "+insulationMode.Text+"\r\n"+
-            "   Native appearance: best-effort host sync AFTER drawing generation. "+
-            "Unsupported mode: use Edit View > Output Appearance.\r\n"+
-            "   Saved native view appearance requires manual verification; "+
-            "shared-model updates may affect other views.\r\n"+
+            "   Each view uses the selected appearance during generation. " +
+            "Plant shares the Ortho insulation setting across views.\r\n" +
             "8. DIMENSIONS: "+(autoDimLinear.Checked?
                 (referenceDimensions.Checked?
                     "Native H/V chain + overall":"Native H/V all members"):"OFF")+

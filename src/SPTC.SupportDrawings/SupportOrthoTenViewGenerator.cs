@@ -1915,6 +1915,11 @@ public sealed class SupportOrthoTenViewGenerator
             var nativeMemberViewportIds=new Dictionary<string,ObjectId>(
                 StringComparer.OrdinalIgnoreCase);
             string stamp=DateTime.UtcNow.ToString("HHmmss",CultureInfo.InvariantCulture);
+            var appearanceHost = new PlantOrthoAppearanceHost(viewType.Assembly);
+            Log("ORTHO_APPEARANCE_REQUEST HIDDEN=" + options.HiddenLineMode + " INSULATION=" + options.InsulationMode);
+            using var appearance = new NativeOrthoOutputAppearance(
+                options.HiddenLineMode, options.InsulationMode, appearanceHost.HiddenValue,
+                PlantOrthoAppearanceHost.Read, PlantOrthoAppearanceHost.Write, Log);
             foreach(var item in planned)
             {
                 string label=item.Slot.Name;
@@ -2009,17 +2014,8 @@ public sealed class SupportOrthoTenViewGenerator
                             Log("STEP8_"+label+"_NATIVE_REQUESTED_PAPER_FRAME="+
                                 Point(item.Width,item.Height,0));
                             Log("STEP8_"+label+"_PRIVATE_GENERATEORTHOS_ENTERED");
-                            // REV85: the actual user test proved that
-                            // hidden-mode calibration fails in this
-                            // native GenerateOrthos context, aborting
-                            // TOP and preventing all ten views and
-                            // dimensions. Appearance is OPTIONAL and
-                            // MUST NOT enter this geometry-critical path.
-                            // Defer native host sync until all views and
-                            // essential dimensions have completed.
-                            Log("REV85_"+label+
-                                "_APPEARANCE=DEFERRED_NO_NATIVE_HOST_MUTATION");
-                            generate.Invoke(nativeView,args);
+                            appearance.Generate(label, () => generate.Invoke(nativeView, args),
+                                expected => appearanceHost.CheckSavedHidden(targetDoc.Database, viewName, viewportId, expected));
                             Log("STEP8_"+label+"_PRIVATE_GENERATEORTHOS_RETURNED");
                             if(NativeOrthoAxialEditorPreset.IsAxial(label))
                             {
@@ -3128,57 +3124,11 @@ public sealed class SupportOrthoTenViewGenerator
                     Log("PRODUCTION_TITLEBLOCK_ERROR="+ex);
                 }
             }
-            // REV85: only after COMPLETE native view and dimension
-            // generation, attempt host-session appearance on a best-
-            // effort basis. A missing native Editor command must never
-            // poison the registered DWG, zero view count, dimension
-            // QA or downstream publisher. Hidden and insulation are
-            // independent; unsupported hidden calibration cannot
-            // prevent the separate documented insulation setting.
-            // No verified native ViewDef style API is available here,
-            // so report session readback separately from actual saved
-            // viewport output (requires manual Edit View verification).
-            if(succeeded)
+            if (succeeded && !appearance.Complete(planned.Count))
             {
-                try
-                {
-                    var appearance85=
-                        NativeOrthoAppearanceRecovery85.TryAfterSuccessfulGeneration(
-                            new NativeOrthoAppearanceAutoCAD83(targetDoc),
-                            options.HiddenLineMode,options.InsulationMode,
-                            Log);
-                    Log("REV85_HIDDEN_LINE_STATUS="+
-                        appearance85.HiddenLineStatus);
-                    Log("REV85_INSULATION_STATUS="+
-                        appearance85.InsulationStatus);
-                    Log("REV85_NATIVE_VIEW_APPEARANCE_VERIFIED="+
-                        appearance85.SavedViewAppearanceVerified);
-                    if(appearance85.Summary.Contains(
-                        "MANUAL_EDITOR_ACTION_REQUIRED",
-                        StringComparison.Ordinal))
-                        SafeWriteToActiveEditor(
-                            "SPTC: Native Ortho views and dimensions were "+
-                            "generated. Appearance override was not fully "+
-                            "verified; use Edit View > Output Appearance "+
-                            "to set the unsupported native mode.");
-                }
-                catch(System.Exception diagnosticError)
-                {
-                    // Never claim PASS or convert the already successful
-                    // native DWG into GENERATION_FAILED over appearance.
-                    Log("REV85_POST_GENERATION_APPEARANCE="+
-                        "UNVERIFIED_MANUAL_EDITOR_ACTION_REQUIRED "+
-                        "ERROR="+diagnosticError.GetType().Name+":"+
-                        diagnosticError.Message);
-                    SafeWriteToActiveEditor(
-                        "SPTC: Generated native views. Review native "+
-                        "Ortho Editor output appearance manually.");
-                }
-            }
-            else
-            {
-                Log("REV85_POST_GENERATION_APPEARANCE="+
-                    "SKIPPED_UNSUCCESSFUL_GENERATION");
+                Log("ORTHO_APPEARANCE_NEEDS_REVIEW=True");
+                SafeWriteToActiveEditor(
+                    "SPTC: Check Output Appearance in Edit View. See ORTHO_APPEARANCE in the result log for the affected view and setting.");
             }
             SafeWriteToActiveEditor(
                 "SPTC: "+options.Views.Count+" native views and titles created. "+

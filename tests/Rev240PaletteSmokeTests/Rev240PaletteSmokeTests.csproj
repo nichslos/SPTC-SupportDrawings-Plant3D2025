@@ -11,10 +11,8 @@
              Link="SupportDrawingUiPreferences.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoAppearance83.cs"
              Link="NativeOrthoAppearance83.cs"/>
-    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoHiddenCalibration84.cs"
-             Link="NativeOrthoHiddenCalibration84.cs"/>
-    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoAppearanceRecovery85.cs"
-             Link="NativeOrthoAppearanceRecovery85.cs"/>
+    <Compile Include="../../src/SPTC.SupportDrawings/NativeOrthoOutputAppearance.cs"
+             Link="NativeOrthoOutputAppearance.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPdfPolicy.cs"
              Link="SupportProductionPdfPolicy.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportProductionPackagePlan.cs"
