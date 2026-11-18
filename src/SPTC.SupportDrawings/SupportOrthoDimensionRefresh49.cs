@@ -508,6 +508,7 @@ internal static class SupportOrthoDimensionRefresh49
                     "Source units changed; existing dimensions retained.");
 
             var sourceIds=new List<ObjectId>();
+            var plateIds=new List<ObjectId>();
             var steel=new List<string>();
             var supports=new List<string>();
             BoundingBox3? bounds=null;
@@ -535,14 +536,18 @@ internal static class SupportOrthoDimensionRefresh49
                             box.MinPoint.Y,box.MinPoint.Z,box.MaxPoint.X,
                             box.MaxPoint.Y,box.MaxPoint.Z);
                         bounds=bounds.HasValue?bounds.Value.Include(bb):bb;
-                        sourceIds.Add(id);
-                        if(saved.Kind=="STRUCTURE")steel.Add(key);
-                        else supports.Add(key);
+                        if(saved.Kind=="PLATE")plateIds.Add(id);
+                        else
+                        {
+                            sourceIds.Add(id);
+                            if(saved.Kind=="STRUCTURE")steel.Add(key);
+                            else supports.Add(key);
+                        }
                     }
                     catch(Autodesk.AutoCAD.Runtime.Exception){ /* source removed */ }
                 }
             }
-            if(!bounds.HasValue||sourceIds.Count==0)
+            if(!bounds.HasValue||(sourceIds.Count==0&&plateIds.Count==0))
                 throw new InvalidOperationException(
                     "No verified native member extents; kept existing dimensions.");
             double margin=Math.Max(10.0/original.UnitsToMm,
@@ -555,7 +560,13 @@ internal static class SupportOrthoDimensionRefresh49
             var extents=SupportOrthoAllMemberExtent44.Read(
                 source,sourceIds,steel,supports,
                 Array.Empty<SupportOrthoXrefMemberDiscovery37.Item>(),cube);
-            native=extents.Members
+            var plates=plateIds.Count==0?Array.Empty<SupportOrthoAllViewDimPlan44.Member>():
+                SupportOrthoPlantPlateSource82.Read(source,plateIds).Plates
+                    .Select(p=>p.Geometry).ToArray();
+            if(plates.Length!=plateIds.Count)
+                throw new InvalidOperationException(
+                    "Could not verify a selected native plate during dimension refresh.");
+            native=extents.Members.Concat(plates)
                 .Where(SupportOrthoNativeDimensionPolicy48.AcceptMember)
                 .ToArray();
             if(native.Length==0)
@@ -671,12 +682,7 @@ internal static class SupportOrthoDimensionRefresh49
                         "Native Ortho viewport is missing/ambiguous: "+
                         saved.Name);
                 used.Add(candidate.Handle);
-                cameras.Add(new SupportOrthoMemberCalloutPlan17.Camera(
-                    saved.Name,vp.CenterPoint.X,vp.CenterPoint.Y,
-                    vp.Width,vp.Height,vp.ViewDirection.X,
-                    vp.ViewDirection.Y,vp.ViewDirection.Z,
-                    vp.ViewCenter.X,vp.ViewCenter.Y,vp.TwistAngle,
-                    vp.CustomScale));
+                cameras.Add(CameraFromViewport(saved.Name,vp));
             }
         }
         IReadOnlyList<SupportOrthoDimLinearPlan41.Dimension> dimensions;
@@ -693,7 +699,7 @@ internal static class SupportOrthoDimensionRefresh49
         {
             var ordinaryPlan=SupportOrthoSmartDimPlan46.Build(
                 cameras,native,paperW,paperH,original.UnitsToMm,
-                null,null,keepouts);
+                null,null,keepouts,sources:segments);
             dimensions=ordinaryPlan.Dimensions;
             plannerSkipped=ordinaryPlan.Skipped;
         }
@@ -806,13 +812,13 @@ internal static class SupportOrthoDimensionRefresh49
         IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> Cameras,
         int UnownedDimensionsOnAutoLayer);
 
-    private static SupportOrthoMemberCalloutPlan17.Camera CameraFromViewport(
+    internal static SupportOrthoMemberCalloutPlan17.Camera CameraFromViewport(
         string name,Viewport vp) =>
         new(name,vp.CenterPoint.X,vp.CenterPoint.Y,
             vp.Width,vp.Height,vp.ViewDirection.X,
             vp.ViewDirection.Y,vp.ViewDirection.Z,
             vp.ViewCenter.X,vp.ViewCenter.Y,vp.TwistAngle,
-            vp.CustomScale);
+            vp.CustomScale,vp.ViewTarget.X,vp.ViewTarget.Y,vp.ViewTarget.Z);
 
     private static FastPaperState ReadFastPaperState(
         Database db,SupportOrthoDimensionUpdatePlan49.Manifest saved)

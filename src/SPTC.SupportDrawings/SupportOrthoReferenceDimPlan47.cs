@@ -74,7 +74,8 @@ public static class SupportOrthoReferenceDimPlan47
         bool CompactLocalLabel=false,
         bool AdaptiveShortLocalLabel=false,
         bool OutwardLocalLabel=false,
-        bool PlateEnvelope=false);
+        bool PlateEnvelope=false,
+        SupportOrthoProjectedAxis.Span? AxisSpan=null);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text,
@@ -154,9 +155,6 @@ public static class SupportOrthoReferenceDimPlan47
                 SupportOrthoSmartDimPlan46.Rect Bounds)>();
             // REV22.48: only HOST-DWG native Plant members contribute to
             // overall lengths or connected-edge dimension chain stations.
-            var visibleNative=new Dictionary<string,
-                SupportOrthoSmartDimPlan46.Rect>(
-                StringComparer.OrdinalIgnoreCase);
             foreach(var member in members)
             {
                 if(!SupportOrthoNativeDimensionPolicy48.AcceptMember(member))
@@ -181,7 +179,6 @@ public static class SupportOrthoReferenceDimPlan47
                 }
                 projected.Add(bounds);
                 projectedMembers.Add((member,bounds));
-                visibleNative[member.Key]=bounds;
             }
             if(projected.Count==0)
             {
@@ -212,57 +209,44 @@ public static class SupportOrthoReferenceDimPlan47
             // Plant Start/End points. Cache these paper coordinates for
             // both axis chains and overall witness selection. The
             // projected AABB alone never authorizes connection stations.
-            var verifiedWitnessPoints=new List<(double X,double Y)>();
-            // REV22.55: a selected Plant member's Start/End line
-            // identifies its TRUE axis midpoint. Keep that midpoint
-            // separately by native handle: global bounding boxes alone
-            // cannot locate a sloping member's centerline.
-            var nativeAxisMidpoints=new Dictionary<string,(
-                double X,double Y,double Dx,double Dy)>(
-                StringComparer.OrdinalIgnoreCase);
-            if(sources!=null)
-                foreach(var source in sources)
+            var nativeAxisMidpoints=SupportOrthoProjectedAxis.InView(
+                camera,sources,projectedMembers);
+            var verifiedWitnessPoints=nativeAxisMidpoints.Values
+                .SelectMany(axis=>new[]{axis.Start,axis.End}).ToArray();
+            bool ObliqueStructure(SupportOrthoAllViewDimPlan44.Member member) =>
+                member.Kind=="STRUCTURE"&&nativeAxisMidpoints.TryGetValue(
+                    member.Key,out var axis)&&axis.IsOblique;
+
+            // Actual points on sloping members can attain different ends of
+            // an envelope at different transverse positions.
+            var outlinePoints=projectedMembers.Where(m=>ObliqueStructure(m.Member))
+                .SelectMany(m=>new[]{nativeAxisMidpoints[m.Member.Key].Start,
+                    nativeAxisMidpoints[m.Member.Key].End}).ToList();
+            var visibleKinds=projectedMembers.ToDictionary(m=>m.Member.Key,
+                m=>m.Member.Kind,StringComparer.OrdinalIgnoreCase);
+            foreach(var edge in nativeEdges??Array.Empty<SupportOrthoNativeEdgeGeometry59.Edge>())
+            {
+                if(!SupportOrthoNativeEdgeGeometry59.Valid(edge)||
+                    !visibleKinds.TryGetValue(edge.Key,out var kind)||kind!=edge.Kind)
+                    continue;
+                outlinePoints.Add(SupportOrthoMemberCalloutPlan17.Project(camera,
+                    edge.Ax,edge.Ay,edge.Az));
+                outlinePoints.Add(SupportOrthoMemberCalloutPlan17.Project(camera,
+                    edge.Bx,edge.By,edge.Bz));
+            }
+
+            var witnesses=new Dictionary<(bool Horizontal,double Station,double Sign,bool Explicit),double?>();
+            double? ResolveWitness(bool horizontal,double station,double sign,bool preferExplicit)
+            {
+                var key=(horizontal,station,sign,preferExplicit);
+                if(!witnesses.TryGetValue(key,out var value))
                 {
-                    if(!SupportOrthoNativeDimensionPolicy48.AcceptSegment(source)||
-                       !visibleNative.TryGetValue(source.Key,
-                            out var sourceBounds))
-                        continue;
-                    foreach(var point in new[]{
-                        (source.Ax,source.Ay,source.Az),
-                        (source.Bx,source.By,source.Bz)})
-                    {
-                        var p=SupportOrthoMemberCalloutPlan17.Project(
-                            camera,point.Item1,point.Item2,point.Item3);
-                        if(!double.IsFinite(p.X)||!double.IsFinite(p.Y)||
-                           p.X<sourceBounds.L-.25||
-                           p.X>sourceBounds.R+.25||
-                           p.Y<sourceBounds.B-.25||
-                           p.Y>sourceBounds.T+.25)
-                            continue;
-                        verifiedWitnessPoints.Add((p.X,p.Y));
-                    }
-                    if(!source.Provenance.Equals(
-                        "EXPLICIT_MEMBER_ENDPOINTS",
-                        StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    var a=SupportOrthoMemberCalloutPlan17.Project(camera,
-                        source.Ax,source.Ay,source.Az);
-                    var b=SupportOrthoMemberCalloutPlan17.Project(camera,
-                        source.Bx,source.By,source.Bz);
-                    var middle=SupportOrthoMemberCalloutPlan17.Project(
-                        camera,(source.Ax+source.Bx)*.5,
-                        (source.Ay+source.By)*.5,
-                        (source.Az+source.Bz)*.5);
-                    if(!new[]{middle.X,middle.Y,a.X,a.Y,b.X,b.Y}
-                            .All(double.IsFinite)||
-                       middle.X<sourceBounds.L-.20||
-                       middle.X>sourceBounds.R+.20||
-                       middle.Y<sourceBounds.B-.20||
-                       middle.Y>sourceBounds.T+.20)
-                        continue;
-                    nativeAxisMidpoints[source.Key]=(
-                        middle.X,middle.Y,b.X-a.X,b.Y-a.Y);
+                    value=WitnessAt(horizontal,station,sign,projected,
+                        verifiedWitnessPoints,preferExplicit,outlinePoints);
+                    witnesses.Add(key,value);
                 }
+                return value;
+            }
 
             // Reserve the two OUTER overall dimensions before chain
             // details and member widths. REV22.52 placed H local widths
@@ -320,8 +304,7 @@ public static class SupportOrthoReferenceDimPlan47
                         if(found)break;
                         for(int tier=0;tier<20;tier++)
                         {
-                            var candidate=Candidate(camera,assembly,
-                                projected,verifiedWitnessPoints,
+                            var candidate=Candidate(camera,assembly,ResolveWitness,
                                 request,sign,offset,tier);
                             string? cause=candidate==null?
                                 "NATIVE_WITNESS_UNRESOLVED":
@@ -374,86 +357,6 @@ public static class SupportOrthoReferenceDimPlan47
                 bool Compact,bool Adaptive,bool AxisStation)>();
             int optionId=0;
             var supplementaryOptionIds=new HashSet<int>();
-            // REV82: PLANTSTEELPLATE is a native StructurePlate, not
-            // a linear StructureMember. The plate's measured WCS entity
-            // envelope projects into the saved native H/V camera plane.
-            // Each candidate is explicitly labeled as a PROJECTED
-            // ENVELOPE, never a manufacturing edge/cut length. These
-            // are optional profiles: their placement must not displace
-            // an overall, verified chain or terminal-remainder dimension.
-            foreach(var plate in projectedMembers.Where(m=>
-                m.Member.Kind=="PLATE"))
-            foreach(bool horizontal in new[]{true,false})
-            {
-                string direction=horizontal?"H":"V";
-                if(profileGroups.Count>=24)
-                {
-                    skipped.Add(camera.Name+"/"+plate.Member.Key+
-                        ":PLATE82_OPTIONAL_GROUP_CAPACITY");
-                    continue;
-                }
-                double from=horizontal?plate.Bounds.L:plate.Bounds.B;
-                double to=horizontal?plate.Bounds.R:plate.Bounds.T;
-                if(to-from<.25)
-                {
-                    skipped.Add(camera.Name+"/"+plate.Member.Key+
-                        ":PLATE82_"+direction+"_PROJECTED_SPAN_TOO_SMALL");
-                    continue;
-                }
-                double witness=horizontal?
-                    (plate.Bounds.B+plate.Bounds.T)*.5:
-                    (plate.Bounds.L+plate.Bounds.R)*.5;
-                var plateRequest=MakeRequest(horizontal,from,to,
-                    false,0,camera.Scale,unitsToMm) with {
-                    SourceKey=plate.Member.Key,
-                    LocalBounds=plate.Bounds,
-                    MidpointWitness=witness,
-                    PlateEnvelope=true,
-                    CompactLocalLabel=true
-                };
-                var optionsForPlate=new List<
-                    SupportOrthoCoordinatedLayout60.Alternative>();
-                double preferred=SupportOrthoReferenceLayout51
-                    .PreferredSide(camera.Name,horizontal);
-                foreach(double sign in new[]{preferred,-preferred})
-                foreach(double lane in SupportOrthoReferenceLayout51
-                    .LocalMemberLaneOffsets())
-                {
-                    if(optionsForPlate.Count>=24)break;
-                    for(int tier=0;tier<4;tier++)
-                    {
-                        if(optionsForPlate.Count>=24)break;
-                        var candidate=Candidate(camera,assembly,projected,
-                            verifiedWitnessPoints,plateRequest,
-                            sign,lane,tier);
-                        if(candidate==null||
-                           !InnerThanReservedOverall(candidate.Value.P)||
-                           RejectionReason(candidate.Value.P,blocks,paper,
-                               placed,projected)!=null)
-                            continue;
-                        int id=optionId++;
-                        profileOptions.Add(id,(
-                            candidate.Value.D,candidate.Value.P,
-                            false,false,true,false,false));
-                        optionsForPlate.Add(new(
-                            id,Math.Min(90,lane*.65+tier*.18+
-                                (sign==preferred?0:15))));
-                    }
-                }
-                if(optionsForPlate.Count==0)
-                {
-                    skipped.Add(camera.Name+"/"+plate.Member.Key+
-                        ":PLATE82_"+direction+
-                        "_NO_SAFE_NATIVE_DIMENSION_LANE");
-                    continue;
-                }
-                // Source-derived projected plate face extents take
-                // precedence over purely approximate member profiles
-                // when they compete for finite paper-space lanes.
-                profileGroups.Add(new(
-                    direction+":PLATE:"+plate.Member.Key,
-                    75,optionsForPlate));
-            }
             foreach(bool horizontal in new[]{true,false})
             {
                 double min=horizontal?minX:minY;
@@ -481,7 +384,8 @@ public static class SupportOrthoReferenceDimPlan47
                 // centerline gap if the physical end section is 100 mm.
                 // Two abutting *independent* members do not qualify;
                 // they retain the strict explicit Start/End policy.
-                var projectedNativeSpans=projectedMembers.Select(m=>
+                var projectedNativeSpans=projectedMembers.Where(m=>!ObliqueStructure(m.Member))
+                    .Select(m=>
                     new SupportOrthoReferenceDatum56.Span(
                         m.Member.Key,
                         horizontal?m.Bounds.L:m.Bounds.B,
@@ -492,7 +396,7 @@ public static class SupportOrthoReferenceDimPlan47
                 // only when BOTH station points have native endpoints.
                 bool VerifiedAt(double at) =>
                     verifiedWitnessPoints.Any(p=>
-                        Math.Abs((horizontal?p.X:p.Y)-at)<=.20);
+                        Math.Abs((horizontal?p.X:p.Y)-at)<=1e-7);
                 var steps=new List<Request>();
                 if(terminalDatum.HasValue)
                 {
@@ -581,8 +485,7 @@ public static class SupportOrthoReferenceDimPlan47
                                 Placed P)? candidate=null;
                             for(int tier=0;tier<8;tier++)
                             {
-                                var attempt=Candidate(camera,assembly,
-                                    projected,verifiedWitnessPoints,
+                                var attempt=Candidate(camera,assembly,ResolveWitness,
                                     step,sign,offset,tier);
                                 if(attempt!=null&&
                                    !InnerThanReservedOverall(attempt.Value.P))
@@ -665,8 +568,7 @@ public static class SupportOrthoReferenceDimPlan47
                     // omissions on tight portrait support details.
                     for(int textTier=0;textTier<10;textTier++)
                     {
-                        var candidate=Candidate(camera,assembly,
-                            projected,verifiedWitnessPoints,
+                        var candidate=Candidate(camera,assembly,ResolveWitness,
                             big,sign,offset+extra,textTier);
                         if(candidate==null||
                            !Fits(candidate.Value.P,blocks,paper,placed,
@@ -774,10 +676,11 @@ public static class SupportOrthoReferenceDimPlan47
                     var physical=SupportOrthoNativeEdgeGeometry59.Resolve(
                         camera,member.Member.Key,horizontal,
                         member.Bounds,nativeEdges);
+                    if(physical==null&&ObliqueStructure(member.Member))continue;
                     if(physical!=null)
                         witness=physical.Transverse;
-                    var localReq=MakeRequest(horizontal,member.From,
-                        member.To,false,0,camera.Scale,unitsToMm)
+                    var localReq=MakeRequest(horizontal,physical?.From??member.From,
+                        physical?.To??member.To,false,0,camera.Scale,unitsToMm)
                         with {LocalBounds=member.Bounds,
                             SourceKey=member.Member.Key,
                             MidpointWitness=witness,
@@ -799,8 +702,7 @@ public static class SupportOrthoReferenceDimPlan47
                             // on one early lane.
                             for(int tier=0;tier<4;tier++)
                             {
-                                var candidate=Candidate(camera,assembly,
-                                    projected,verifiedWitnessPoints,
+                                var candidate=Candidate(camera,assembly,ResolveWitness,
                                     localReq,sign,offset,tier);
                                 if(candidate!=null&&
                                    !InnerThanReservedOverall(candidate.Value.P))
@@ -867,8 +769,7 @@ public static class SupportOrthoReferenceDimPlan47
                                 {
                                     if(alternatives.Count>=24)break;
                                     var candidate=Candidate(
-                                        camera,assembly,projected,
-                                        verifiedWitnessPoints,compactReq,
+                                        camera,assembly,ResolveWitness,compactReq,
                                         sign,offset,tier);
                                     if(candidate==null)
                                     {
@@ -955,8 +856,7 @@ public static class SupportOrthoReferenceDimPlan47
                                 for(int tier=0;tier<20;tier++)
                                 {
                                     if(alternatives.Count>=24)break;
-                                    var candidate=Candidate(camera,assembly,
-                                        projected,verifiedWitnessPoints,
+                                    var candidate=Candidate(camera,assembly,ResolveWitness,
                                         adaptiveReq,sign,offset,tier);
                                     if(candidate==null)
                                     {
@@ -1112,8 +1012,7 @@ public static class SupportOrthoReferenceDimPlan47
                                             }
                                             verifiedStationTested++;
                                             var candidate=Candidate(camera,
-                                                assembly,projected,
-                                                verifiedWitnessPoints,request,
+                                                assembly,ResolveWitness,request,
                                                 sign,offset,tier);
                                             if(candidate==null)
                                             {
@@ -1195,6 +1094,84 @@ public static class SupportOrthoReferenceDimPlan47
                         alternatives));
                 }
             }
+            // Add optional dimensions after reserving overall and chain lanes.
+            // A plate contributes its envelope. A sloping member contributes
+            // the two components of its verified Start/End vector in this view.
+            foreach(var item in projectedMembers
+                .Where(m=>m.Member.Kind=="PLATE"||ObliqueStructure(m.Member))
+                .OrderByDescending(m=>m.Member.Kind=="PLATE")
+                .ThenBy(m=>m.Member.Key,StringComparer.OrdinalIgnoreCase))
+            foreach(bool horizontal in new[]{true,false})
+            {
+                bool plate=item.Member.Kind=="PLATE";
+                string direction=horizontal?"H":"V";
+                string detail=plate?"PLATE82":"MEMBER_AXIS";
+                SupportOrthoProjectedAxis.Span? endpoints=plate?null:
+                    nativeAxisMidpoints[item.Member.Key].Along(horizontal);
+                double from=endpoints?.From??(horizontal?item.Bounds.L:item.Bounds.B);
+                double to=endpoints?.To??(horizontal?item.Bounds.R:item.Bounds.T);
+                if(to-from<.25)
+                {
+                    skipped.Add(camera.Name+"/"+item.Member.Key+":"+detail+
+                        "_"+direction+"_PROJECTED_SPAN_TOO_SMALL");
+                    continue;
+                }
+                if(endpoints is {} span&&dimensions.Skip(dimensionsAtViewStart).Any(
+                    d=>d.Horizontal==horizontal&&
+                    Math.Abs((horizontal?d.Ax:d.Ay)-from)<1e-7&&
+                    Math.Abs((horizontal?d.Bx:d.By)-to)<1e-7&&
+                    Math.Abs((horizontal?d.Ay:d.Ax)-span.FirstWitness)<1e-7&&
+                    Math.Abs((horizontal?d.By:d.Bx)-span.LastWitness)<1e-7))
+                    continue;
+                if(profileGroups.Count>=24)
+                {
+                    skipped.Add(camera.Name+"/"+item.Member.Key+":"+detail+
+                        "_"+direction+"_OPTIONAL_GROUP_CAPACITY");
+                    continue;
+                }
+                var localRequest=MakeRequest(horizontal,from,to,false,0,
+                    camera.Scale,unitsToMm) with {
+                    SourceKey=item.Member.Key,LocalBounds=item.Bounds,
+                    PlateEnvelope=plate,AxisSpan=endpoints,CompactLocalLabel=true
+                };
+                var optionsForSpan=new List<
+                    SupportOrthoCoordinatedLayout60.Alternative>();
+                double preferred=SupportOrthoReferenceLayout51
+                    .PreferredSide(camera.Name,horizontal);
+                foreach(double lane in SupportOrthoReferenceLayout51
+                    .LocalMemberLaneOffsets())
+                foreach(double sign in new[]{preferred,-preferred})
+                {
+                    if(optionsForSpan.Count>=24)break;
+                    for(int tier=0;tier<4;tier++)
+                    {
+                        if(optionsForSpan.Count>=24)break;
+                        var candidate=Candidate(camera,assembly,ResolveWitness,localRequest,
+                            sign,lane,tier);
+                        if(candidate==null||
+                           !InnerThanReservedOverall(candidate.Value.P)||
+                           RejectionReason(candidate.Value.P,blocks,paper,
+                               placed,projected)!=null)
+                            continue;
+                        int id=optionId++;
+                        profileOptions.Add(id,(
+                            candidate.Value.D,candidate.Value.P,
+                            false,!plate,true,false,false));
+                        optionsForSpan.Add(new(
+                            id,Math.Min(90,lane*.65+tier*.18+
+                                (sign==preferred?0:15))));
+                    }
+                }
+                if(optionsForSpan.Count==0)
+                {
+                    skipped.Add(camera.Name+"/"+item.Member.Key+
+                        ":"+detail+"_"+direction+
+                        "_NO_SAFE_NATIVE_DIMENSION_LANE");
+                    continue;
+                }
+                profileGroups.Add(new(direction+":"+detail+":"+item.Member.Key,
+                    plate?75:80,optionsForSpan));
+            }
             if(profileGroups.Count>0)
             {
                 coordinatedGroups+=profileGroups.Count;
@@ -1224,6 +1201,7 @@ public static class SupportOrthoReferenceDimPlan47
                         supplementaryOptionIds.Contains(choice.AlternativeId));
                     localCount++;
                     coordinatedPlaced++;
+                    if(picked.D.Provenance==SupportOrthoProjectedAxis.Provenance)continue;
                     if(picked.Exact)exactProfiles++;
                     else approxProfiles++;
                     if(picked.Compact)compactLocalRecovered++;
@@ -1275,6 +1253,7 @@ public static class SupportOrthoReferenceDimPlan47
                 localCount--;
                 coordinatedPlaced--;
                 coordinatedOmitted++;
+                if(removedDimension.Provenance==SupportOrthoProjectedAxis.Provenance)continue;
                 if(evidence.Exact)exactProfiles--;
                 else approxProfiles--;
                 if(evidence.NativeAxis)midpointNative--;
@@ -1327,8 +1306,7 @@ public static class SupportOrthoReferenceDimPlan47
             {
                 var last=clustered[^1];
                 clustered[^1]=new Station(
-                    (last.At*last.Weight+item.At*item.Weight)/
-                    (last.Weight+item.Weight),
+                    last.At,
                     last.Weight+item.Weight);
             }
             else clustered.Add(item);
@@ -1359,16 +1337,30 @@ public static class SupportOrthoReferenceDimPlan47
         bool horizontal,double station,double sign,
         IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> memberBounds,
         IReadOnlyList<(double X,double Y)> explicitEndpoints,
-        bool preferExplicit=true)
+        bool preferExplicit,
+        IReadOnlyList<(double X,double Y)> outlinePoints)
     {
         const double paperTolerance=.20;
         // Real member Start/End coordinates take precedence over the
         // axis-aligned envelope, whose face may not be an actual vertex
         // of a sloping structure member.
-        var exact=explicitEndpoints.Where(pt=>
+        // A point at a nearby station must not move the other coordinate
+        // of a witness. Prefer the outward point at the nearest real station.
+        if(!preferExplicit)
+        {
+            var outline=outlinePoints.Where(pt=>
+                    Math.Abs((horizontal?pt.X:pt.Y)-station)<1e-7)
+                .Select(pt=>horizontal?pt.Y:pt.X).ToArray();
+            if(outline.Length>0)return sign>0?outline.Max():outline.Min();
+        }
+        var near=explicitEndpoints.Where(pt=>
                 Math.Abs((horizontal?pt.X:pt.Y)-station)
                     <=paperTolerance)
-            .Select(pt=>horizontal?pt.Y:pt.X).ToArray();
+            .ToArray();
+        double nearest=near.Length==0?0:near.Min(pt=>
+            Math.Abs((horizontal?pt.X:pt.Y)-station));
+        var exact=near.Where(pt=>Math.Abs((horizontal?pt.X:pt.Y)-station)
+                <=nearest+1e-7).Select(pt=>horizontal?pt.Y:pt.X).ToArray();
         if(preferExplicit&&exact.Length>0)
             return sign>0?exact.Max():exact.Min();
         var boundsFaces=new List<double>();
@@ -1398,25 +1390,22 @@ public static class SupportOrthoReferenceDimPlan47
         Candidate(
         SupportOrthoMemberCalloutPlan17.Camera c,
         SupportOrthoSmartDimPlan46.Rect box,
-        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> memberBounds,
-        IReadOnlyList<(double X,double Y)> explicitEndpoints,
+        Func<bool,double,double,bool,double?> resolveWitness,
         Request request,double sign,double offset,int textTier=0)
     {
         var layoutBox=request.LocalBounds??box;
         // Local member cross-section dimensions must terminate on that
         // particular native member's projected faces, not on the
         // unrelated outer envelope of the whole support assembly.
-        double? startWitness=request.LocalBounds.HasValue?
+        double? startWitness=request.AxisSpan?.FirstWitness??(request.LocalBounds.HasValue?
             request.MidpointWitness??(request.Horizontal?
                 (layoutBox.B+layoutBox.T)*.5:
                 (layoutBox.L+layoutBox.R)*.5):
-            WitnessAt(request.Horizontal,request.From,sign,
-                memberBounds,explicitEndpoints,
-                !request.Overall&&!request.TerminalRemainder);
-        double? endWitness=request.LocalBounds.HasValue?
-            startWitness:WitnessAt(request.Horizontal,request.To,sign,
-                memberBounds,explicitEndpoints,
-                !request.Overall&&!request.TerminalRemainder);
+            resolveWitness(request.Horizontal,request.From,sign,
+                !request.Overall&&!request.TerminalRemainder));
+        double? endWitness=request.AxisSpan?.LastWitness??(request.LocalBounds.HasValue?
+            startWitness:resolveWitness(request.Horizontal,request.To,sign,
+                !request.Overall&&!request.TerminalRemainder));
         if(!startWitness.HasValue||!endWitness.HasValue)
             return null;
         double line=request.Horizontal?
@@ -1504,14 +1493,16 @@ public static class SupportOrthoReferenceDimPlan47
                 tx+1.3,ty+printedWidth*.5+1);
         string axis=request.Horizontal?"H":"V";
         string source="DETAIL:"+c.Name+"/"+axis+"/"+
-            (request.PlateEnvelope?"PLATE_"+request.SourceKey:
+            (request.AxisSpan.HasValue?"AXIS_"+request.SourceKey:
+             request.PlateEnvelope?"PLATE_"+request.SourceKey:
              request.Overall?"OVERALL":
                 request.TerminalRemainder?
                     "TERMINAL_REMAINDER_"+request.SourceKey:
                 request.LocalBounds.HasValue?
                     "MEMBER_"+request.SourceKey:
                     "CHAIN_"+request.Index);
-        string provenance=request.PlateEnvelope?
+        string provenance=request.AxisSpan.HasValue?SupportOrthoProjectedAxis.Provenance:
+            request.PlateEnvelope?
             "NATIVE_STRUCTURE_PLATE_PROJECTED_ENVELOPE_NOT_CUT_LENGTH":
             request.Overall?
             "REFERENCE_PROJECTED_OVERALL_NOT_CUT_LENGTH":

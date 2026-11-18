@@ -2633,6 +2633,13 @@ public sealed class SupportOrthoTenViewGenerator
                         nativeDimensionMembers.Length);
                     Log("REV22_48_NATIVE_ENDPOINT_DIMENSION_SOURCES="+
                         nativeDimensionSegments.Length);
+                    var verifiedSegments=nativeDimensionSegments
+                        .Select(segment=>new SupportOrthoDimLinearPlan41.Segment(
+                            segment.Key,segment.Kind,
+                            segment.Ax,segment.Ay,segment.Az,
+                            segment.Bx,segment.By,segment.Bz,
+                            segment.SourceLength,segment.Millimeters,
+                            segment.Provenance)).ToArray();
                     SupportOrthoReferenceDimPlan47.Result? detailPlan=null;
                     SupportOrthoSmartDimPlan46.Result dimensionPlan;
                     if(options.ReferenceDetailDimensions)
@@ -2640,13 +2647,6 @@ public sealed class SupportOrthoTenViewGenerator
                         // REV22.47: per-view functional chain dimensions
                         // on verified member datums, plus one independent
                         // outer overall dimension (never a cut length).
-                        var verifiedSegments=nativeDimensionSegments
-                            .Select(segment=>new SupportOrthoDimLinearPlan41.Segment(
-                                segment.Key,segment.Kind,
-                                segment.Ax,segment.Ay,segment.Az,
-                                segment.Bx,segment.By,segment.Bz,
-                                segment.SourceLength,segment.Millimeters,
-                                segment.Provenance)).ToArray();
                         detailPlan=SupportOrthoReferenceDimPlan47.Build(
                             dimCameras,nativeDimensionMembers,
                             paperWidth,paperHeight,units,verifiedSegments,
@@ -2858,7 +2858,7 @@ public sealed class SupportOrthoTenViewGenerator
                             dimCameras,nativeDimensionMembers,
                             paperWidth,paperHeight,units,
                             dimensionCollisionCallouts,titles,
-                            bypassTitleBlock:bypassTitleBlock69);
+                            bypassTitleBlock:bypassTitleBlock69,sources:verifiedSegments);
                         Log("REV22_47_DIMENSION_MODE=LEGACY_ALL_MEMBER_HV");
                     }
                     Log("REV22_48_XREF_DIMENSION_POLICY=DISABLED");
@@ -3460,12 +3460,7 @@ public sealed class SupportOrthoTenViewGenerator
                tr.GetObject(view.Value,OpenMode.ForRead,false) is not Viewport vp)
                 throw new InvalidOperationException(
                     "REV22.29 actual native viewport unavailable: "+view.Key);
-            views.Add(new SupportOrthoMemberCalloutPlan17.Camera(
-                view.Key,vp.CenterPoint.X,vp.CenterPoint.Y,
-                vp.Width,vp.Height,
-                vp.ViewDirection.X,vp.ViewDirection.Y,vp.ViewDirection.Z,
-                vp.ViewCenter.X,vp.ViewCenter.Y,
-                vp.TwistAngle,vp.CustomScale));
+            views.Add(SupportOrthoDimensionRefresh49.CameraFromViewport(view.Key,vp));
         }
         tr.Commit();
         if(views.Count!=ids.Count||views.Count==0||views.Count>10)

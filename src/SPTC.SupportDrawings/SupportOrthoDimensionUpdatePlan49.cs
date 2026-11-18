@@ -52,8 +52,7 @@ public static class SupportOrthoDimensionUpdatePlan49
            manifest.Views==null||manifest.Views.Count==0)
             throw new ArgumentException("REV22.49 invalid/unsupported saved Ortho manifest.");
         if(manifest.Members.Any(m=>
-                !SupportOrthoNativeDimensionPolicy48.IsNativeKey(m.Key)||
-                (m.Kind!="STRUCTURE"&&m.Kind!="SUPPORT"))||
+                !SupportOrthoNativeDimensionPolicy48.AcceptMember(m.Key,m.Kind))||
            manifest.Members.Select(m=>m.Key).Distinct(
                 StringComparer.OrdinalIgnoreCase).Count()!=manifest.Members.Count)
             throw new ArgumentException("REV22.49 XREF or duplicate member in manifest.");
@@ -291,7 +290,8 @@ public static class SupportOrthoDimensionUpdatePlan49
             c.Name.ToUpperInvariant(),N(c.X),N(c.Y),N(c.W),N(c.H),
             N(c.DirX),N(c.DirY),N(c.DirZ),
             N(c.ViewCenterX),N(c.ViewCenterY),
-            N(c.TwistRadians),N(c.Scale)))
+            N(c.TwistRadians),N(c.Scale),
+            N(c.TargetX),N(c.TargetY),N(c.TargetZ)))
             .OrderBy(x=>x,StringComparer.Ordinal).ToArray();
         var bytes=SHA256.HashData(Encoding.UTF8.GetBytes(
             string.Join("\n",rows)+"|PAPER|"+N(paperW)+"|"+N(paperH)));

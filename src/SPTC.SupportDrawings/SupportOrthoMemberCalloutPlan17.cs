@@ -23,7 +23,8 @@ public static class SupportOrthoMemberCalloutPlan17
     public sealed record Camera(string Name,double X,double Y,double W,double H,
         double DirX,double DirY,double DirZ,
         double ViewCenterX,double ViewCenterY,
-        double TwistRadians,double Scale);
+        double TwistRadians,double Scale,
+        double TargetX=0,double TargetY=0,double TargetZ=0);
     public sealed record Callout(
         string View,string Handle,string Text,double Ax,double Ay,
         double ElbowX,double ElbowY,double TextX,double TextTop,
@@ -158,6 +159,8 @@ public static class SupportOrthoMemberCalloutPlan17
         if(!double.IsFinite(c.X)||!double.IsFinite(c.Y)||
            !double.IsFinite(c.W)||!double.IsFinite(c.H)||
            !double.IsFinite(c.ViewCenterX)||!double.IsFinite(c.ViewCenterY)||
+           !double.IsFinite(c.TargetX)||!double.IsFinite(c.TargetY)||
+           !double.IsFinite(c.TargetZ)||
            !double.IsFinite(c.TwistRadians)||!double.IsFinite(c.Scale)||
            c.W<=0||c.H<=0||c.Scale<=0)
             throw new ArgumentException("REV22.17 invalid camera for "+c.Name);
@@ -168,9 +171,9 @@ public static class SupportOrthoMemberCalloutPlan17
 
     /// <summary>
     /// Matches AutoCAD's arbitrary-axis algorithm (WorldToPlane(viewDirection)),
-    /// with WCS origin DCS convention evidenced by the native viewport ViewCenter
-    /// values (e.g. TOP center 7956,3484, FRONT center 7956,613).
-    /// This returns the PAPER point in millimeters; no screen-space approximations.
+    /// The DCS origin is the native view target. WCS to DCS is the inverse
+    /// of AutoCAD's plane-to-world, target displacement and negative view
+    /// twist. ViewCenter is already in the resulting display coordinates.
     /// </summary>
     public static (double X,double Y) Project(Camera c,
         double worldX,double worldY,double worldZ)
@@ -187,10 +190,11 @@ public static class SupportOrthoMemberCalloutPlan17
         double xl=Math.Sqrt(xx*xx+xy*xy+xz*xz);
         xx/=xl;xy/=xl;xz/=xl;
         double yx=ny*xz-nz*xy,yy=nz*xx-nx*xz,yz=nx*xy-ny*xx;
-        double u=worldX*xx+worldY*xy+worldZ*xz;
-        double v=worldX*yx+worldY*yy+worldZ*yz;
+        double x=worldX-c.TargetX,y=worldY-c.TargetY,z=worldZ-c.TargetZ;
+        double u=x*xx+y*xy+z*xz;
+        double v=x*yx+y*yy+z*yz;
         double cos=Math.Cos(c.TwistRadians),sin=Math.Sin(c.TwistRadians);
-        double rx=u*cos+v*sin,ry=-u*sin+v*cos;
+        double rx=u*cos-v*sin,ry=u*sin+v*cos;
         return(c.X+(rx-c.ViewCenterX)*c.Scale,
             c.Y+(ry-c.ViewCenterY)*c.Scale);
     }

@@ -58,7 +58,6 @@ public static class SupportOrthoNativeEdgeGeometry59
         double hi=horizontal?memberBounds.R:memberBounds.T;
         if(hi-lo<=.20)return null;
         const double tolerance=.22; // paper mm, not a model dimension
-        const double planeTolerance=.12;
         var candidates=new List<Witness>();
         foreach(var edge in available)
         {
@@ -79,7 +78,8 @@ public static class SupportOrthoNativeEdgeGeometry59
             double orthB=horizontal?b.Y:b.X;
             if(Math.Abs(from-lo)>tolerance||
                Math.Abs(to-hi)>tolerance||
-               Math.Abs(orthA-orthB)>planeTolerance)
+               to<=from||Math.Abs(orthA-orthB)>
+                   SupportOrthoProjectedAxis.ProjectionTolerance(to-from))
                 continue;
             double transverse=(orthA+orthB)*.5;
             double bmin=horizontal?memberBounds.B:memberBounds.L;

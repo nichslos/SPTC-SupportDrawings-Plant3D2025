@@ -59,7 +59,8 @@ public static class SupportOrthoDrawingQualityAudit61
         var selected=eligible.Select(m=>m.Key).ToHashSet(
             StringComparer.OrdinalIgnoreCase);
         var validCameras=cameras.Where(c=>
-            Ortho.Contains(c.Name)&&double.IsFinite(c.Scale)&&c.Scale>0&&
+            Ortho.Contains(c.Name)&&double.IsFinite(c.TargetX)&&
+            double.IsFinite(c.TargetY)&&double.IsFinite(c.TargetZ)&&double.IsFinite(c.Scale)&&c.Scale>0&&
             double.IsFinite(c.W)&&double.IsFinite(c.H)&&
             c.W>0&&c.H>0).ToArray();
 
@@ -72,7 +73,8 @@ public static class SupportOrthoDrawingQualityAudit61
                 double.IsFinite(c.Scale)&&c.W>0&&c.H>0&&c.Scale>0&&
                 double.IsFinite(c.ViewCenterX)&&
                 double.IsFinite(c.ViewCenterY)&&
-                double.IsFinite(c.TwistRadians)&&
+                double.IsFinite(c.TargetX)&&double.IsFinite(c.TargetY)&&
+                double.IsFinite(c.TargetZ)&&double.IsFinite(c.TwistRadians)&&
                 double.IsFinite(c.DirX)&&double.IsFinite(c.DirY)&&
                 double.IsFinite(c.DirZ)&&
                 c.DirX*c.DirX+c.DirY*c.DirY+c.DirZ*c.DirZ>1e-10);
@@ -187,7 +189,9 @@ public static class SupportOrthoDrawingQualityAudit61
                 StringComparison.OrdinalIgnoreCase);
             int remainderStart=d.Source.IndexOf("/TERMINAL_REMAINDER_",
                 StringComparison.OrdinalIgnoreCase);
-            string? memberKey=memberStart>=0?
+            int axisStart=d.Source.IndexOf("/AXIS_",StringComparison.OrdinalIgnoreCase);
+            string? memberKey=axisStart>=0?d.Source[(axisStart+"/AXIS_".Length)..]:
+                memberStart>=0?
                 d.Source[(memberStart+"/MEMBER_".Length)..]:
                 remainderStart>=0?
                 d.Source[(remainderStart+"/TERMINAL_REMAINDER_".Length)..]:null;
@@ -279,6 +283,7 @@ public static class SupportOrthoDrawingQualityAudit61
                     StringComparison.Ordinal)||
                 s.Contains("_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE",
                     StringComparison.Ordinal)||
+                s.Contains(":MEMBER_AXIS_",StringComparison.Ordinal)||
                 s.Contains("LOCAL_CHAIN_UNVERIFIED_MEMBER_ENDPOINTS",
                     StringComparison.Ordinal)||
                 s.Contains("TERMINAL_REMAINDER_NO_CLEAR_LANE",

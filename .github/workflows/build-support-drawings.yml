@@ -1403,7 +1403,7 @@ jobs:
           foreach($token in @('nativeAxisMidpoints',
               'MidpointWitness', 'NativeMidpointMemberDimensions',
               'BoundsMidpointMemberDimensions',
-              '"EXPLICIT_MEMBER_ENDPOINTS"')) {
+              'SupportOrthoProjectedAxis.InView(')) {
             if(-not $mid55.Contains($token)) {
               throw "REV22.55 native axis-midpoint invariant missing: $token"
             }
@@ -1438,7 +1438,7 @@ jobs:
               'foreach(bool horizontal in new[]{false,true})',
               'PriorityOverallDimensions',
               'bool overallPlaced=reservedOverallAxes.Contains(horizontal)',
-              'WitnessAt(request.Horizontal,request.From')) {
+              'resolveWitness(request.Horizontal,request.From')) {
             if(-not $priority53.Contains($token)) {
               throw "REV22.53 overall-first collision priority missing: $token"
             }
@@ -1529,7 +1529,8 @@ jobs:
             }
           }
           foreach($token in @('double face=horizontal?',
-              'Thin(b.L,face', 'horizontal?face:b.B')) {
+              'req.Axis?.FirstWitness??face', 'req.Axis?.LastWitness??face',
+              'Thin(from,first', 'Thin(to,last')) {
             if(-not $smartDim.Contains($token)) {
               throw "REV22.49.4 fallback native face invariant missing: $token"
             }

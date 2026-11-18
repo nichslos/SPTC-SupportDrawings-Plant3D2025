@@ -34,7 +34,7 @@ public static class SupportOrthoSmartDimPlan46
     private sealed record Envelope(SupportOrthoAllViewDimPlan44.Member Member,
         Rect Bounds);
     private sealed record Request(Envelope Source,bool Horizontal,double Span,
-        double Mm,string Label);
+        double Mm,string Label,SupportOrthoProjectedAxis.Span? Axis);
 
     private static readonly HashSet<string> Ortho=new(
         new[]{"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK"},
@@ -47,7 +47,8 @@ public static class SupportOrthoSmartDimPlan46
         IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts=null,
         IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles=null,
         IReadOnlyList<Rect>? additionalKeepouts=null,
-        bool bypassTitleBlock=false)
+        bool bypassTitleBlock=false,
+        IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? sources=null)
     {
         if(cameras==null||members==null||
            !double.IsFinite(paperW)||!double.IsFinite(paperH)||
@@ -127,11 +128,18 @@ public static class SupportOrthoSmartDimPlan46
                 envelopes.Add(new Envelope(member,rect));
             }
 
+            var axes=SupportOrthoProjectedAxis.InView(camera,sources,
+                envelopes.Select(e=>(e.Member,e.Bounds)));
             var requests=new List<Request>();
             foreach(var envelope in envelopes)
             foreach(bool horizontal in new[]{true,false})
             {
-                double span=horizontal?envelope.Bounds.R-envelope.Bounds.L:
+                SupportOrthoProjectedAxis.Span? endpoints=null;
+                if(envelope.Member.Kind=="STRUCTURE"&&
+                    axes.TryGetValue(envelope.Member.Key,out var projectedAxis)&&projectedAxis.IsOblique)
+                    endpoints=projectedAxis.Along(horizontal);
+                double span=endpoints is {} measured?measured.To-measured.From:
+                    horizontal?envelope.Bounds.R-envelope.Bounds.L:
                     envelope.Bounds.T-envelope.Bounds.B;
                 string axis=horizontal?"HORIZONTAL":"VERTICAL";
                 if(!double.IsFinite(span)||span<.25)
@@ -148,7 +156,7 @@ public static class SupportOrthoSmartDimPlan46
                     continue;
                 }
                 requests.Add(new Request(envelope,horizontal,span,mm,
-                    mm.ToString("0.###",CultureInfo.InvariantCulture)));
+                    mm.ToString("0.###",CultureInfo.InvariantCulture),endpoints));
             }
 
             // Short/local dimensions are placed before long overall ones.
@@ -166,7 +174,9 @@ public static class SupportOrthoSmartDimPlan46
             {
                 var b=req.Source.Bounds;
                 bool horizontal=req.Horizontal;
-                double center=horizontal?(b.L+b.R)*.5:(b.B+b.T)*.5;
+                double from=req.Axis?.From??(horizontal?b.L:b.B);
+                double to=req.Axis?.To??(horizontal?b.R:b.T);
+                double center=(from+to)*.5;
                 double perpendicular=horizontal?(b.B+b.T)*.5:(b.L+b.R)*.5;
                 double refCenter=horizontal?camera.Y:camera.X;
                 double preferred=perpendicular>=refCenter?1:-1;
@@ -193,15 +203,15 @@ public static class SupportOrthoSmartDimPlan46
                             req.Label.Length*2.15+5.0);
                         double textX=horizontal?
                             (req.Span<textLength+4?
-                                b.R+2.5+textLength*.5:center):
+                                to+2.5+textLength*.5:center):
                             lineX+2.5;
                         double textY=horizontal?lineY+2.5:
                             (req.Span<textLength+4?
-                                b.T+2.5+textLength*.5:center);
+                                to+2.5+textLength*.5:center);
 
                         var dimLine=horizontal?
-                            new Rect(b.L-.65,lineY-.65,b.R+.65,lineY+.65):
-                            new Rect(lineX-.65,b.B-.65,lineX+.65,b.T+.65);
+                            new Rect(from-.65,lineY-.65,to+.65,lineY+.65):
+                            new Rect(lineX-.65,from-.65,lineX+.65,to+.65);
                         var textZone=horizontal?
                             new Rect(textX-textLength*.5-.9,textY-1.5,
                                 textX+textLength*.5+.9,textY+1.5):
@@ -211,12 +221,14 @@ public static class SupportOrthoSmartDimPlan46
                         // native member face closest to their chosen lane.
                         double face=horizontal?
                             (sign>0?b.T:b.B):(sign>0?b.R:b.L);
+                        double first=req.Axis?.FirstWitness??face;
+                        double last=req.Axis?.LastWitness??face;
                         var witness1=horizontal?
-                            Thin(b.L,face,b.L,lineY,true):
-                            Thin(face,b.B,lineX,b.B,false);
+                            Thin(from,first,from,lineY,true):
+                            Thin(first,from,lineX,from,false);
                         var witness2=horizontal?
-                            Thin(b.R,face,b.R,lineY,true):
-                            Thin(face,b.T,lineX,b.T,false);
+                            Thin(to,last,to,lineY,true):
+                            Thin(last,to,lineX,to,false);
                         // For horizontal the witness line is vertical and
                         // for vertical the witness line is horizontal.
                         var pieces=new[]{dimLine,textZone,witness1,witness2};
@@ -241,12 +253,13 @@ public static class SupportOrthoSmartDimPlan46
                             camera.Name,
                             req.Source.Member.Key+(horizontal?"/H":"/V"),
                             req.Source.Member.Kind,horizontal,
-                            horizontal?b.L:face,
-                            horizontal?face:b.B,
-                            horizontal?b.R:face,
-                            horizontal?face:b.T,
+                            horizontal?from:first,
+                            horizontal?first:from,
+                            horizontal?to:last,
+                            horizontal?last:to,
                             lineX,lineY,req.Label,
-                            "PROJECTED_OVERALL_VIEW_ENVELOPE",
+                            req.Axis.HasValue?SupportOrthoProjectedAxis.Provenance:
+                                "PROJECTED_OVERALL_VIEW_ENVELOPE",
                             textX,textY,
                             SupportOrthoDynamicDimension492
                                 .ModelMillimetersPerPaperUnit(

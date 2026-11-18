@@ -129,7 +129,9 @@ internal static class SupportOrthoDimLinearWriter41
                 // without changing the project-wide DIMSTYLE definition.
                 // These are paper-space sizes in millimetres.
                 if(item.Provenance.StartsWith("REFERENCE_PROJECTED_",
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal)||
+                    (item.Provenance==SupportOrthoProjectedAxis.Provenance&&
+                        item.Source.StartsWith("DETAIL:",StringComparison.Ordinal)))
                 {
                     dim.Dimtxt=2.0;
                     dim.Dimasz=1.5;
