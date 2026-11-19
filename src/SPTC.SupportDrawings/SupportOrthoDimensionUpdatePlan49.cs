@@ -17,6 +17,10 @@ public static class SupportOrthoDimensionUpdatePlan49
     public const string ManifestKey="SPTC_DIM_REFRESH49";
     public const string OwnerApp="SPTC_DIM_OWNER49";
     public const int ManifestVersion=1;
+    public const int EndpointSchema=1;
+
+    public static bool NeedsEndpointUpgrade(Manifest saved)=>
+        saved.NativeEndpointSchema<EndpointSchema&&saved.Members.Any(m=>m.Kind=="STRUCTURE");
 
     public sealed record NativeMember(string Key,string Kind);
     public sealed record View(string Name,string Handle,
@@ -35,7 +39,8 @@ public static class SupportOrthoDimensionUpdatePlan49
         IReadOnlyList<SupportOrthoAllViewDimPlan44.Member>? NativeExtentSnapshot=null,
         IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? NativeEndpointSnapshot=null,
         IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? NativeEdgeSnapshot=null,
-        IReadOnlyList<SupportOrthoDimLinearPlan41.Dimension>? LastVerifiedDimensions=null);
+        IReadOnlyList<SupportOrthoDimLinearPlan41.Dimension>? LastVerifiedDimensions=null,
+        int NativeEndpointSchema=0);
 
     public sealed record Candidate(string Handle,
         double X,double Y,double W,double H);

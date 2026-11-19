@@ -63,8 +63,8 @@ internal static class Rev2494MemberWitnessTests
             "overall RIGHT witness extends to upright native end face");
         var chain=horizontal.Single(d=>d.Measurement=="828.28");
         Need(Math.Abs(chain.Ay-beamTip.Y)<.001 &&
-            Math.Abs(chain.By-highPost.Y)<.001,
-            "inner 828.28 chain witnesses start at their actual source members");
+            Math.Abs(chain.By-beamTip.Y)<.001,
+            "a chain coincident with a whole member touches both ends of that beam");
         Need(fifty.All(d=>d.PaperTextX.HasValue &&
             (d.PaperTextX.Value<d.Ax || d.PaperTextX.Value>d.Bx)),
             "short 50 mm text sits outside its arrows/witnesses");

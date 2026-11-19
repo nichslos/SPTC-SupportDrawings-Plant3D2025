@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoSolidEndStations.cs" Link="SupportOrthoSolidEndStations.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoProjectedAxis.cs" Link="SupportOrthoProjectedAxis.cs"/>
     <Compile Include="../../src/SPTC.SupportDrawings/SupportOrthoMemberCalloutPlan17.cs"
              Link="SupportOrthoMemberCalloutPlan17.cs"/>

@@ -246,7 +246,7 @@ internal static class SupportOrthoDimensionRefresh49
         var savedEndpoints=savedGeometry!=null?
             (nativeSourceEndpoints??Array.Empty<SupportOrthoDimensionSource41.Segment>())
                 .Where(s=>SupportOrthoNativeDimensionPolicy48.IsNativeKey(s.Key)&&
-                    s.Provenance=="EXPLICIT_MEMBER_ENDPOINTS"&&
+                    SupportOrthoNativeDimensionPolicy48.VerifiedEndpoints(s.Provenance)&&
                     verifiedNative.Any(m=>
                         m.Key.Equals(s.Key,StringComparison.OrdinalIgnoreCase)))
                 .Select(s=>new SupportOrthoDimLinearPlan41.Segment(
@@ -290,7 +290,7 @@ internal static class SupportOrthoDimensionRefresh49
             SupportOrthoDimensionUpdatePlan49.ViewPoseSignature(
                 viewCameras,paperW,paperH),
             dimensions.Count,savedGeometry,savedEndpoints,verifiedEdges,
-            dimensions.Count<=512?dimensions.ToArray():null);
+            dimensions.Count<=512?dimensions.ToArray():null,SupportOrthoDimensionUpdatePlan49.EndpointSchema);
         SupportOrthoDimensionUpdatePlan49.Validate(manifest);
         Store(target,manifest);
     }
@@ -387,7 +387,8 @@ internal static class SupportOrthoDimensionRefresh49
             fastState.UnownedDimensionsOnAutoLayer+
             " VERIFIED_PLAN="+
             (original.LastVerifiedDimensions?.Count??0));
-        if(SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
+        bool upgrade=SupportOrthoDimensionUpdatePlan49.NeedsEndpointUpgrade(original);
+        if(!upgrade&&SupportOrthoDimensionUpdatePlan49.CanSkipModelReload(
             original,sourceWriteTicks,sourceLength,
             fastState.PoseSignature,fastState.OwnedDimensions))
         {
@@ -404,7 +405,7 @@ internal static class SupportOrthoDimensionRefresh49
         // restore the signed, previously QA-approved paper plan rather
         // than rerunning a different planner that might accept fewer
         // details. This path never opens the source model DWG.
-        if(SupportOrthoDimensionUpdatePlan49.CanRepairVerifiedDimensions(
+        if(!upgrade&&SupportOrthoDimensionUpdatePlan49.CanRepairVerifiedDimensions(
             original,sourceWriteTicks,sourceLength,
             fastState.PoseSignature,fastState.OwnedDimensions,
             fastState.UnownedDimensionsOnAutoLayer))
@@ -423,7 +424,7 @@ internal static class SupportOrthoDimensionRefresh49
                 fastState.Cameras,verifiedMembers,plan,
                 Array.Empty<string>(),original.UnitsToMm,
                 original.ReferenceDetailDimensions,
-                nativeEdges:original.NativeEdgeSnapshot);
+                nativeEdges:original.NativeEdgeSnapshot,sources:original.NativeEndpointSnapshot);
             if(checkedPlan.Status!="PASS")
             {
                 Message(target,
@@ -478,7 +479,7 @@ internal static class SupportOrthoDimensionRefresh49
         SupportOrthoAllViewDimPlan44.Member[] native;
         SupportOrthoDimLinearPlan41.Segment[] segments;
         SupportOrthoNativeEdgeGeometry59.Edge[] edges;
-        bool reuseSnapshot=SupportOrthoDimensionUpdatePlan49
+        bool reuseSnapshot=!upgrade&&SupportOrthoDimensionUpdatePlan49
             .CanReuseGeometrySnapshot(original,sourceWriteTicks,sourceLength);
         if(reuseSnapshot)
         {
@@ -578,7 +579,7 @@ internal static class SupportOrthoDimensionRefresh49
                 original.UnitsToMm,steel,supports);
             segments=sourceSegments.Segments
                 .Where(x=>SupportOrthoNativeDimensionPolicy48.IsNativeKey(x.Key)&&
-                    x.Provenance=="EXPLICIT_MEMBER_ENDPOINTS")
+                    SupportOrthoNativeDimensionPolicy48.VerifiedEndpoints(x.Provenance))
                 .Select(s=>new SupportOrthoDimLinearPlan41.Segment(
                     s.Key,s.Kind,s.Ax,s.Ay,s.Az,s.Bx,s.By,s.Bz,
                     s.SourceLength,s.Millimeters,s.Provenance)).ToArray();
@@ -710,15 +711,16 @@ internal static class SupportOrthoDimensionRefresh49
         var qaBefore=SupportOrthoDrawingQualityAudit61.Review(
             cameras,native,dimensions,plannerSkipped,
             original.UnitsToMm,original.ReferenceDetailDimensions,
-            nativeEdges:edges);
+            nativeEdges:edges,sources:segments);
         Message(target,"REV22.61 DIM_QA_PREWRITE="+qaBefore.Status+
             " REQUIRED_HV="+qaBefore.PresentOverallAxes+"/"+
             qaBefore.ExpectedOverallAxes+
             " OPTIONAL_OMITTED="+qaBefore.OptionalOmissions+
             " REVIEW_ISSUES="+qaBefore.ReviewIssues);
-        foreach(var issue in qaBefore.Issues.Where(i=>i.Code=="MISSING_MEMBER_LENGTH"))
-            Message(target,issue.Description+
-                " — Regenerate the sheet in Support Drawing Manager to coordinate callout placement.");
+        Message(target,"MEMBER_ENDPOINT_COMPONENTS="+qaBefore.CoveredEndpointComponents+
+            "/"+qaBefore.ExpectedEndpointComponents);
+        foreach(var issue in qaBefore.Issues.Where(i=>i.Code.Contains("MEMBER",StringComparison.Ordinal)))
+            Message(target,issue.Code+" "+issue.View+" "+issue.Description);
         if(dimensions.Count==0)
             throw new InvalidOperationException(
                 "No safe regenerated dimensions; old dimensions kept.");
@@ -756,6 +758,7 @@ internal static class SupportOrthoDimensionRefresh49
             // Persist new verified source/view stamps once, so subsequent
             // updates can skip the full model reload.
             Store(target.Database,original with {
+                NativeEndpointSchema=SupportOrthoDimensionUpdatePlan49.EndpointSchema,
                 SourceWriteUtcTicks=sourceWriteTicks,
                 SourceFileLength=sourceLength,
                 LastViewPoseSignature=
@@ -782,13 +785,14 @@ internal static class SupportOrthoDimensionRefresh49
         var qaWritten=SupportOrthoDrawingQualityAudit61.Review(
             cameras,native,dimensions,plannerSkipped,
             original.UnitsToMm,original.ReferenceDetailDimensions,
-            writtenCount:created,nativeEdges:edges);
+            writtenCount:created,nativeEdges:edges,sources:segments);
         Message(target,"REV22.61 DIM_QA_STATUS="+qaWritten.Status+
             " REQUIRED_HV="+qaWritten.PresentOverallAxes+"/"+
             qaWritten.ExpectedOverallAxes+
             " WRITER_MISMATCHES="+qaWritten.WrittenCountMismatches+
             " REVIEW_ISSUES="+qaWritten.ReviewIssues);
         Store(target.Database,original with {LastSignature=next,
+            NativeEndpointSchema=SupportOrthoDimensionUpdatePlan49.EndpointSchema,
             PaperWidth=paperW,PaperHeight=paperH,
             SourceWriteUtcTicks=sourceWriteTicks,
             SourceFileLength=sourceLength,

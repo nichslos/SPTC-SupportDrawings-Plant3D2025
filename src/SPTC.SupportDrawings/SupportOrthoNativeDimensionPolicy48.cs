@@ -22,9 +22,15 @@ public static class SupportOrthoNativeDimensionPolicy48
     public static bool AcceptMember(string key,string kind) =>
         IsNativeKey(key)&&(kind=="STRUCTURE"||kind=="SUPPORT"||kind=="PLATE");
 
+    internal const string SolidEndEdge="NATIVE_SOLID_END_EDGE";
+    internal const string EndGrips="NATIVE_GRIPS_ON_VERIFIED_END_STATIONS";
+
+    internal static bool VerifiedEndpoints(string provenance)=>
+        provenance=="EXPLICIT_MEMBER_ENDPOINTS"||provenance==SolidEndEdge||provenance==EndGrips;
+
     public static bool AcceptSegment(
         SupportOrthoDimLinearPlan41.Segment segment) =>
         IsNativeKey(segment.Key)&&
         (segment.Kind=="STRUCTURE"||segment.Kind=="SUPPORT")&&
-        segment.Provenance=="EXPLICIT_MEMBER_ENDPOINTS";
+        VerifiedEndpoints(segment.Provenance);
 }

@@ -136,20 +136,21 @@ public static class SupportOrthoSmartDimPlan46
             {
                 SupportOrthoProjectedAxis.Span? endpoints=null;
                 if(envelope.Member.Kind=="STRUCTURE"&&
-                    axes.TryGetValue(envelope.Member.Key,out var projectedAxis)&&projectedAxis.IsOblique)
+                    axes.TryGetValue(envelope.Member.Key,out var projectedAxis)&&
+                    projectedAxis.HasComponent(horizontal,unitsToMm/camera.Scale))
                     endpoints=projectedAxis.Along(horizontal);
                 double span=endpoints is {} measured?measured.To-measured.From:
                     horizontal?envelope.Bounds.R-envelope.Bounds.L:
                     envelope.Bounds.T-envelope.Bounds.B;
                 string axis=horizontal?"HORIZONTAL":"VERTICAL";
-                if(!double.IsFinite(span)||span<.25)
+                if(!double.IsFinite(span)||(!endpoints.HasValue&&span<.25))
                 {
                     skips.Add(camera.Name+"/"+envelope.Member.Key+
                         ":"+axis+"_SPAN_TOO_SMALL_ON_PAPER");
                     continue;
                 }
                 double mm=span/camera.Scale*unitsToMm;
-                if(!double.IsFinite(mm)||mm<.1)
+                if(!double.IsFinite(mm)||(!endpoints.HasValue&&mm<.1))
                 {
                     skips.Add(camera.Name+"/"+envelope.Member.Key+
                         ":"+axis+"_MODEL_PROJECTION_INVALID");
@@ -167,13 +168,15 @@ public static class SupportOrthoSmartDimPlan46
             // witness-to-witness junctions as text clashes.
             var occupiedCore=new List<Rect>();
             var occupiedWitnesses=new List<Rect>();
-            foreach(var req in requests.OrderBy(x=>x.Span)
+            foreach(var req in requests.OrderByDescending(x=>x.Axis.HasValue).ThenBy(x=>x.Span)
                        .ThenBy(x=>x.Source.Member.Key,
                            StringComparer.OrdinalIgnoreCase)
                        .ThenBy(x=>x.Horizontal?0:1))
             {
-                var b=req.Source.Bounds;
                 bool horizontal=req.Horizontal;
+                if(req.Axis is {} component&&dims.Any(d=>d.View==camera.Name&&
+                    component.ShownBy(d,horizontal)))continue;
+                var b=req.Source.Bounds;
                 double from=req.Axis?.From??(horizontal?b.L:b.B);
                 double to=req.Axis?.To??(horizontal?b.R:b.T);
                 double center=(from+to)*.5;
@@ -280,8 +283,8 @@ public static class SupportOrthoSmartDimPlan46
                 }
                 if(!placed)
                     skips.Add(camera.Name+"/"+req.Source.Member.Key+
-                        ":"+(horizontal?"HORIZONTAL":"VERTICAL")+
-                        "_NO_COLLISION_FREE_DIMENSION_LANE");
+                        (req.Axis.HasValue?SupportOrthoProjectedAxis.UnplacedLength+(horizontal?"H":"V"):
+                            ":"+(horizontal?"HORIZONTAL":"VERTICAL")+"_NO_COLLISION_FREE_DIMENSION_LANE"));
             }
         }
         return new Result(dims,skips,placements,members.Count,viewCount,

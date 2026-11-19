@@ -99,42 +99,55 @@ internal static class SupportOrthoDimensionSource41
 
             var a=ExplicitPoint(entity,true);
             var b=ExplicitPoint(entity,false);
-            if(a==null||b==null)
-            {
-                // REV22.43: This is a dimension of the ENTIRE measured
-                // geometric Z envelope, not an assumed fabrication length.
-                // Only known Plant structure/support with clear vertical
-                // dominance and usable geometry qualify.
-                if(TryVerticalOverallHeight(entity,toHost,key,kind,mm,
-                    segments,notes))return;
-                notes.Add("DIM_ENDPOINTS_NOT_DECLARED="+key+" KIND="+kind);
-                return;
-            }
-            Point3d start=a.Value.TransformBy(toHost);
-            Point3d end=b.Value.TransformBy(toHost);
-            if(!Finite(start)||!Finite(end))
-            {
-                notes.Add("DIM_ENDPOINTS_NONFINITE="+key);
-                return;
-            }
-            double length=start.DistanceTo(end);
-            if(!double.IsFinite(length)||length*mm<1.0)
-            {
-                notes.Add("DIM_LENGTH_INVALID_OR_TOO_SHORT="+key);
-                return;
-            }
-            // Source extents verification rejects component positions that
-            // belong to a different coordinate system or transform.
-            Extents3d ext=entity.GeometricExtents;
+            var ext=entity.GeometricExtents;
             ext.TransformBy(toHost);
-            double tolerance=Math.Max(length*.03,1.0/mm);
-            if(!Inside(start,ext,tolerance)||!Inside(end,ext,tolerance))
+            bool Add(Point3d first,Point3d last,string provenance,bool allowOverhang=false)
             {
-                notes.Add("DIM_ENDPOINTS_OUTSIDE_NATIVE_EXTENTS="+key);
-                return;
+                var start=first.TransformBy(toHost);
+                var end=last.TransformBy(toHost);
+                double length=start.DistanceTo(end);
+                if(!Finite(start)||!Finite(end)||!double.IsFinite(length)||length*mm<.0005)
+                    return false;
+                // Extents verify ownership/coordinates. They never supply endpoints.
+                double tolerance=allowOverhang||kind=="SUPPORT"?Math.Max(length*.03,1/mm):
+                    Math.Max(length*1e-8,1e-5/mm);
+                if(!Inside(start,ext,tolerance)||!Inside(end,ext,tolerance))return false;
+                segments.Add(new Segment(key,kind,start.X,start.Y,start.Z,
+                    end.X,end.Y,end.Z,length,length*mm,provenance));
+                return true;
             }
-            segments.Add(new Segment(key,kind,start.X,start.Y,start.Z,
-                end.X,end.Y,end.Z,length,length*mm));
+            if(a.HasValue&&b.HasValue&&Add(a.Value,b.Value,"EXPLICIT_MEMBER_ENDPOINTS"))return;
+            string why=!a.HasValue||!b.HasValue?"DIM_ENDPOINTS_NOT_DECLARED":
+                !Finite(a.Value)||!Finite(b.Value)||a.Value.DistanceTo(b.Value)*mm<.0005?
+                    "DIM_LENGTH_INVALID_OR_TOO_SHORT":"DIM_ENDPOINTS_OUTSIDE_NATIVE_EXTENTS";
+            if(kind=="STRUCTURE")
+            {
+                // A wrapper may expose both a nominal alignment and separate
+                // WCS coordinates. Validate each complete pair independently.
+                if(Coordinates(entity,"Start") is {} first&&Coordinates(entity,"End") is {} last&&
+                    Add(first,last,"EXPLICIT_MEMBER_ENDPOINTS"))return;
+                var recovered=SupportOrthoPlantSolidEndpoints.Read(entity,a,b,out string evidence);
+                if(recovered is {} pair&&Add(new Point3d(pair.Start.X,pair.Start.Y,pair.Start.Z),
+                    new Point3d(pair.End.X,pair.End.Y,pair.End.Z),evidence))
+                {
+                    notes.Add("DIM_ENDPOINTS_RECOVERED="+key+" SOURCE="+evidence);
+                    return;
+                }
+                // Older drawings can have slightly overhanging insertion points.
+                // Retain that declared pair only within the original fit allowance.
+                if(a.HasValue&&b.HasValue&&Add(a.Value,b.Value,"EXPLICIT_MEMBER_ENDPOINTS",true))
+                {
+                    notes.Add("DIM_ENDPOINTS_DECLARED_WITH_OVERHANG="+key);
+                    return;
+                }
+                why+=" "+evidence;
+            }
+            string Describe(Point3d? point)=>point is {} p?
+                FormattableString.Invariant($"({p.X:R},{p.Y:R},{p.Z:R})"):"NONE";
+            notes.Add("DIM_ENDPOINTS_UNRESOLVED="+key+" KIND="+kind+" REASON="+why+
+                " START="+Describe(a)+" END="+Describe(b));
+            if(!a.HasValue||!b.HasValue)
+                TryVerticalOverallHeight(entity,toHost,key,kind,mm,segments,notes);
         }
         catch(System.Exception ex)
         {
@@ -228,13 +241,12 @@ internal static class SupportOrthoDimensionSource41
         }
         catch { }
 
-        string which=start?"Start":"End";
-        if(TryNumber(obj,which+"X",out double x) &&
-           TryNumber(obj,which+"Y",out double y) &&
-           TryNumber(obj,which+"Z",out double z))
-            return new Point3d(x,y,z);
-        return null;
+        return Coordinates(obj,start?"Start":"End");
     }
+
+    private static Point3d? Coordinates(object obj,string which) =>
+        TryNumber(obj,which+"X",out double x)&&TryNumber(obj,which+"Y",out double y)&&
+        TryNumber(obj,which+"Z",out double z)?new Point3d(x,y,z):null;
 
     private static Point3d? AsPoint(object? value) => value switch
     {
