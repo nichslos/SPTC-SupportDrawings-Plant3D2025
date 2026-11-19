@@ -17,9 +17,12 @@ internal static class Program
             @"C:\Projects\SAMPLE\Orthos");
         Check(manager is UserControl && !manager.IsDisposed,
             "must be persistent UserControl, not a modal Form");
-        Check(manager.Controls.Find("SPTC_UI_LAYOUT_SURFACE",true)
-                .Single().Controls.OfType<TabControl>().Single().TabCount==4,
-            "four existing operation tabs preserved");
+        manager.CreateControl();
+        var operations=(TabControl)manager.Controls.Find("SPTC_OPERATIONS",true).Single();
+        Check(operations.TabPages.Cast<TabPage>().Select(page=>(page.Name,page.Text))
+                .SequenceEqual(new[]{("ortho","10-View Ortho"),("batch","Support Batch")}) &&
+                operations.SelectedTab?.Name=="ortho",
+            "manager opens on 10-View Ortho and also offers Support Batch");
 
         int count=0;
         SupportDrawingUiOptions? last=null;
@@ -53,6 +56,16 @@ internal static class Program
         Check(count==2 && manager.Settings!=null,
             "settings persist and Run can repeat with new source");
 
+        operations.SelectedTab=operations.TabPages["batch"];
+        var footer=manager.Controls.OfType<Panel>().Single(p=>p.Dock==DockStyle.Bottom);
+        footer.Controls.OfType<Button>().Single(b=>b.Text=="Preflight").PerformClick();
+        Check(footer.Controls.OfType<TextBox>().Single().Text.Contains("SPTC_SUPPORTBATCH") &&
+                footer.Controls["SPTC_FOOTER_SUMMARY_79"]?.Text=="Support Batch",
+            "the active batch tab shows its own command and summary");
+        footer.Controls.OfType<Button>().Single(b=>b.Text=="Run selected").PerformClick();
+        Check(count==3 && last?.Operation=="batch","Run selected dispatches Support Batch");
+        operations.SelectedTab=operations.TabPages["ortho"];
+
         TestScrollableDpiLayout();
         TestSessionHistoryAndNavigation();
         TestRev78GuidedSetup();
@@ -62,10 +75,7 @@ internal static class Program
         Rev88OutputAppearanceTests.Run();
         TestBatchProgressReporting();
         TestProductionPackageCheckboxSaveRoundTrip();
-        var surface=manager.Controls.Find(
-            "SPTC_UI_LAYOUT_SURFACE",true).Single();
-        var nativeTabs=surface.Controls.OfType<TabControl>().Single();
-        var configButton=AllControls(nativeTabs.TabPages[0])
+        var configButton=AllControls(operations.TabPages["ortho"]!)
             .OfType<Button>().SingleOrDefault(b=>
                 b.Text=="Production package...");
         Check(configButton!=null,
@@ -113,6 +123,7 @@ internal static class Program
                 @"C:\Projects\TEST_DPI\SOURCE.dwg",@"C:\Projects\TEST_DPI",@"C:\Projects\TEST_DPI\Orthos");
             if(factor>1f)ui.Scale(new SizeF(factor,factor));
             ui.CreateControl();
+            var operations=(TabControl)ui.Controls.Find("SPTC_OPERATIONS",true).Single();
             var pages=SettingsPages(ui);
             Check(pages.TabPages.Cast<TabPage>().Select(p=>p.Name).SequenceEqual(
                 new[]{"setup","views","output","appearance","details","project","results"}),
@@ -126,6 +137,14 @@ internal static class Program
             foreach(int width in new[]{400,805})
             {
                 ui.ClientSize=new Size((int)(width*factor),(int)(630*factor));
+                var batchPage=operations.TabPages["batch"]!;
+                operations.SelectedTab=batchPage;
+                Application.DoEvents();
+                var instructions=batchPage.Controls.OfType<Label>().Single();
+                Check(batchPage.ClientRectangle.Contains(instructions.Bounds) &&
+                    instructions.GetPreferredSize(new Size(instructions.Width,0)).Height<=instructions.Height,
+                    "batch instructions wrap inside the docked palette");
+                operations.SelectedTab=operations.TabPages["ortho"];
                 foreach(string key in new[]{"setup","output","appearance"})
                 {
                     var page=SelectPage(ui,key);
