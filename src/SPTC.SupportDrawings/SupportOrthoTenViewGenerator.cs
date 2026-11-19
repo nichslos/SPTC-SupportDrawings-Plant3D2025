@@ -2858,7 +2858,7 @@ public sealed class SupportOrthoTenViewGenerator
                             dimCameras,nativeDimensionMembers,
                             paperWidth,paperHeight,units,
                             dimensionCollisionCallouts,titles,
-                            bypassTitleBlock:bypassTitleBlock69,sources:verifiedSegments);
+                            bypassTitleBlock:bypassTitleBlock69,sources:verifiedSegments,nativeEdges:nativeEdges59.Edges);
                         Log("REV22_47_DIMENSION_MODE=LEGACY_ALL_MEMBER_HV");
                     }
                     Log("REV22_48_XREF_DIMENSION_POLICY=DISABLED");
@@ -2949,6 +2949,8 @@ public sealed class SupportOrthoTenViewGenerator
                     Log("REV22_61_QA_PREWRITE="+qaBefore.Status);
                     Log("MEMBER_ENDPOINT_COMPONENTS="+qaBefore.CoveredEndpointComponents+
                         "/"+qaBefore.ExpectedEndpointComponents);
+                    Log("MEMBER_ELEVATION_DIMENSIONS="+qaBefore.CoveredMemberElevations+
+                        "/"+qaBefore.ExpectedMemberElevations);
                     foreach(string projection in qaBefore.EndOnViews)
                         Log("MEMBER_ENDPOINTS_END_ON="+projection);
                     Log("REV22_61_EXPECTED_HV_OVERALLS="+

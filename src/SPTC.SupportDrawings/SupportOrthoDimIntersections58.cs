@@ -34,7 +34,9 @@ public static class SupportOrthoDimIntersections58
         Segment Baseline,Segment WitnessA,Segment WitnessB,
         SupportOrthoSmartDimPlan46.Rect Text,
         bool Overall=false,
-        bool TerminalRemainder=false)
+        bool TerminalRemainder=false,
+        bool AssemblyDatum=false,
+        bool EndpointSpan=false,bool DatumChain=false)
     {
         public IEnumerable<Segment> Witnesses
         {
@@ -57,7 +59,10 @@ public static class SupportOrthoDimIntersections58
                 dimension.Source.EndsWith("/OVERALL",
                     StringComparison.Ordinal),
                 dimension.Source.Contains("/TERMINAL_REMAINDER_",
-                    StringComparison.Ordinal));
+                    StringComparison.Ordinal),
+                dimension.Provenance==SupportOrthoMemberElevation.OffsetProvenance,
+                dimension.Provenance==SupportOrthoProjectedAxis.Provenance,
+                dimension.Provenance=="REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH");
         return new Shape(
             new Segment(dimension.LineX,dimension.Ay,
                 dimension.LineX,dimension.By),
@@ -68,7 +73,10 @@ public static class SupportOrthoDimIntersections58
             dimension.Source.EndsWith("/OVERALL",
                 StringComparison.Ordinal),
             dimension.Source.Contains("/TERMINAL_REMAINDER_",
-                StringComparison.Ordinal));
+                StringComparison.Ordinal),
+            dimension.Provenance==SupportOrthoMemberElevation.OffsetProvenance,
+            dimension.Provenance==SupportOrthoProjectedAxis.Provenance,
+            dimension.Provenance=="REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH");
     }
 
     /// <summary>Null when clear; otherwise a precise rejection cause.
@@ -104,14 +112,26 @@ public static class SupportOrthoDimIntersections58
         // Preserve this geometry, while STILL rejecting an extension
         // that crosses an unrelated DIMENSION BASELINE interior or
         // printed label (those are checked separately above).
+        // A base-to-member elevation shares the assembly datum in the same
+        // way. Its extension may cross another extension, while baseline
+        // and printed-text interiors are still protected by the checks above.
         if(!(proposed.Overall||earlier.Overall||
-             proposed.TerminalRemainder||earlier.TerminalRemainder))
+             proposed.TerminalRemainder||earlier.TerminalRemainder||
+             proposed.AssemblyDatum||earlier.AssemblyDatum||
+             (proposed.EndpointSpan&&earlier.DatumChain||earlier.EndpointSpan&&proposed.DatumChain)&&
+                SharesDefinitionPoint(proposed,earlier)))
             foreach(var a in proposed.Witnesses)
             foreach(var b in earlier.Witnesses)
                 if(PerpendicularInteriorCrossing(a,b))
                     return "WITNESS_WITNESS_INTERSECTION";
         return null;
     }
+
+    // Orthogonal components at a shared native endpoint form one dimension
+    // chain. Their extensions may cross on the way out of a joined profile.
+    private static bool SharesDefinitionPoint(Shape a,Shape b) =>
+        a.Witnesses.Any(x=>b.Witnesses.Any(y=>
+            Math.Abs(x.Ax-y.Ax)<1e-7&&Math.Abs(x.Ay-y.Ay)<1e-7));
 
     // Shared datum intersections at the START or END of a dimension
     // baseline are conventional and remain permitted, including a

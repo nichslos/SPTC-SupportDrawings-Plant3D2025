@@ -700,7 +700,7 @@ internal static class SupportOrthoDimensionRefresh49
         {
             var ordinaryPlan=SupportOrthoSmartDimPlan46.Build(
                 cameras,native,paperW,paperH,original.UnitsToMm,
-                null,null,keepouts,sources:segments);
+                null,null,keepouts,sources:segments,nativeEdges:edges);
             dimensions=ordinaryPlan.Dimensions;
             plannerSkipped=ordinaryPlan.Skipped;
         }
@@ -719,6 +719,8 @@ internal static class SupportOrthoDimensionRefresh49
             " REVIEW_ISSUES="+qaBefore.ReviewIssues);
         Message(target,"MEMBER_ENDPOINT_COMPONENTS="+qaBefore.CoveredEndpointComponents+
             "/"+qaBefore.ExpectedEndpointComponents);
+        Message(target,"MEMBER_ELEVATION_DIMENSIONS="+qaBefore.CoveredMemberElevations+
+            "/"+qaBefore.ExpectedMemberElevations);
         foreach(var issue in qaBefore.Issues.Where(i=>i.Code.Contains("MEMBER",StringComparison.Ordinal)))
             Message(target,issue.Code+" "+issue.View+" "+issue.Description);
         if(dimensions.Count==0)

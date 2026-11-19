@@ -35,6 +35,8 @@ public static class SupportOrthoDrawingQualityAudit61
         public int ReviewIssues => Issues.Count;
         public int ExpectedEndpointComponents {get;init;}
         public int CoveredEndpointComponents {get;init;}
+        public int ExpectedMemberElevations {get;init;}
+        public int CoveredMemberElevations {get;init;}
         public IReadOnlyList<string> EndOnViews {get;init;}=Array.Empty<string>();
     }
 
@@ -89,7 +91,7 @@ public static class SupportOrthoDrawingQualityAudit61
             Flag("NO_NATIVE_MEMBER_EVIDENCE","SHEET",
                 "No selected host-DWG structural/support member.");
 
-        int endpointExpected=0,endpointCovered=0;
+        int endpointExpected=0,endpointCovered=0,elevationsExpected=0,elevationsCovered=0;
         var endOn=new List<string>();
         var inspected=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unresolved=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -110,6 +112,13 @@ public static class SupportOrthoDrawingQualityAudit61
             {
                 var axes=SupportOrthoProjectedAxis.InView(c,sources,visibleMembers);
                 var inView=dimensions.Where(d=>d.View.Equals(c.Name,StringComparison.OrdinalIgnoreCase)).ToArray();
+                foreach(var measure in SupportOrthoMemberElevation.Find(c,visibleMembers,axes,unitsToMm,nativeEdges))
+                {
+                    elevationsExpected++;
+                    if(inView.Any(measure.ShownBy))elevationsCovered++;
+                    else Flag(measure.Depth?"MISSING_MEMBER_SECTION_DEPTH":"MISSING_MEMBER_ELEVATION",c.Name,
+                        measure.Key+(measure.Depth?" section depth":" base to underside"));
+                }
                 foreach(var member in visibleMembers.Where(p=>p.Member.Kind=="STRUCTURE"))
                 {
                     string key=member.Member.Key;
@@ -231,7 +240,11 @@ public static class SupportOrthoDrawingQualityAudit61
             int remainderStart=d.Source.IndexOf("/TERMINAL_REMAINDER_",
                 StringComparison.OrdinalIgnoreCase);
             int axisStart=d.Source.IndexOf("/AXIS_",StringComparison.OrdinalIgnoreCase);
-            string? memberKey=axisStart>=0?d.Source[(axisStart+"/AXIS_".Length)..]:
+            int elevationStart=d.Source.IndexOf("/"+SupportOrthoMemberElevation.Offset,StringComparison.Ordinal);
+            int depthStart=d.Source.IndexOf("/"+SupportOrthoMemberElevation.Section,StringComparison.Ordinal);
+            string? memberKey=elevationStart>=0?d.Source[(elevationStart+SupportOrthoMemberElevation.Offset.Length+1)..]:
+                depthStart>=0?d.Source[(depthStart+SupportOrthoMemberElevation.Section.Length+1)..]:
+                axisStart>=0?d.Source[(axisStart+"/AXIS_".Length)..]:
                 memberStart>=0?
                 d.Source[(memberStart+"/MEMBER_".Length)..]:
                 remainderStart>=0?
@@ -342,6 +355,7 @@ public static class SupportOrthoDrawingQualityAudit61
             expected,present,missing,duplicates,incorrect,
             unverified,intersections,optional,writeMismatch,issues) {
             ExpectedEndpointComponents=endpointExpected,CoveredEndpointComponents=endpointCovered,
+            ExpectedMemberElevations=elevationsExpected,CoveredMemberElevations=elevationsCovered,
             EndOnViews=endOn};
     }
 

@@ -48,7 +48,8 @@ public static class SupportOrthoSmartDimPlan46
         IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles=null,
         IReadOnlyList<Rect>? additionalKeepouts=null,
         bool bypassTitleBlock=false,
-        IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? sources=null)
+        IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? sources=null,
+        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeEdges=null)
     {
         if(cameras==null||members==null||
            !double.IsFinite(paperW)||!double.IsFinite(paperH)||
@@ -59,7 +60,7 @@ public static class SupportOrthoSmartDimPlan46
         var dims=new List<SupportOrthoDimLinearPlan41.Dimension>();
         var skips=new List<string>();
         var placements=new List<Placement>();
-        int repositioned=0,rejected=0,viewCount=0;
+        int repositioned=0,rejected=0,viewCount=0,elevationRequests=0;
         double paperRight=bypassTitleBlock?
                 NativeOrthoTitleBlockBypass69.Right(paperW,true):
                 paperW*.78,
@@ -94,6 +95,7 @@ public static class SupportOrthoSmartDimPlan46
             if(additionalKeepouts!=null)
                 fixedZones.AddRange(additionalKeepouts.Where(x=>x.IsFinite));
 
+            int viewStart=dims.Count;
             var envelopes=new List<Envelope>();
             foreach(var member in members.OrderBy(m=>m.Key,
                          StringComparer.OrdinalIgnoreCase))
@@ -286,9 +288,12 @@ public static class SupportOrthoSmartDimPlan46
                         (req.Axis.HasValue?SupportOrthoProjectedAxis.UnplacedLength+(horizontal?"H":"V"):
                             ":"+(horizontal?"HORIZONTAL":"VERTICAL")+"_NO_COLLISION_FREE_DIMENSION_LANE"));
             }
+            elevationRequests+=SupportOrthoReferenceDimPlan47.AddSmartElevations(camera,
+                envelopes.Select(e=>(e.Member,e.Bounds)).ToArray(),axes,unitsToMm,paper,fixedZones,
+                dims,placements,viewStart,skips,nativeEdges);
         }
         return new Result(dims,skips,placements,members.Count,viewCount,
-            members.Count*viewCount*2,repositioned,rejected);
+            members.Count*viewCount*2+elevationRequests,repositioned,rejected);
     }
 
     private static Rect Thin(double fromX,double fromY,
