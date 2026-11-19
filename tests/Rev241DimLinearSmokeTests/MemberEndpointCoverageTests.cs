@@ -125,6 +125,7 @@ internal static class MemberEndpointCoverageTests
             new[]{new SupportOrthoDimensionUpdatePlan49.NativeMember("NATIVE:A","STRUCTURE")},
             new[]{new SupportOrthoDimensionUpdatePlan49.View("TOP","A1",100,100,90,90)},"");
         Check(SupportOrthoDimensionUpdatePlan49.NeedsEndpointUpgrade(saved)&&
+            SupportOrthoDimensionUpdatePlan49.NeedsEndpointUpgrade(saved with {NativeEndpointSchema=1})&&
             !SupportOrthoDimensionUpdatePlan49.NeedsEndpointUpgrade(saved with {
                 NativeEndpointSchema=SupportOrthoDimensionUpdatePlan49.EndpointSchema}),"old snapshot migration");
         Console.WriteLine("Physical member endpoints, equal members at different stations, both planners and independent coverage PASS");

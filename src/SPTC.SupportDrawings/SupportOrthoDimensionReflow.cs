@@ -174,6 +174,7 @@ public static class SupportOrthoDimensionReflow
 
     private static bool IsLocalOmission(string text) =>
         text.Contains(SupportOrthoProjectedAxis.UnplacedLength,StringComparison.Ordinal)||
+        text.Contains(SupportOrthoMemberElevation.Unplaced,StringComparison.Ordinal)||
         text.Contains("_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE",
             StringComparison.Ordinal)||
         text.Contains("OPTIONAL_PROFILE_NO_COMPATIBLE_LAYOUT",

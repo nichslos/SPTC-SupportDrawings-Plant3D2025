@@ -76,7 +76,8 @@ public static class SupportOrthoReferenceDimPlan47
         bool OutwardLocalLabel=false,
         bool PlateEnvelope=false,
         SupportOrthoProjectedAxis.Span? AxisSpan=null,
-        SupportOrthoProjectedAxis.Span? SharedWitness=null);
+        SupportOrthoProjectedAxis.Span? SharedWitness=null,
+        SupportOrthoMemberElevation.Measure? Elevation=null);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text,
@@ -1144,7 +1145,7 @@ public static class SupportOrthoReferenceDimPlan47
             // Reserve space for verified endpoint components before optional
             // profile widths. There is no limit on the number of member requests.
             (SupportOrthoDimLinearPlan41.Dimension D,Placed P)? FindClearDetail(
-                Request request,IEnumerable<double> offsets,Placed[]? protectedProfiles=null)
+                Request request,IEnumerable<double> offsets,Placed[]? protectedProfiles=null,bool allowFaceContact=false)
             {
                 bool horizontal=request.Horizontal;
                 double preferred=SupportOrthoReferenceLayout51.PreferredSide(camera.Name,horizontal);
@@ -1154,7 +1155,7 @@ public static class SupportOrthoReferenceDimPlan47
                 {
                     var candidate=Candidate(camera,assembly,ResolveWitness,request,sign,offset,tier);
                     if(candidate is not {} c||!InnerThanReservedOverall(c.P)||
-                        projected.Any(b=>c.P.Line.Intersects(b,.2))||
+                        projected.Any(b=>BlocksDimensionLine(c.P,request,b,allowFaceContact))||
                         placed.Any(p=>p.Horizontal==horizontal&&p.Line.Intersects(c.P.Line,.35))||
                         !Fits(c.P,blocks,paper,placed,projected))continue;
                     if(protectedProfiles!=null&&
@@ -1180,6 +1181,20 @@ public static class SupportOrthoReferenceDimPlan47
                     .Select(choice=>profileOptions[choice.AlternativeId].P).ToArray()
                 :Array.Empty<Placed>();
             int endpointStart=placed.Count;
+            // Locate intermediate levels before optional profiles or a long
+            // endpoint dimension can occupy their only readable local lane.
+            // Any blocked measure gets another chance after final placement.
+            var elevations=SupportOrthoMemberElevation.Find(camera,projectedMembers,nativeAxisMidpoints,
+                unitsToMm,nativeEdges).ToArray();
+            AddElevations(camera,elevations,unitsToMm,projected,blocks,paper,
+                dimensions,dimensionsAtViewStart,placed,null,InnerThanReservedOverall);
+            int levelsAdded=placed.Count-endpointStart;
+            requested+=levelsAdded;
+            localCount+=levelsAdded;
+            if(levelsAdded>0)
+                profileGroups.RemoveAll(group=>profileRequests.TryGetValue(group.Key,out var request)&&
+                    dimensions.Skip(dimensionsAtViewStart+endpointStart).Any(d=>d.Horizontal==request.Horizontal&&
+                    d.Source.EndsWith("/"+SupportOrthoMemberElevation.Section+request.SourceKey,StringComparison.Ordinal)));
             foreach(var item in requiredSpans.OrderBy(m=>m.Span.To-m.Span.From))
             {
                 if(dimensions.Skip(dimensionsAtViewStart).Any(d=>item.Span.ShownBy(d,item.Horizontal)))
@@ -1193,7 +1208,10 @@ public static class SupportOrthoReferenceDimPlan47
                     .Concat(SupportOrthoReferenceLayout51.AdaptiveLocalMemberLaneOffsets()).Distinct();
                 var matchWithProfiles=preferredProfiles.Length==0?null:
                     FindClearDetail(request,offsets,preferredProfiles);
-                if((matchWithProfiles??FindClearDetail(request,offsets)) is {} match)
+                var endpoint=matchWithProfiles??FindClearDetail(request,offsets)??
+                    FindClearDetail(request,offsets,allowFaceContact:true)??
+                    FindClearDetail(request with {OutwardLocalLabel=true},offsets,allowFaceContact:true);
+                if(endpoint is {} match)
                 {
                     dimensions.Add(match.D);
                     placed.Add(match.P);
@@ -1479,6 +1497,11 @@ public static class SupportOrthoReferenceDimPlan47
                     ":TERMINAL_REMAINDER_NO_CLEAR_LANE");
             }
 
+            int beforeElevations=dimensions.Count;
+            requested+=AddElevations(camera,elevations,unitsToMm,projected,blocks,paper,
+                dimensions,dimensionsAtViewStart,placed,skipped,InnerThanReservedOverall);
+            localCount+=dimensions.Count-beforeElevations;
+
             foreach(var length in requiredSpans)
                 if(!dimensions.Skip(dimensionsAtViewStart).Any(d=>
                     length.Span.ShownBy(d,length.Horizontal)))
@@ -1497,6 +1520,98 @@ public static class SupportOrthoReferenceDimPlan47
             verifiedStationTested,verifiedStationRecovered,
             supplementaryGeometryTested,supplementaryGeometryRecovered,
             omittedAfterAudit,collisionDiagnostics);
+    }
+
+    internal static int AddSmartElevations(SupportOrthoMemberCalloutPlan17.Camera camera,
+        IReadOnlyList<(SupportOrthoAllViewDimPlan44.Member Member,SupportOrthoSmartDimPlan46.Rect Bounds)> members,
+        IReadOnlyDictionary<string,SupportOrthoProjectedAxis> axes,double unitsToMm,
+        SupportOrthoSmartDimPlan46.Rect paper,IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> fixedZones,
+        List<SupportOrthoDimLinearPlan41.Dimension> dimensions,List<SupportOrthoSmartDimPlan46.Placement> placements,
+        int viewStart,List<string> skipped,IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeEdges)
+    {
+        var elevations=SupportOrthoMemberElevation.Find(camera,members,axes,unitsToMm,nativeEdges).ToArray();
+        if(elevations.Length==0)return 0;
+        var placed=placements.Skip(viewStart).Select((p,i)=>new Placed(dimensions[viewStart+i].Horizontal,
+            p.DimensionLine,p.Text,SupportOrthoDimIntersections58.Project(dimensions[viewStart+i],p.Text))).ToList();
+        int count=placed.Count;
+        int requested=AddElevations(camera,elevations,unitsToMm,members.Select(m=>m.Bounds).ToArray(),
+            fixedZones.Select(r=>new Obstacle(r,"ANNOTATION_TEXT_OR_RESERVED_PAPER_AREA")).ToArray(),paper,
+            dimensions,viewStart,placed,skipped);
+        for(int i=count;i<placed.Count;i++)
+        {
+            var p=placed[i];
+            placements.Add(new(camera.Name,dimensions[viewStart+i].Source,p.Line,p.Text,
+                p.Geometry.WitnessA.Bounds(),p.Geometry.WitnessB.Bounds()));
+        }
+        return requested;
+    }
+
+    private static int AddElevations(SupportOrthoMemberCalloutPlan17.Camera camera,
+        IReadOnlyList<SupportOrthoMemberElevation.Measure> measures,double unitsToMm,
+        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> projected,IReadOnlyList<Obstacle> blocks,
+        SupportOrthoSmartDimPlan46.Rect paper,List<SupportOrthoDimLinearPlan41.Dimension> dimensions,
+        int viewStart,List<Placed> placed,List<string>? skipped,Func<Placed,bool>? insideOverall=null)
+    {
+        if(measures.Count==0)return 0;
+        var lanes=SupportOrthoReferenceLayout51.LocalMemberLaneOffsets()
+            .Concat(SupportOrthoReferenceLayout51.AdaptiveLocalMemberLaneOffsets()).Distinct().ToArray();
+        int requested=0;
+        foreach(var measure in measures)
+        {
+            if(dimensions.Skip(viewStart).Any(measure.ShownBy))continue;
+            requested++;
+            var bounds=measure.Bounds;
+            bool h=measure.Horizontal;
+            var req=MakeRequest(h,measure.From,measure.To,false,0,camera.Scale,unitsToMm) with {
+                LocalBounds=bounds,Elevation=measure,CompactLocalLabel=true,AdaptiveShortLocalLabel=true};
+            var witnesses=measure.Witnesses().ToArray();
+            // The clear bay below an intermediate arm is a legal location for
+            // its height dimension. Use the member width to bound the search.
+            double width=h?bounds.T-bounds.B:bounds.R-bounds.L;
+            var offsets=measure.Depth?lanes:lanes.Concat(lanes.Where(x=>x<width/2).Select(x=>-x))
+                .Append(-width/2).ToArray();
+            double preferred=SupportOrthoReferenceLayout51.PreferredSide(camera.Name,h);
+            (SupportOrthoDimLinearPlan41.Dimension D,Placed P)? TryPlace()
+            {
+                foreach(double offset in offsets)
+                foreach(double sign in new[]{preferred,-preferred})
+                {
+                    var nearest=witnesses.OrderBy(w=>-sign*(w.FirstWitness+w.LastWitness));
+                    foreach(var w in nearest)
+                    foreach(bool outward in new[]{false,true})
+                    for(int tier=0;tier<5;tier++)
+                    {
+                        var item=req with {SharedWitness=w,OutwardLocalLabel=outward};
+                        var candidate=Candidate(camera,bounds,(_,_,_,_)=>null,item,sign,offset,tier);
+                        if(candidate is not {} c||insideOverall!=null&&!insideOverall(c.P)||
+                            projected.Any(b=>BlocksDimensionLine(c.P,item,b,!measure.Depth))||
+                            placed.Any(p=>p.Horizontal==h&&p.Line.Intersects(c.P.Line,.35))||
+                            !Fits(c.P,blocks,paper,placed,projected))continue;
+                        return c;
+                    }
+                }
+                return null;
+            }
+            if(TryPlace() is {} detail)
+            {
+                dimensions.Add(detail.D);
+                placed.Add(detail.P);
+            }
+            else skipped?.Add(camera.Name+"/"+measure.Key+SupportOrthoMemberElevation.Unplaced+
+                (measure.Depth?"SECTION_DEPTH":"BASE_TO_UNDERSIDE"));
+        }
+        return requested;
+    }
+
+    private static bool BlocksDimensionLine(Placed candidate,Request request,
+        SupportOrthoSmartDimPlan46.Rect obstacle,bool allowFaceContact)
+    {
+        if(!candidate.Line.Intersects(obstacle,.2))return false;
+        if(!allowFaceContact)return true;
+        // Two joined members can share a station. A baseline can end at
+        // that face if its open interval stays outside the other member.
+        double lo=request.Horizontal?obstacle.L:obstacle.B,hi=request.Horizontal?obstacle.R:obstacle.T;
+        return Math.Min(request.To,hi)-Math.Max(request.From,lo)>1e-7;
     }
 
     private static Request MakeRequest(bool horizontal,double from,
@@ -1635,7 +1750,7 @@ public static class SupportOrthoReferenceDimPlan47
         bool shortSpan=request.To-request.From<printedWidth+2;
         bool axialSpan=request.AxisSpan is {} span&&
             Math.Abs(span.FirstWitness-span.LastWitness)<1e-7;
-        if(!shortSpan&&(axialSpan||!request.Horizontal&&(request.Overall||request.TerminalRemainder)))
+        if(!shortSpan&&(axialSpan||request.Elevation!=null||!request.Horizontal&&(request.Overall||request.TerminalRemainder)))
         {
             // Shifting text normal to a vertical dimension merely
             // drives it into neighboring LEFT VIEW labels. Explore
@@ -1712,7 +1827,8 @@ public static class SupportOrthoReferenceDimPlan47
                 tx+1.3,ty+printedWidth*.5+1);
         string axis=request.Horizontal?"H":"V";
         string source="DETAIL:"+c.Name+"/"+axis+"/"+
-            (request.AxisSpan.HasValue?"AXIS_"+request.SourceKey:
+            (request.Elevation is {} elevation?elevation.Role+elevation.Key:
+             request.AxisSpan.HasValue?"AXIS_"+request.SourceKey:
              request.PlateEnvelope?"PLATE_"+request.SourceKey:
              request.Overall?"OVERALL":
                 request.TerminalRemainder?
@@ -1720,7 +1836,7 @@ public static class SupportOrthoReferenceDimPlan47
                 request.LocalBounds.HasValue?
                     "MEMBER_"+request.SourceKey:
                     "CHAIN_"+request.Index);
-        string provenance=request.AxisSpan.HasValue?SupportOrthoProjectedAxis.Provenance:
+        string provenance=request.Elevation?.Provenance??(request.AxisSpan.HasValue?SupportOrthoProjectedAxis.Provenance:
             request.PlateEnvelope?
             "NATIVE_STRUCTURE_PLATE_PROJECTED_ENVELOPE_NOT_CUT_LENGTH":
             request.Overall?
@@ -1731,7 +1847,7 @@ public static class SupportOrthoReferenceDimPlan47
                 (request.ExactNativeProfileEdge?
                     "EXACT_NATIVE_PROJECTED_PROFILE_EDGE_NOT_CUT_LENGTH":
                     "REFERENCE_PROJECTED_MEMBER_ENVELOPE_NOT_CUT_LENGTH"):
-                "REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH";
+                "REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH");
         // Each A/B dimension extension line now starts at its own
         // matching source member endpoint, rather than at an unrelated
         // edge of the whole multi-member assembly.

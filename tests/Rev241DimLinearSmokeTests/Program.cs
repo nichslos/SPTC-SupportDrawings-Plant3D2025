@@ -150,6 +150,7 @@ var twinPlan=SupportOrthoDimLinearPlan41.Build(
 Assert(twinPlan.Dimensions.Count==1 &&
     twinPlan.Skipped.Any(x=>x.Contains("EQUAL_LENGTH_ALREADY_DIMENSIONED_BY_")),
     "identical vertical overall-height dimensions remain compact");
+IntermediateMemberElevationTests.Run();
 MemberEndpointCoverageTests.Run();
 Rev89MemberProjectionTests.Run();
 UnequalMemberSpanTests.Run();
