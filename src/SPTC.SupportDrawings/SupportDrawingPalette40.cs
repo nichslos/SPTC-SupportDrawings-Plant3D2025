@@ -99,9 +99,7 @@ internal static class SupportDrawingPalette40
         string command=options.Operation switch
         {
             "ortho"=>"SPTC_SUPPORTORTHO10",
-            "export"=>"SPTC_SUPPORTEXPORT",
             "batch"=>"SPTC_SUPPORTBATCH",
-            "2dbatch"=>"SPTC_SUPPORT2DBATCH",
             _=>""
         };
         if(command.Length==0)

@@ -1,5 +1,7 @@
 # SPTC SupportDrawings — AutoCAD Plant 3D 2025
 
+Run `SPTC_SUPPORTORTHO10` to open Support Drawing Manager. In REV92 the two operation tabs are **10-View Ortho** and **Support Batch**. Single support export (`SPTC_SUPPORTEXPORT`) and 2D batch export (`SPTC_SUPPORT2DBATCH`) are available from the AutoCAD command line.
+
 ## REV 22.44 — Every orthographic view, every structure/support member, H and V
 
 This revision changes the **default-on Auto H/V dimensions: all Ortho

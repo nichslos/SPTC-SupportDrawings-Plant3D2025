@@ -154,15 +154,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         TabPage orthoTab=new("10-View Ortho"){Name="ortho",Padding=new Padding(4)};
         orthoTab.Controls.Add(settingsPages);
         tabs.TabPages.Add(orthoTab);
-        tabs.TabPages.Add(MakeInfoTab("export", "Support Export",
-            "Export ONE selected support as an independent DWG.\r\n" +
-            "The existing SPTC_SUPPORTEXPORT selection and Save As dialog are retained."));
         tabs.TabPages.Add(MakeInfoTab("batch", "Support Batch",
-            "Export one drawing for each selected support BLOCK reference.\r\n" +
-            "The existing SPTC_SUPPORTBATCH list and folder picker are retained."));
-        tabs.TabPages.Add(MakeInfoTab("2dbatch", "2D Batch",
-            "Create 2D DWGs from selected support BLOCK references.\r\n" +
-            "The existing SPTC_SUPPORT2DBATCH exporter and fallback are retained."));
+            "Create one DWG per support block. Click Run selected to choose blocks and an output folder."));
 
         cubeMode.Name="SPTC_CUBE_MODE";
         scale.Name="SPTC_PAPER_SCALE";
@@ -574,13 +567,12 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 
     private static TabPage MakeInfoTab(string key,string name,string text)
     {
-        TabPage tab = new(name) {Name = key};
+        TabPage tab = new(name) {Name = key, UseVisualStyleBackColor = true};
         tab.Controls.Add(new Label
         {
             Text = text,
-            Dock = DockStyle.Top, Padding = new Padding(12),
-            Font = new Font("Segoe UI",10f),
-            AutoSize = true
+            Dock = DockStyle.Fill, Padding = new Padding(12),
+            Font = new Font("Segoe UI",10f)
         });
         return tab;
     }
@@ -718,10 +710,11 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             SupportDrawingOutputMode76.Mode.Split=>"Multiple sheets · Printable",
             _=>"Single sheet · Paper fit"
         };
-        stickySummary.Text=count+"/10 views  ·  "+scaleText+
-            "  ·  "+modeName;
+        stickySummary.Text=isOrtho
+            ? count+"/10 views  ·  "+scaleText+"  ·  "+modeName
+            : tabs.SelectedTab?.Text;
         stickySummary.ForeColor=issue!=null?Color.Firebrick:
-            mode==SupportDrawingOutputMode76.Mode.Draft?
+            isOrtho&&mode==SupportDrawingOutputMode76.Mode.Draft?
                 Color.DarkGoldenrod:Color.FromArgb(31,65,103);
         uiTips.SetToolTip(stickySummary,stickySummary.Text+
             (issue!=null?"  — "+RequiredAction(issue):""));
@@ -994,11 +987,10 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 
     private void ShowPreflight()
     {
-        string selected = tabs.SelectedTab?.Name ?? "ortho";
-        if(selected != "ortho")
+        if(tabs.SelectedTab?.Name=="batch")
         {
-            preview.Text = "Selected: " + tabs.SelectedTab?.Text +
-                "\r\nThe existing native support-export command and dialog will be used.";
+            preview.Text="Support Batch\r\nRun selected starts SPTC_SUPPORTBATCH. "+
+                "Select support blocks, then choose which drawings to export and where to save them.";
             return;
         }
         string[] chosen=views.CheckedItems.Cast<object>()
