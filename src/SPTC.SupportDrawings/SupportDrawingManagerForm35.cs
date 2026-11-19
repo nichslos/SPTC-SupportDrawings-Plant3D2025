@@ -127,7 +127,6 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         scrollingWorkspace.Controls.Add(layoutSurface);
         Controls.Add(scrollingWorkspace);
         Controls.Add(stickyFooter);
-        stickyFooter.BringToFront();
 
         var header=new TableLayoutPanel {Dock=DockStyle.Top,Height=76,ColumnCount=2,RowCount=2,
             Padding=new Padding(8,4,8,4)};

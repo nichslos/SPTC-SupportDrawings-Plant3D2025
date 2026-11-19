@@ -118,6 +118,7 @@ internal static class Program
                 new[]{"setup","views","output","appearance","details","project","results"}),
                 "all drawing settings have a direct tab");
             Check(!AllControls(ui).OfType<ComboBox>().Any(),"manager has no dropdowns");
+            var workspace=ui.Controls.OfType<Panel>().Single(p=>p.Dock==DockStyle.Fill);
             var footer=ui.Controls.OfType<Panel>().Single(p=>p.Dock==DockStyle.Bottom);
             var run=footer.Controls.OfType<Button>().Single(b=>b.Text=="Run selected");
             var preflight=footer.Controls.OfType<Button>().Single(b=>b.Text=="Preflight");
@@ -141,6 +142,8 @@ internal static class Program
                     }
                 }
                 footer.PerformLayout();
+                Check(workspace.Bottom==footer.Top&&footer.Bottom==ui.ClientSize.Height,
+                    "the settings workspace ends above the fixed actions at every tested size");
                 Check(footer.ClientRectangle.Contains(run.Bounds)&&footer.ClientRectangle.Contains(preflight.Bounds)&&
                     !status.Bounds.IntersectsWith(run.Bounds)&&!status.Bounds.IntersectsWith(preflight.Bounds),
                     "Run and Preflight stay visible at every tested size");
