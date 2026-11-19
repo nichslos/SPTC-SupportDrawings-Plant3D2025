@@ -18,7 +18,7 @@ internal static class SupportDrawingUiPreferences
 {
     internal static readonly string[] AllViews =
         {"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK","NW","NE","SW","SE"};
-    private static readonly string[] UiScales =
+    internal static readonly string[] ScaleChoices =
         {SupportDrawingPaperScale39.Automatic,"1:10","1:20","1:30",
          "1:40","1:50","1:75","1:100","1:150","1:200",
          "1:250","1:500",SupportDrawingPaperScale39.Custom};
@@ -58,7 +58,7 @@ internal static class SupportDrawingUiPreferences
         if(value.CustomScale<SupportDrawingPaperScale39.Min||
            value.CustomScale>SupportDrawingPaperScale39.Max)
             throw new ArgumentException("Custom paper scale is invalid.");
-        if(!UiScales.Contains(value.ScaleSelection,
+        if(!ScaleChoices.Contains(value.ScaleSelection,
             StringComparer.Ordinal))
             throw new ArgumentException(
                 "Saved scale must match an available UI choice.");

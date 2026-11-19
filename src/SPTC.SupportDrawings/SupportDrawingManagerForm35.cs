@@ -44,54 +44,29 @@ internal sealed record SupportDrawingUiOptions(
 
 internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
 {
-    // A fixed reference canvas inside a scrollable, DPI-aware host
-    // prevents clipped Run/Preflight controls when an AutoCAD palette is
-    // docked narrow or Windows display scaling is 125%/150%.
-    // Geometry and commands are untouched; only WinForms layout changes.
     private readonly Panel layoutSurface = new();
     private readonly Panel scrollingWorkspace = new();
     private readonly Panel stickyFooter = new();
     private bool arrangingStickyFooter;
-    private bool arrangingWorkspace;
-    private int lastWorkspaceWidth=-1;
     private readonly Label stickySummary=new();
     private readonly Button fixSettings=new();
-    private readonly List<CollapsibleSection> uiSections = new();
-    private readonly Button essentialsButton=new();
-    private readonly Button allSettingsButton=new();
     private readonly ToolTip uiTips=new(){AutoPopDelay=12500,InitialDelay=550,ReshowDelay=250,ShowAlways=true};
-    private readonly TabControl tabs = new();
-    private Control? brandingLogo;
-    private readonly Label headingTitle=new();
-    private readonly Label brandSubtitle=new();
-    private sealed class CollapsibleSection
-    {
-        internal readonly Panel Frame=new();
-        internal readonly Panel Body=new();
-        internal readonly Button Header=new();
-        internal int BodyHeight;
-        internal bool Expanded;
-        internal Control[] Fields=Array.Empty<Control>();
-        internal readonly Dictionary<Control,Rectangle> WideBounds=new();
-        internal bool Narrow;
-    }
-    private readonly ComboBox cubeMode = new();
+    private readonly TabControl tabs=new(){Name="SPTC_OPERATIONS",Multiline=true};
+    private readonly TabControl settingsPages=new(){Name="SPTC_ORTHO_SETTINGS",Dock=DockStyle.Fill,Multiline=true};
+    private readonly SupportDrawingChoiceGroup cubeMode=new("OrthoCube mode","Support focus","Original OrthoCube");
     private readonly CheckBox autoSeed = new();
-    // REV76: one unambiguous UI choice maps to the existing two
-    // generator flags. Neither the generator nor its defaults change.
-    private readonly ComboBox outputMode = new();
+    private readonly SupportDrawingChoiceGroup outputMode=new("Drawing output",
+        SupportDrawingOutputMode76.Physical,SupportDrawingOutputMode76.Draft,SupportDrawingOutputMode76.Split);
     private readonly Label outputHint = new();
-    private readonly Label hiddenLineLabel=new();
-    private readonly ComboBox hiddenLineMode=new();
-    private readonly Label insulationLabel=new();
-    private readonly ComboBox insulationMode=new();
+    private readonly SupportDrawingChoiceGroup hiddenLineMode=new("Hidden lines",NativeOrthoAppearance83.HiddenChoices);
+    private readonly SupportDrawingChoiceGroup insulationMode=new("Insulation",NativeOrthoAppearance83.InsulationChoices);
     private readonly Label selectedViewCount = new();
     private readonly Label readinessHint = new();
     private readonly Button quickDraft = new();
     private readonly Button quickPhysical = new();
     private readonly TextBox seed = new();
     private readonly TextBox prefix = new();
-    private readonly ComboBox scale = new();
+    private readonly SupportDrawingChoiceGroup scale=new("Paper scale",SupportDrawingUiPreferences.ScaleChoices);
     private readonly NumericUpDown customScale = new();
     private readonly CheckedListBox views = new();
     private readonly CheckBox line = new();
@@ -141,58 +116,43 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // REV77: only the workspace scrolls. Run, Preflight and status
         // belong to the separate docked footer and remain visible.
         scrollingWorkspace.Dock=DockStyle.Fill;
-        scrollingWorkspace.AutoScroll=true;
+        scrollingWorkspace.AutoScroll = true;
         scrollingWorkspace.BackColor=Color.White;
         stickyFooter.Dock=DockStyle.Bottom;
         stickyFooter.Height=116;
         stickyFooter.BackColor=Color.FromArgb(239,244,249);
         layoutSurface.Name = "SPTC_UI_LAYOUT_SURFACE";
-        layoutSurface.SetBounds(0,0,805,630);
-        layoutSurface.BackColor = Color.White;
+        layoutSurface.Dock=DockStyle.Fill;
+        layoutSurface.BackColor=Color.White;
         scrollingWorkspace.Controls.Add(layoutSurface);
-        scrollingWorkspace.Resize+=(_,_)=>ResizeResponsivePalette();
         Controls.Add(scrollingWorkspace);
         Controls.Add(stickyFooter);
-        stickyFooter.BringToFront();
-        // REV22.40: Hosted permanently as a modeless AutoCAD PaletteSet
-        // UserControl. No WinForms DialogResult or Close() on Run.
 
-        // The supplied SPTC Engineering logo is embedded; no image path needed.
-        // A larger top band keeps the full wordmark readable at Windows DPI.
-        brandingLogo=SupportBranding36.MakeLogo(18, 10, 184, 118);
-        layoutSurface.Controls.Add(brandingLogo);
-        headingTitle.Text="SUPPORT DRAWING MANAGER";
-        headingTitle.Font=new Font("Segoe UI",13f,FontStyle.Bold);
-        headingTitle.SetBounds(222,21,545,33);
-        headingTitle.AutoEllipsis=true;
-        layoutSurface.Controls.Add(headingTitle);
-        brandSubtitle.Text="SPTC Engineering  |  AutoCAD Plant 3D 2025";
-        brandSubtitle.ForeColor=Color.DimGray;
-        brandSubtitle.SetBounds(222,57,545,25);
-        brandSubtitle.AutoEllipsis=true;
-        layoutSurface.Controls.Add(brandSubtitle);
-        sourceLabel.Text = "Source: " + Path.GetFileName(sourceDwg) +
-            "     |     Project: " + Path.GetFileName(projectRoot.TrimEnd('\\','/'));
-        sourceLabel.Location = new Point(222, 94);
-        sourceLabel.Size = new Size(545, 24);
-        sourceLabel.AutoEllipsis = true;
-        layoutSurface.Controls.Add(sourceLabel);
-        uiTips.SetToolTip(sourceLabel,
-            "Active source drawing and Plant 3D project. Changes update with the modeless palette.");
-
-        tabs.Location = new Point(18, 140);
-        tabs.Size = new Size(770, 475);
-        tabs.Anchor = AnchorStyles.Top | AnchorStyles.Bottom |
-            AnchorStyles.Left | AnchorStyles.Right;
+        var header=new TableLayoutPanel {Dock=DockStyle.Top,Height=76,ColumnCount=2,RowCount=2,
+            Padding=new Padding(8,4,8,4)};
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,110));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        header.RowStyles.Add(new RowStyle(SizeType.Percent,55));
+        header.RowStyles.Add(new RowStyle(SizeType.Percent,45));
+        var logo=SupportBranding36.MakeLogo(0,0,106,64);
+        logo.Dock=DockStyle.Fill;
+        header.Controls.Add(logo,0,0);
+        header.SetRowSpan(logo,2);
+        var heading=new Label {Text="Support Drawing Manager",Dock=DockStyle.Fill,AutoEllipsis=true,
+            Font=new Font(Font.FontFamily,12f,FontStyle.Bold),TextAlign=ContentAlignment.BottomLeft};
+        header.Controls.Add(heading,1,0);
+        sourceLabel.Text="Source: "+Path.GetFileName(sourceDwg)+"     |     Project: "+
+            Path.GetFileName(projectRoot.TrimEnd('\\','/'));
+        sourceLabel.Dock=DockStyle.Fill;
+        sourceLabel.AutoEllipsis=true;
+        sourceLabel.ForeColor=SystemColors.GrayText;
+        header.Controls.Add(sourceLabel,1,1);
+        tabs.Dock=DockStyle.Fill;
         layoutSurface.Controls.Add(tabs);
+        layoutSurface.Controls.Add(header);
 
-        TabPage orthoTab = new("10-View Ortho") {
-            Name = "ortho", AutoScroll = true
-        };
-        // The settings area extends below the original tab viewport.
-        // Explicit scroll extent makes the save/load/default controls
-        // reachable at narrow palette sizes and higher Windows DPI.
-        orthoTab.AutoScrollMinSize = new Size(755,850);
+        TabPage orthoTab=new("10-View Ortho"){Name="ortho",Padding=new Padding(4)};
+        orthoTab.Controls.Add(settingsPages);
         tabs.TabPages.Add(orthoTab);
         tabs.TabPages.Add(MakeInfoTab("export", "Support Export",
             "Export ONE selected support as an independent DWG.\r\n" +
@@ -204,346 +164,170 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             "Create 2D DWGs from selected support BLOCK references.\r\n" +
             "The existing SPTC_SUPPORT2DBATCH exporter and fallback are retained."));
 
-        Label modeLabel = L("OrthoCube mode", 17, 17, 205);
-        orthoTab.Controls.Add(modeLabel);
-        cubeMode.SetBounds(18, 40, 205, 27);
-        cubeMode.DropDownStyle = ComboBoxStyle.DropDownList;
-        cubeMode.Items.AddRange(new object[] {"SupportFocus (recommended)", "Original"});
-        cubeMode.SelectedIndex = 0;
-        orthoTab.Controls.Add(cubeMode);
-
-        Label scaleLabel = L("Paper scale", 241, 17, 170);
-        orthoTab.Controls.Add(scaleLabel);
-        scale.SetBounds(242, 40, 140, 27);
-        scale.DropDownStyle = ComboBoxStyle.DropDownList;
-        scale.Items.AddRange(new object[] {
-            "Automatic", "1:10", "1:20", "1:30", "1:40", "1:50",
-            "1:75", "1:100", "1:150", "1:200", "1:250", "1:500",
-            SupportDrawingPaperScale39.Custom
-        });
-        scale.SelectedIndex = 0;
-        orthoTab.Controls.Add(scale);
-
-        // REV22.39: explicit custom paper-scale denominator (1:N).
-        // The native Ortho generator and its existing sheet-fit preflight
-        // receive the same validated ScaleDenominator as any preset.
-        Label customLabel = L("Custom scale  1 :", 242, 79, 130);
-        customScale.SetBounds(375, 76, 160, 27);
-        customScale.Minimum = SupportDrawingPaperScale39.Min;
-        customScale.Maximum = SupportDrawingPaperScale39.Max;
-        customScale.Value = 25;
-        customScale.DecimalPlaces = 0;
-        customScale.Increment = 1;
-        customScale.TextAlign = HorizontalAlignment.Right;
-        customScale.ThousandsSeparator = false;
-        customLabel.Visible = false;
-        customScale.Visible = false;
-        scale.SelectedIndexChanged += (_,_) =>
-        {
-            bool active=scale.Text==SupportDrawingPaperScale39.Custom;
-            customLabel.Visible = active;
-            customScale.Visible = active;
-            customScale.Enabled = active;
-        };
-        orthoTab.Controls.Add(customLabel);
-        orthoTab.Controls.Add(customScale);
-
-        Label prefixLabel = L("Drawing prefix (optional)", 406, 17, 288);
-        orthoTab.Controls.Add(prefixLabel);
-        prefix.SetBounds(407, 40, 315, 27);
-        prefix.PlaceholderText = "Automatic unique name";
-        orthoTab.Controls.Add(prefix);
-
-        autoSeed.SetBounds(18, 120, 355, 26);
-        autoSeed.Text = "Automatically select a verified empty Ortho seed";
-        autoSeed.Checked = true;
-        orthoTab.Controls.Add(autoSeed);
-        // REV76: mutually exclusive output modes. The default remains
-        // the original one-sheet fit; REV74/75 flags are calculated
-        // from the selection, not duplicated or persisted separately.
-        Label outputLabel=L("Drawing output mode",407,442,300);
-        outputLabel.Font=new Font("Segoe UI",9f,FontStyle.Bold);
-        orthoTab.Controls.Add(outputLabel);
-        outputMode.SetBounds(407,469,315,29);
-        outputMode.DropDownStyle=ComboBoxStyle.DropDownList;
-        outputMode.Items.AddRange(new object[]{
-            SupportDrawingOutputMode76.Physical,
-            SupportDrawingOutputMode76.Draft,
-            SupportDrawingOutputMode76.Split
-        });
-        outputMode.SelectedIndex=0;
-        orthoTab.Controls.Add(outputMode);
-        outputHint.SetBounds(407,502,318,50);
-        outputHint.AutoEllipsis=false;
-        outputHint.ForeColor=Color.DimGray;
-        orthoTab.Controls.Add(outputHint);
-        hiddenLineLabel.Text="Hidden Lines (new Ortho views)";
-        hiddenLineLabel.Name="SPTC_HIDDEN_LINES_LABEL_83";
-        orthoTab.Controls.Add(hiddenLineLabel);
+        cubeMode.Name="SPTC_CUBE_MODE";
+        scale.Name="SPTC_PAPER_SCALE";
+        outputMode.Name="SPTC_OUTPUT_MODE";
         hiddenLineMode.Name="SPTC_HIDDEN_LINES_83";
-        hiddenLineMode.DropDownStyle=ComboBoxStyle.DropDownList;
-        hiddenLineMode.Items.AddRange(
-            NativeOrthoAppearance83.HiddenChoices.Cast<object>().ToArray());
-        hiddenLineMode.SelectedItem=NativeOrthoAppearance83.ProjectDefault;
-        orthoTab.Controls.Add(hiddenLineMode);
-        insulationLabel.Text="Insulation (new Ortho views)";
-        insulationLabel.Name="SPTC_INSULATION_LABEL_83";
-        orthoTab.Controls.Add(insulationLabel);
         insulationMode.Name="SPTC_INSULATION_83";
-        insulationMode.DropDownStyle=ComboBoxStyle.DropDownList;
-        insulationMode.Items.AddRange(
-            NativeOrthoAppearance83.InsulationChoices.Cast<object>().ToArray());
-        insulationMode.SelectedItem=NativeOrthoAppearance83.ProjectDefault;
-        orthoTab.Controls.Add(insulationMode);
-        quickDraft.Text="Draft: All 10 Views";
+
+        var setup=AddSettingsPage("setup","Setup");
+        AddRows(setup,Caption("OrthoCube mode"),cubeMode,Caption("Paper scale"),scale);
+        var customLabel=Caption("Custom scale denominator (1:N)");
+        customScale.AccessibleName="Custom scale denominator";
+        customScale.Minimum=SupportDrawingPaperScale39.Min;
+        customScale.Maximum=SupportDrawingPaperScale39.Max;
+        customScale.Value=25;
+        customScale.DecimalPlaces=0;
+        customScale.MaximumSize=new Size(180,0);
+        customScale.TextAlign=HorizontalAlignment.Right;
+        AddRows(setup,customLabel,customScale);
+        void ShowCustomScale()
+        {
+            bool custom=scale.SelectedValue==SupportDrawingPaperScale39.Custom;
+            customLabel.Visible=custom;
+            customScale.Visible=custom;
+            customScale.Enabled=custom;
+        }
+        scale.SelectionChanged+=(_,_)=>{ShowCustomScale();UpdateOutputModeUi();};
+        ShowCustomScale();
+        prefix.AccessibleName="Drawing prefix";
+        prefix.PlaceholderText="Automatic unique name";
+        AddRows(setup,Caption("Drawing prefix (optional)"),prefix);
+        autoSeed.Text="Automatically select a verified empty Ortho seed";
+        autoSeed.Checked=true;
+        seed.AccessibleName="Ortho seed drawing";
+        seed.PlaceholderText="Select a registered empty Ortho DWG";
+        var browse=new Button {Text="Browse seed..."};
+        var seedActions=ActionRow(browse);
+        AddRows(setup,Caption("Ortho seed"),autoSeed,seed,seedActions);
+        void ShowManualSeed()
+        {
+            seed.Visible=!autoSeed.Checked;
+            seedActions.Visible=!autoSeed.Checked;
+        }
+        autoSeed.CheckedChanged+=(_,_)=>{ShowManualSeed();UpdateOutputModeUi();};
+        ShowManualSeed();
+        browse.Click+=(_,_)=>{
+            using OpenFileDialog picker=new() {
+                Title="Select a registered EMPTY native Plant 3D Ortho seed",
+                Filter="AutoCAD DWG (*.dwg)|*.dwg", CheckFileExists=true,
+                InitialDirectory=Directory.Exists(Path.Combine(orthoFolder,"DWGs"))?
+                    Path.Combine(orthoFolder,"DWGs"):orthoFolder
+            };
+            if(picker.ShowDialog(this)==DialogResult.OK)seed.Text=picker.FileName;
+        };
+
+        var viewPage=AddSettingsPage("views","Views");
+        views.AccessibleName="Native views";
+        views.CheckOnClick=true;
+        views.IntegralHeight=false;
+        foreach(string name in SupportDrawingUiOptions.AllViews)views.Items.Add(name,true);
+        views.Height=views.ItemHeight*views.Items.Count+6;
+        views.ItemCheck+=(_,_)=>{
+            if(IsHandleCreated)BeginInvoke(new Action(UpdateOutputModeUi));
+        };
+        Button Preset(string caption,string preset)
+        {
+            var button=new Button {Text=caption};
+            button.Click+=(_,_)=>SetViewPreset(preset);
+            return button;
+        }
+        AddRows(viewPage,Caption("Native views"),ActionRow(Preset("All 10","All"),
+            Preset("Ortho 6","Orthographic"),Preset("ISO 4","Isometric"),Preset("Clear","None")),
+            views,selectedViewCount);
+
+        var output=AddSettingsPage("output","Output");
+        batch.Text="Batch Ortho for selected support blocks";
         quickDraft.Name="SPTC_QUICK_DRAFT_78";
-        quickDraft.SetBounds(18,144,170,30);
+        quickDraft.Text="Draft all 10 views";
         quickDraft.Click+=(_,_)=>PrepareDraftViews();
-        orthoTab.Controls.Add(quickDraft);
-        quickPhysical.Text="Printable Sheet";
         quickPhysical.Name="SPTC_QUICK_PHYSICAL_78";
-        quickPhysical.SetBounds(202,144,160,30);
+        quickPhysical.Text="Printable sheet";
         quickPhysical.Click+=(_,_)=>{
             outputMode.SelectedIndex=0;
             UpdateOutputModeUi();
-            SetStatus("Printable single-sheet mode selected. "+
-                "The generator will enforce the real sheet boundary.");
+            SetStatus("Printable single-sheet mode selected.");
         };
-        orthoTab.Controls.Add(quickPhysical);
         readinessHint.Name="SPTC_READINESS_HINT_78";
-        readinessHint.SetBounds(18,190,700,27);
-        readinessHint.ForeColor=Color.DimGray;
-        orthoTab.Controls.Add(readinessHint);
-        seed.SetBounds(18, 152, 568, 27);
-        seed.PlaceholderText = "Auto: select a registered empty project Ortho DWG";
-        seed.Enabled = false;
-        orthoTab.Controls.Add(seed);
-        Button browse = new() { Text = "Browse seed...", Location = new Point(594, 150),
-            Size = new Size(127, 30), Enabled = false };
-        orthoTab.Controls.Add(browse);
-        autoSeed.CheckedChanged += (_,_) =>
-        {
-            seed.Enabled = !autoSeed.Checked;
-            browse.Enabled = !autoSeed.Checked;
-        };
-        browse.Click += (_,_) =>
-        {
-            using OpenFileDialog picker = new()
-            {
-                Title = "Select a registered EMPTY native Plant 3D Ortho seed",
-                Filter = "AutoCAD DWG (*.dwg)|*.dwg", CheckFileExists = true,
-                InitialDirectory = Directory.Exists(Path.Combine(orthoFolder,"DWGs"))
-                    ? Path.Combine(orthoFolder,"DWGs") : orthoFolder
-            };
-            if(picker.ShowDialog(this)==DialogResult.OK) seed.Text = picker.FileName;
-        };
+        AddRows(output,Caption("Drawing output"),outputMode,outputHint,batch,
+            Caption("Quick setup"),ActionRow(quickPhysical,quickDraft),readinessHint);
 
-        Label vLabel = L("Native views (choose one or more)", 18, 196, 350);
-        orthoTab.Controls.Add(vLabel);
-        views.SetBounds(18, 222, 345, 165);
-        views.CheckOnClick = true;
-        views.IntegralHeight = false;
-        foreach(string name in SupportDrawingUiOptions.AllViews)
-            views.Items.Add(name, true);
-        orthoTab.Controls.Add(views);
-        selectedViewCount.SetBounds(205,195,166,24);
-        selectedViewCount.TextAlign=ContentAlignment.MiddleRight;
-        selectedViewCount.ForeColor=Color.DimGray;
-        orthoTab.Controls.Add(selectedViewCount);
-        views.ItemCheck+=(_,_)=>{
-            // The palette can apply saved presets before a WinForms
-            // window handle exists. Update synchronously in that case;
-            // ApplyPreferences refreshes again after all checks settle.
-            if(IsHandleCreated)
-                BeginInvoke(new Action(UpdateOutputModeUi));
-        };
-        // Presets are UI-only: the native camera selection contract
-        // remains the unchanged 10-element checked list. Individual
-        // checkboxes remain editable after choosing any preset.
-        Button all = new() {Text = "All 10", Location = new Point(18, 392),
-            Size = new Size(83, 29)};
-        Button six = new() {Text = "Ortho 6", Location = new Point(110, 392),
-            Size = new Size(87, 29)};
-        Button four = new() {Text = "ISO 4", Location = new Point(206, 392),
-            Size = new Size(83, 29)};
-        Button none = new() {Text = "Clear", Location = new Point(299, 392),
-            Size = new Size(83, 29)};
-        all.Click += (_,_) => SetViewPreset("All");
-        six.Click += (_,_) => SetViewPreset("Orthographic");
-        four.Click += (_,_) => SetViewPreset("Isometric");
-        none.Click += (_,_) => SetViewPreset("None");
-        orthoTab.Controls.AddRange(new Control[] {all,six,four,none});
-        // REV22.41: dimensions are generated only from verified native
-        // StructureMember / Plant Support Start/End source geometry.
-        autoDimLinear.SetBounds(18, 425, 355, 27);
-        autoDimLinear.Text = "Auto H/V dimensions: native members only";
+        var appearance=AddSettingsPage("appearance","Appearance");
+        AddRows(appearance,Caption("Hidden lines"),hiddenLineMode,Caption("Insulation"),insulationMode);
+        var details=AddSettingsPage("details","Details");
+        autoDimLinear.Text="Auto H/V dimensions: native members only";
         autoDimLinear.Checked = true;
-        orthoTab.Controls.Add(autoDimLinear);
-        // REV22.47 defaults to the supplied pipe-support drawing examples:
-        // grouped chain datums plus one outer overall per measured direction.
-        // The REV22.46 per-member H/V mode is still available by unchecking.
-        referenceDimensions.SetBounds(18, 456, 377, 30);
-        referenceDimensions.Text = "Reference detail: chain + overall (PDF style)";
+        referenceDimensions.Text="Reference detail: chain + overall (PDF style)";
         referenceDimensions.Checked = true;
-        orthoTab.Controls.Add(referenceDimensions);
-        autoDimLinear.CheckedChanged += (_,_) =>
-            referenceDimensions.Enabled=autoDimLinear.Checked;
-
-        Label aLabel = L("Annotations", 407, 196, 280);
-        orthoTab.Controls.Add(aLabel);
-        line.SetBounds(407, 222, 295, 24);
-        line.Text = "Pipe Line Number Tag"; line.Checked = true;
-        bop.SetBounds(407, 249, 295, 24);
-        bop.Text = "Pipe BOP elevation"; bop.Checked = true;
-        tos.SetBounds(407, 276, 295, 24);
-        tos.Text = "Support / Structure TOS"; tos.Checked = true;
-        description.SetBounds(407, 303, 295, 24);
-        description.Text = "Support / Structure description"; description.Checked = true;
-        orthoTab.Controls.AddRange(new Control[] {line,bop,tos,description});
-
-        xrefNames.SetBounds(407, 336, 314, 29);
-        xrefNames.Text = "Nearby XREF members: label source DWG";
+        autoDimLinear.CheckedChanged+=(_,_)=>referenceDimensions.Enabled=autoDimLinear.Checked;
+        line.Text="Pipe line number";line.Checked=true;
+        bop.Text="Bottom of pipe (BOP)";bop.Checked=true;
+        tos.Text="Top of steel (TOS)";tos.Checked=true;
+        description.Text="Support and structure description";description.Checked=true;
+        xrefNames.Text="Nearby XREF members: label source DWG";
         xrefNames.Checked = true;
-        orthoTab.Controls.Add(xrefNames);
-        batch.SetBounds(407, 370, 310, 45);
-        batch.Text = "Batch Ortho: one native Ortho DWG per\r\nselected support BLOCK reference";
-        batch.Checked = false;
-        orthoTab.Controls.Add(batch);
-        Label notice = L("Batch runs sequentially. Start with a copied project.",407,424,330);
-        notice.ForeColor = Color.DarkGoldenrod;
-        orthoTab.Controls.Add(notice);
+        AddRows(details,Caption("Dimensions"),autoDimLinear,referenceDimensions,
+            Caption("Annotations"),line,bop,tos,description,xrefNames);
 
-        // Explicit local, per-project preferences: safe from accidental
-        // project-switch propagation and no write occurs on Run.
-        Label settingsCaption = L(
-            "Project settings (local to this Windows user)",18,560,535);
-        settingsCaption.Font = new Font("Segoe UI",9f,FontStyle.Bold);
-        orthoTab.Controls.Add(settingsCaption);
-        Button saveSettings = new() {
-            Text="Save settings",Location=new Point(18,589),
-            Size=new Size(130,30)};
-        Button loadSettings = new() {
-            Text="Load saved",Location=new Point(158,589),
-            Size=new Size(120,30)};
-        Button resetSettings = new() {
-            Text="Defaults",Location=new Point(289,589),
-            Size=new Size(108,30)};
+        var project=AddSettingsPage("project","Project");
+        var saveSettings=new Button {Text="Save settings"};
+        var loadSettings=new Button {Text="Load saved"};
+        var resetSettings=new Button {Text="Defaults"};
         saveSettings.Click+=(_,_)=>SaveProjectPreferences();
         loadSettings.Click+=(_,_)=>LoadProjectPreferences(showFeedback:true);
         resetSettings.Click+=(_,_)=>{
             ApplyPreferences(SupportDrawingUiPreferences.Defaults);
             SetStatus("Default drawing settings restored (not saved).");
         };
-        orthoTab.Controls.AddRange(new Control[]{
-            saveSettings,loadSettings,resetSettings});
-        Label privacy = L(
-            "Manual Ortho seed paths are never saved. Existing export dialogs are unchanged.",
-            18,632,690);
-        privacy.ForeColor=Color.DimGray;
-        orthoTab.Controls.Add(privacy);
-
-        // Issue package setup is explicitly opt-in, project-isolated,
-        // and independent of the existing drawing generation command.
-        // Native view geometry/dimensions remain unchanged.
-        Button productionSettings=new() {
-            Text="Production package...",
-            Location=new Point(409,589),Size=new Size(220,30)};
+        var productionSettings=new Button {Text="Production package..."};
         productionSettings.Click+=(_,_)=>{
             if(IsRunning)return;
             using var editor=new SupportProductionPackageDialog(projectRoot);
             if(editor.ShowDialog(this)==DialogResult.OK)
             {
-                if(SupportProductionPackageSettingsStore.TryLoad(
-                    projectRoot,out var confirmed,out string loadState))
-                    SetStatus("Production settings verified: "+
-                        "Package="+(confirmed.Enabled?"ON":"OFF")+
-                        ", Native PDF="+(confirmed.PublishPdf?"ON":"OFF")+
-                        " ("+loadState+").");
-                else
-                    SetStatus("Production settings could not be reloaded: "+
-                        loadState+". Reopen Production package before running.");
+                if(SupportProductionPackageSettingsStore.TryLoad(projectRoot,out var confirmed,out string loadState))
+                    SetStatus("Production settings verified: Package="+(confirmed.Enabled?"ON":"OFF")+
+                        ", Native PDF="+(confirmed.PublishPdf?"ON":"OFF")+" ("+loadState+").");
+                else SetStatus("Production settings could not be reloaded: "+loadState+".");
             }
         };
-        orthoTab.Controls.Add(productionSettings);
+        AddRows(project,Caption("Drawing preferences for this project"),ActionRow(saveSettings,loadSettings,resetSettings),
+            Caption("Publishing and drawing register"),ActionRow(productionSettings));
 
-        // REV77: one actual-result entry per generated output. Selection
-        // is always backed by a real DWG path, never by a guessed name.
-        Label qaHeader=L("Session DWG history / measured QA",18,8,460);
-        qaHeader.Font=new Font("Segoe UI",9f,FontStyle.Bold);
-        orthoTab.Controls.Add(qaHeader);
-        generatedHistory.SetBounds(18,35,704,91);
+        var results=AddSettingsPage("results","Results");
+        generatedHistory.Name="SPTC_DWG_HISTORY";
+        generatedHistory.AccessibleName="Generated drawings";
+        generatedHistory.Height=100;
         generatedHistory.HorizontalScrollbar=true;
         generatedHistory.SelectedIndexChanged+=(_,_)=>RefreshSelectedQa();
         generatedHistory.DoubleClick+=(_,_)=>OpenSelectedDwg();
-        orthoTab.Controls.Add(generatedHistory);
-        qaIndicator.SetBounds(18,135,700,24);
-        qaIndicator.ForeColor=Color.DimGray;
         qaIndicator.Text="QA status: UNVERIFIED";
-        orthoTab.Controls.Add(qaIndicator);
-        lastQa.SetBounds(18,165,704,113);
+        lastQa.AccessibleName="Drawing QA summary";
+        lastQa.Height=115;
         lastQa.Multiline=true;
         lastQa.ReadOnly=true;
         lastQa.ScrollBars=ScrollBars.Vertical;
         lastQa.Text="No completed Ortho drawing in this session.";
-        orthoTab.Controls.Add(lastQa);
         openDwgFolder.Text="Open DWG folder";
-        openDwgFolder.SetBounds(18,287,151,30);
-        openDwgFolder.Enabled=false;
         openDwgFolder.Click+=(_,_)=>OpenGeneratedOutput(false);
-        orthoTab.Controls.Add(openDwgFolder);
         openResult.Text="Open RESULT.txt";
-        openResult.SetBounds(179,287,151,30);
-        openResult.Enabled=false;
         openResult.Click+=(_,_)=>OpenGeneratedOutput(true);
-        orthoTab.Controls.Add(openResult);
         copyQa.Text="Copy QA summary";
-        copyQa.SetBounds(340,287,165,30);
-        copyQa.Enabled=false;
         copyQa.Click+=(_,_)=>CopySelectedQa();
-        orthoTab.Controls.Add(copyQa);
         openDwg.Text="Open DWG";
         openDwg.Name="SPTC_OPEN_DWG_79";
-        openDwg.SetBounds(521,287,155,30);
-        openDwg.Enabled=false;
         openDwg.Click+=(_,_)=>OpenSelectedDwg();
-        orthoTab.Controls.Add(openDwg);
+        openDwg.Enabled=openDwgFolder.Enabled=openResult.Enabled=copyQa.Enabled=false;
+        AddRows(results,Caption("Generated drawings"),generatedHistory,qaIndicator,lastQa,
+            ActionRow(openDwg,openDwgFolder,openResult,copyQa));
 
-        outputMode.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
+        outputMode.SelectionChanged+=(_,_)=>UpdateOutputModeUi();
         batch.CheckedChanged+=(_,_)=>UpdateOutputModeUi();
-        scale.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
         customScale.ValueChanged+=(_,_)=>UpdateOutputModeUi();
         tabs.SelectedIndexChanged+=(_,_)=>UpdateOutputModeUi();
-        autoSeed.CheckedChanged+=(_,_)=>UpdateOutputModeUi();
         seed.TextChanged+=(_,_)=>UpdateOutputModeUi();
         prefix.TextChanged+=(_,_)=>UpdateOutputModeUi();
-        autoDimLinear.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
-        referenceDimensions.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
-        line.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
-        bop.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
-        tos.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
-        description.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
-        xrefNames.CheckedChanged+=(_,_)=>UpdateSectionSummaries();
-        cubeMode.SelectedIndexChanged+=(_,_)=>UpdateSectionSummaries();
-        hiddenLineMode.SelectedIndexChanged+=(_,_)=>UpdateSectionSummaries();
-        insulationMode.SelectedIndexChanged+=(_,_)=>UpdateSectionSummaries();
-
-        // REV77: all settings scroll in their own Ortho tab. The user
-        // can collapse any section without losing its values.
-        BuildCollapsibleSections(orthoTab,
-            new Control[]{modeLabel,cubeMode,scaleLabel,scale,
-                customLabel,customScale,prefixLabel,prefix,
-                autoSeed,seed,browse},
-            new Control[]{vLabel,views,selectedViewCount,all,six,four,none},
-            new Control[]{outputLabel,outputMode,outputHint,batch,notice,
-                quickDraft,quickPhysical,readinessHint,
-                hiddenLineLabel,hiddenLineMode,insulationLabel,insulationMode},
-            new Control[]{qaHeader,generatedHistory,qaIndicator,lastQa,
-                openDwgFolder,openResult,copyQa,openDwg},
-            new Control[]{autoDimLinear,referenceDimensions},
-            new Control[]{aLabel,line,bop,tos,description,xrefNames},
-            new Control[]{settingsCaption,saveSettings,loadSettings,
-                resetSettings,productionSettings,privacy});
-        InstallUiGuidance(orthoTab);
+        InstallUiGuidance();
 
         stickySummary.Name="SPTC_FOOTER_SUMMARY_79";
         stickySummary.Font=new Font("Segoe UI",9f,FontStyle.Bold);
@@ -581,120 +365,105 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // or source geometry can be replayed.
         LoadProjectPreferences(showFeedback:false);
         UpdateOutputModeUi();
-        ResizeResponsivePalette();
     }
 
-    // REV77: section headers reflow inside the existing Ortho-tab's
-    // AutoScroll viewport. Reparenting existing WinForms controls leaves
-    // their handlers, input state, settings and command contracts intact.
-    private void BuildCollapsibleSections(TabPage tab,
-        Control[] sourceFields,Control[] nativeViews,
-        Control[] outputFields,Control[] qaFields,
-        Control[] dimensions,Control[] annotations,
-        Control[] preferences)
+    private TableLayoutPanel AddSettingsPage(string key,string caption)
     {
-        // Compact each independent group without touching its values.
-        outputFields[0].SetBounds(18,8,316,24);
-        outputFields[1].SetBounds(18,40,333,29);
-        outputFields[2].SetBounds(368,30,352,63);
-        outputFields[3].SetBounds(18,91,330,45);
-        outputFields[4].SetBounds(368,99,350,31);
-        outputFields[5].SetBounds(18,153,166,30);
-        outputFields[6].SetBounds(196,153,166,30);
-        outputFields[7].SetBounds(18,198,686,26);
-        outputFields[8].SetBounds(18,238,325,23);
-        outputFields[9].SetBounds(18,266,333,29);
-        outputFields[10].SetBounds(368,238,336,23);
-        outputFields[11].SetBounds(368,266,352,29);
-        dimensions[0].SetBounds(18,8,390,27);
-        dimensions[1].SetBounds(18,43,415,31);
-        annotations[0].SetBounds(18,8,306,24);
-        for(int i=1;i<=4;i++)
-            annotations[i].SetBounds(18,11+i*28,370,24);
-        annotations[5].SetBounds(18,151,427,29);
-        preferences[0].SetBounds(18,8,520,24);
-        preferences[1].SetBounds(18,40,130,30);
-        preferences[2].SetBounds(158,40,120,30);
-        preferences[3].SetBounds(289,40,108,30);
-        preferences[4].SetBounds(409,40,220,30);
-        preferences[5].SetBounds(18,84,700,24);
-
-        AddCollapsibleSection(tab,"1. Source, Scale & Seed",true,sourceFields);
-        AddCollapsibleSection(tab,"2. Choose Native Views",true,nativeViews);
-        AddCollapsibleSection(tab,"3. Drawing Output",true,outputFields);
-        AddCollapsibleSection(tab,"Generation History & QA",false,qaFields);
-        AddCollapsibleSection(tab,"Dimensions",false,dimensions);
-        AddCollapsibleSection(tab,"Annotations & XREF",false,annotations);
-        AddCollapsibleSection(tab,"Project Settings",false,preferences);
-        ReflowSections(tab);
+        var orthoTab=new TabPage(caption){Name=key,AutoScroll=true,UseVisualStyleBackColor=true};
+        var rows=new TableLayoutPanel {
+            Dock=DockStyle.Top, AutoSize=true, AutoSizeMode=AutoSizeMode.GrowAndShrink,
+            ColumnCount=1, RowCount=0, Padding=new Padding(12,8,12,8),
+            BackColor=SystemColors.Window, GrowStyle=TableLayoutPanelGrowStyle.AddRows
+        };
+        rows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        rows.SizeChanged+=(_,_)=>{
+            var extent=new Size(0,rows.Height);
+            if(orthoTab.AutoScrollMinSize!=extent)orthoTab.AutoScrollMinSize=extent;
+        };
+        orthoTab.Controls.Add(rows);
+        settingsPages.TabPages.Add(orthoTab);
+        return rows;
     }
 
-    // REV78: guided discovery of essential fields and a safe, explicit
-    // shortcut for the already-supported native ten-view draft flow.
-    // No project coordinates, model paths or drawing dimensions are used.
-    private void InstallUiGuidance(TabPage tab)
+    private static void AddRows(TableLayoutPanel table,params Control[] fields)
     {
-        essentialsButton.Name="SPTC_SHOW_BASICS_78";
-        essentialsButton.Text="Show essentials";
-        essentialsButton.SetBounds(8,7,159,31);
-        essentialsButton.Click+=(_,_)=>SetSectionVisibility(
-            tab,showAdvanced:false);
-        tab.Controls.Add(essentialsButton);
+        table.SuspendLayout();
+        foreach(var field in fields)
+        {
+            int row=table.RowCount++;
+            table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            field.Dock=DockStyle.Top;
+            field.TabIndex=row;
+            field.Margin=new Padding(0,3,0,6);
+            if(field is Label label)label.AutoSize=true;
+            if(field is CheckBox check)check.AutoSize=true;
+            table.Controls.Add(field,0,row);
+        }
+        table.ResumeLayout(true);
+    }
 
-        allSettingsButton.Name="SPTC_SHOW_ALL_78";
-        allSettingsButton.Text="Show all settings";
-        allSettingsButton.SetBounds(181,7,164,31);
-        allSettingsButton.Click+=(_,_)=>SetSectionVisibility(
-            tab,showAdvanced:true);
-        tab.Controls.Add(allSettingsButton);
+    private Label Caption(string text)=>new() {
+        Text=text,AutoSize=true,Font=new Font(Font,FontStyle.Bold),ForeColor=SystemColors.ControlText
+    };
 
-        uiTips.SetToolTip(essentialsButton,
-            "Show Source, Views and Output. Your hidden settings are preserved.");
-        uiTips.SetToolTip(allSettingsButton,
-            "Expand all sections to review dimensions, annotations and project settings.");
-        uiTips.SetToolTip(cubeMode,
+    private static FlowLayoutPanel ActionRow(params Button[] buttons)
+    {
+        var row=new FlowLayoutPanel {
+            AutoSize=true, AutoSizeMode=AutoSizeMode.GrowAndShrink,
+            WrapContents=true, Margin=Padding.Empty, TabStop=false
+        };
+        foreach(var button in buttons)
+        {
+            button.AutoSize=true;
+            button.AutoSizeMode=AutoSizeMode.GrowAndShrink;
+            button.Padding=new Padding(6,2,6,2);
+            button.Margin=new Padding(0,0,7,4);
+            row.Controls.Add(button);
+        }
+        return row;
+    }
+
+    private void InstallUiGuidance()
+    {
+        void Tip(Control control,string description)
+        {
+            uiTips.SetToolTip(control,description);
+            if(control is SupportDrawingChoiceGroup group)
+                foreach(Control choice in group.Controls)uiTips.SetToolTip(choice,description);
+        }
+        uiTips.SetToolTip(sourceLabel,sourceLabel.Text);
+        Tip(cubeMode,
             "SupportFocus limits the native OrthoCube around the selected support.");
-        uiTips.SetToolTip(scale,
+        Tip(scale,
             "Automatic allows standard output; Draft and Multiple Sheets require an explicit 1:N.");
-        uiTips.SetToolTip(customScale,
+        Tip(customScale,
             "Enter the exact 1:N denominator. It is not a paper dimension.");
-        uiTips.SetToolTip(autoSeed,
+        Tip(autoSeed,
             "Use an empty Ortho seed already registered in this Plant 3D project.");
-        uiTips.SetToolTip(prefix,
+        Tip(prefix,
             "Optional filename prefix. Leave blank to use native automatic naming.");
-        uiTips.SetToolTip(outputMode,
+        Tip(outputMode,
             "Printable sheet, single-DWG Draft Overflow, or split sheets without changing scale.");
-        uiTips.SetToolTip(hiddenLineMode,
+        Tip(hiddenLineMode,
             "Sets the hidden-line mode as Plant generates each selected view. Edit View reads the mode saved with that view.");
-        uiTips.SetToolTip(insulationMode,
+        Tip(insulationMode,
             "Sets the native Ortho insulation mode for generation. Plant shares this setting across views. Visible insulation requires insulated model parts.");
-        uiTips.SetToolTip(quickDraft,
+        Tip(quickDraft,
             "Select all ten views and Draft Overflow; keep your selected exact drawing scale.");
-        uiTips.SetToolTip(quickPhysical,
+        Tip(quickPhysical,
             "Return to normal printable-sheet constraints without changing your view choices.");
-        uiTips.SetToolTip(batch,
+        Tip(batch,
             "Run sequentially for support BLOCK references. Incompatible with Draft and Split.");
-        uiTips.SetToolTip(xrefNames,
+        Tip(xrefNames,
             "Annotate nearby verified XREF structural/support members with source drawing names.");
-        uiTips.SetToolTip(generatedHistory,
+        Tip(generatedHistory,
             "Select any DWG from this project's current session to inspect its RESULT.txt.");
-        uiTips.SetToolTip(copyQa,
+        Tip(copyQa,
             "Copy only the chosen DWG's measured QA summary to the clipboard.");
-        uiTips.SetToolTip(preflightButton,
+        Tip(preflightButton,
             "Review current selections. Physical page fit is verified during generation.");
-        uiTips.SetToolTip(runButton,
+        Tip(runButton,
             "Start the existing AutoCAD command using exactly the selected options.");
-    }
-
-    private void SetSectionVisibility(TabPage tab,bool showAdvanced)
-    {
-        if(IsRunning)return;
-        // First three sections are the primary drawing workflow.
-        // On the basics layout, retain results when outputs exist.
-        for(int i=0;i<uiSections.Count;i++)
-            uiSections[i].Expanded=showAdvanced||i<3||
-                (i==3&&outputHistory.Count>0);
-        ReflowSections(tab);
     }
 
     private void PrepareDraftViews()
@@ -703,256 +472,15 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         SetViewPreset("All");
         batch.Checked=false;
         outputMode.SelectedIndex=(int)SupportDrawingOutputMode76.Mode.Draft;
-        var tab=tabs.TabPages.Cast<TabPage>()
-            .First(p=>p.Name=="ortho");
-        uiSections[0].Expanded=true;
-        uiSections[1].Expanded=true;
-        uiSections[2].Expanded=true;
-        ReflowSections(tab);
         UpdateOutputModeUi();
         // An explicit scale is a user decision, never silently changed.
         int denominator=SupportDrawingPaperScale39.Resolve(
-            scale.Text,(int)customScale.Value);
+            scale.SelectedValue,(int)customScale.Value);
         SetStatus(denominator>0?
             "Draft configured: All 10 / 1:"+denominator+
             ". PDF remains disabled for off-sheet drawings. Click Preflight to review.":
             "All 10 Draft selected. Choose an exact 1:N scale "+
             "before Run (Automatic is not valid for Draft Overflow).");
-    }
-
-    private void AddCollapsibleSection(TabPage tab,string name,
-        bool expanded,params Control[] children)
-    {
-        var section=new CollapsibleSection{Expanded=expanded,Fields=children};
-        int left=children.Min(c=>c.Left);
-        int top=children.Min(c=>c.Top);
-        section.BodyHeight=children.Max(c=>c.Bottom)-top+14;
-        section.Frame.Width=737;
-        section.Frame.BackColor=Color.White;
-        section.Frame.BorderStyle=BorderStyle.FixedSingle;
-        section.Header.FlatStyle=FlatStyle.Flat;
-        section.Header.FlatAppearance.BorderSize=0;
-        section.Header.Font=new Font("Segoe UI",9f,FontStyle.Bold);
-        section.Header.TextAlign=ContentAlignment.MiddleLeft;
-        section.Header.AutoEllipsis=true;
-        section.Header.BackColor=Color.FromArgb(236,242,248);
-        section.Header.SetBounds(0,0,734,33);
-        section.Body.SetBounds(0,35,734,section.BodyHeight);
-        section.Body.BackColor=Color.White;
-        foreach(Control child in children)
-        {
-            int dx=child.Left-left+9;
-            int dy=child.Top-top+5;
-            section.Body.Controls.Add(child);
-            child.Location=new Point(dx,dy);
-            section.WideBounds[child]=child.Bounds;
-        }
-        section.Frame.Controls.Add(section.Header);
-        section.Frame.Controls.Add(section.Body);
-        section.Header.Click+=(_,_)=>{
-            if(IsRunning)return;
-            section.Expanded=!section.Expanded;
-            ReflowSections(tab);
-        };
-        uiSections.Add(section);
-        tab.Controls.Add(section.Frame);
-        section.Header.Tag=name;
-    }
-
-    // REV79: responsive WinForms layout. Each Ortho group stacks its
-    // existing controls when the PaletteSet is docked narrowly.
-    // No new rendering of native view geometry or model measurements.
-    private void ResizeResponsivePalette()
-    {
-        if(IsDisposed||arrangingWorkspace||uiSections.Count!=7)return;
-        int available=scrollingWorkspace.ClientSize.Width;
-        if(available<=0||available==lastWorkspaceWidth)return;
-        arrangingWorkspace=true;
-        try
-        {
-            lastWorkspaceWidth=available;
-            int canvasW=Math.Max(352,available-3);
-            layoutSurface.Width=canvasW;
-            bool narrow=canvasW<735;
-            if(brandingLogo!=null)
-                brandingLogo.SetBounds(narrow?12:18,10,
-                    narrow?111:184,narrow?74:118);
-            headingTitle.SetBounds(narrow?135:222,narrow?17:21,
-                Math.Max(160,canvasW-(narrow?146:237)),33);
-            brandSubtitle.SetBounds(narrow?135:222,narrow?54:57,
-                Math.Max(160,canvasW-(narrow?146:237)),25);
-            sourceLabel.SetBounds(narrow?135:222,narrow?83:94,
-                Math.Max(160,canvasW-(narrow?146:237)),26);
-            tabs.Left=narrow?8:18;
-            tabs.Top=narrow?119:140;
-            tabs.Width=Math.Max(320,canvasW-(narrow?16:36));
-            tabs.Height=layoutSurface.Height-tabs.Top-15;
-            ReflowSections(tabs.TabPages[0]);
-        }
-        finally{arrangingWorkspace=false;}
-    }
-
-    // Restores wide layout after docking/undocking. Wide positions are
-    // captured from actual WinForms controls to retain DPI scaling.
-    private void LayoutSectionFields(int index,CollapsibleSection section,
-        int frameWidth)
-    {
-        int bodyW=Math.Max(280,frameWidth-4);
-        section.Frame.Width=frameWidth;
-        section.Header.Width=frameWidth-2;
-        section.Body.Width=bodyW;
-        bool narrow=frameWidth<720;
-        if(!narrow)
-        {
-            if(section.Narrow)
-            {
-                foreach(Control control in section.Fields)
-                    if(section.WideBounds.TryGetValue(control,
-                        out Rectangle rectangle))
-                        control.Bounds=rectangle;
-            }
-            else
-                foreach(Control control in section.Fields)
-                    section.WideBounds[control]=control.Bounds;
-            section.Narrow=false;
-            section.BodyHeight=section.Fields.Max(c=>c.Bottom)+14;
-            section.Body.Height=section.BodyHeight;
-            return;
-        }
-        if(!section.Narrow)
-            foreach(Control control in section.Fields)
-                section.WideBounds[control]=control.Bounds;
-        section.Narrow=true;
-        int contentW=Math.Max(240,bodyW-24);
-        int y=9;
-        Control[] f=section.Fields;
-        void Stack(int i,int h)
-        {
-            f[i].SetBounds(9,y,contentW,h);
-            y+=h+7;
-        }
-        void Pair(int a,int b,int h)
-        {
-            int leftW=(contentW-10)/2;
-            int rightW=contentW-leftW-10;
-            f[a].SetBounds(9,y,leftW,h);
-            f[b].SetBounds(9+leftW+10,y,rightW,h);
-            y+=h+8;
-        }
-        switch(index)
-        {
-            case 0:
-                Stack(0,23);Stack(1,29);
-                Stack(2,23);Stack(3,29);
-                if(scale.Text==SupportDrawingPaperScale39.Custom)
-                {
-                    Stack(4,23);Stack(5,29);
-                }
-                Stack(6,23);Stack(7,29);
-                Stack(8,42);Stack(9,29);Stack(10,30);
-                break;
-            case 1:
-                Stack(0,23);Stack(2,23);Stack(1,172);
-                Pair(3,4,31);Pair(5,6,31);
-                break;
-            case 2:
-                Stack(0,23);Stack(1,30);Stack(2,78);
-                Stack(3,53);Stack(4,34);
-                Pair(5,6,32);Stack(7,55);
-                Stack(8,23);Stack(9,30);
-                Stack(10,23);Stack(11,30);
-                break;
-            case 3:
-                Stack(0,24);Stack(1,92);Stack(2,30);
-                Stack(3,117);Pair(4,5,31);Pair(6,7,31);
-                break;
-            case 4:
-                Stack(0,34);Stack(1,44);
-                break;
-            case 5:
-                Stack(0,23);
-                for(int i=1;i<f.Length;i++)Stack(i,34);
-                break;
-            case 6:
-                Stack(0,24);Pair(1,2,32);Pair(3,4,32);
-                Stack(5,58);
-                break;
-        }
-        section.BodyHeight=y+7;
-        section.Body.Height=section.BodyHeight;
-    }
-
-    private string SectionSummary(int index)
-    {
-        int selected=views.CheckedItems.Count;
-        string scaled=scale.SelectedIndex>=0?
-            scale.Text==SupportDrawingPaperScale39.Custom?
-                "1:"+customScale.Value.ToString("0") :scale.Text:"Automatic";
-        return index switch
-        {
-            0=>(cubeMode.SelectedIndex==0?"SupportFocus":"Original")+
-                " · "+scaled+(autoSeed.Checked?" · Auto seed":" · Manual seed"),
-            1=>selected+"/10 views",
-            2=>(SelectedOutputMode() switch {
-                SupportDrawingOutputMode76.Mode.Draft=>"One DWG · Draft / No PDF",
-                SupportDrawingOutputMode76.Mode.Split=>"Multiple sheets · Exact scale",
-                _=>"Single sheet · Fit to paper"})+
-                " · Hidden: "+hiddenLineMode.Text+
-                " · Insulation: "+insulationMode.Text,
-            3=>outputHistory.Count==0?
-                "No results":outputHistory.Count+" generated DWG(s)",
-            4=>autoDimLinear.Checked?
-                "H/V ON · "+(referenceDimensions.Checked?
-                    "Chain + overall":"Per-member"):"H/V OFF",
-            5=>"Line "+(line.Checked?"ON":"OFF")+
-                " · BOP "+(bop.Checked?"ON":"OFF")+
-                " · XREF "+(xrefNames.Checked?"ON":"OFF"),
-            6=>"Local project options",
-            _=>""
-        };
-    }
-
-    private void UpdateSectionSummaries()
-    {
-        for(int i=0;i<uiSections.Count;i++)
-        {
-            var section=uiSections[i];
-            string name=section.Header.Tag?.ToString()??"Settings";
-            string summary=SectionSummary(i);
-            string display=section.Frame.Width<530?
-                name+" · "+(i==2?
-                    SelectedOutputMode()==SupportDrawingOutputMode76.Mode.Draft?
-                        "DRAFT / NO PDF":summary:summary):name+"     |     "+summary;
-            section.Header.Text=(section.Expanded?"[-]  ":"[+]  ")+display;
-            uiTips.SetToolTip(section.Header,name+" — "+summary+
-                ". Click to "+(section.Expanded?"collapse":"expand")+".");
-        }
-    }
-
-    private void ReflowSections(TabPage tab)
-    {
-        if(uiSections.Count!=7)return;
-        tab.SuspendLayout();
-        try
-        {
-            int frameWidth=Math.Max(300,Math.Min(737,tabs.Width-44));
-            int y=47;
-            for(int i=0;i<uiSections.Count;i++)
-            {
-                var section=uiSections[i];
-                LayoutSectionFields(i,section,frameWidth);
-                section.Body.Visible=section.Expanded;
-                section.Frame.Height=section.Expanded?
-                    35+section.BodyHeight:34;
-                section.Frame.Location=new Point(8,y);
-                y+=section.Frame.Height+9;
-            }
-            // Width adapts to actual panel, preventing unnecessary
-            // horizontal scrolling for narrow docked palettes.
-            tab.AutoScrollMinSize=new Size(frameWidth+14,y+10);
-            UpdateSectionSummaries();
-        }
-        finally{tab.ResumeLayout();}
     }
 
     private void ArrangeStickyFooter()
@@ -1002,6 +530,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         orthoFolder=folder;
         sourceLabel.Text="Source: "+Path.GetFileName(sourceDwg)+
             "     |     Project: "+Path.GetFileName(root.TrimEnd('\\','/'));
+        uiTips.SetToolTip(sourceLabel,sourceLabel.Text);
         if(differentProject)
         {
             // An existing modeless palette must never reuse another
@@ -1043,19 +572,15 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         preview.Text=message;
     }
 
-    private static Label L(string text, int x, int y, int w) =>
-        new() {Text = text, Location = new Point(x,y), Size = new Size(w,23)};
-
     private static TabPage MakeInfoTab(string key,string name,string text)
     {
         TabPage tab = new(name) {Name = key};
         tab.Controls.Add(new Label
         {
             Text = text,
-            Location = new Point(24,30),
-            Size = new Size(665,105),
+            Dock = DockStyle.Top, Padding = new Padding(12),
             Font = new Font("Segoe UI",10f),
-            AutoSize = false
+            AutoSize = true
         });
         return tab;
     }
@@ -1077,7 +602,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         var v=SupportDrawingUiPreferences.Validate(saved);
         tabs.SelectedIndex=0;
         cubeMode.SelectedIndex=v.SupportFocus?0:1;
-        scale.SelectedItem=v.ScaleSelection;
+        scale.SelectedValue=v.ScaleSelection;
         customScale.Value=v.CustomScale;
         prefix.Text=v.DrawingPrefix;
         for(int i=0;i<views.Items.Count;i++)
@@ -1095,8 +620,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         // Deliberately NOT persisted: opt-in overflow/splitting resets
         // on project change, Load settings or Restore defaults.
         outputMode.SelectedIndex=0;
-        hiddenLineMode.SelectedItem=v.HiddenLineMode;
-        insulationMode.SelectedItem=v.InsulationMode;
+        hiddenLineMode.SelectedValue=v.HiddenLineMode;
+        insulationMode.SelectedValue=v.InsulationMode;
         // Never persist manual DWG/seed paths.
         autoSeed.Checked=true;
         seed.Text="";
@@ -1108,11 +633,11 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         var chosen=views.CheckedItems.Cast<object>().Select(v=>
             v?.ToString()??"").ToArray();
         return SupportDrawingUiPreferences.Validate(new(
-            scale.Text,(int)customScale.Value,prefix.Text.Trim(),
+            scale.SelectedValue,(int)customScale.Value,prefix.Text.Trim(),
             cubeMode.SelectedIndex==0,chosen,line.Checked,bop.Checked,
             tos.Checked,description.Checked,xrefNames.Checked,
             autoDimLinear.Checked,referenceDimensions.Checked,
-            batch.Checked,hiddenLineMode.Text,insulationMode.Text));
+            batch.Checked,hiddenLineMode.SelectedValue,insulationMode.SelectedValue));
     }
 
     private void SaveProjectPreferences()
@@ -1172,7 +697,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         {
             if(scale.SelectedIndex>=0)
                 denominator=SupportDrawingPaperScale39.Resolve(
-                    scale.Text,(int)customScale.Value);
+                    scale.SelectedValue,(int)customScale.Value);
         }
         catch(ArgumentException){denominator=0;}
         bool isOrtho=tabs.SelectedTab?.Name=="ortho";
@@ -1223,14 +748,6 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         fixSettings.Visible=!IsRunning&&isOrtho&&issue!=null;
         fixSettings.Enabled=fixSettings.Visible;
         runButton.Enabled=!IsRunning&&(!isOrtho||valid);
-        if(uiSections.Count==7)
-        {
-            UpdateSectionSummaries();
-            // Custom scale fields become visible without requiring the
-            // user to undock the responsive palette.
-            if(uiSections[0].Narrow)
-                ReflowSections(tabs.TabPages[0]);
-        }
         ArrangeStickyFooter();
     }
 
@@ -1272,25 +789,27 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         if(IsRunning||tabs.SelectedTab?.Name!="ortho")return;
         int denominator=0;
         try{denominator=SupportDrawingPaperScale39.Resolve(
-            scale.Text,(int)customScale.Value);}
+            scale.SelectedValue,(int)customScale.Value);}
         catch(ArgumentException){/* exact scale validated before Run */}
         Control? target=RequiredSetting(views.CheckedItems.Count,
             denominator,SelectedOutputMode(),true);
         if(target==null)return;
-        int section=target==views?1:target==batch?2:0;
-        var page=tabs.TabPages.Cast<TabPage>()
-            .First(p=>p.Name=="ortho");
-        if(!uiSections[section].Expanded)
-            uiSections[section].Expanded=true;
-        ReflowSections(page);
-        page.ScrollControlIntoView(target);
-        target.Focus();
+        for(Control? parent=target.Parent;parent!=null;parent=parent.Parent)
+            if(parent is TabPage page)
+            {
+                settingsPages.SelectedTab=page;
+                page.ScrollControlIntoView(target);
+                break;
+            }
+        if(target is SupportDrawingChoiceGroup choices)choices.FocusSelection();
+        else target.Focus();
         SetStatus("Fix setting: "+RequiredAction(target));
     }
 
     private void ClearGeneratedOutput()
     {
         outputHistory.Clear();
+        settingsPages.TabPages["results"]!.Text="Results";
         generatedHistory.Items.Clear();
         lastOutputDwg=null;
         lastResultTxt=null;
@@ -1359,15 +878,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
         generatedHistory.Items.Add(savedAt+"  |  "+
             Path.GetFileName(full)+"  |  "+kind);
         generatedHistory.SelectedIndex=outputHistory.Count-1;
-        // Surface the actual result immediately, even if the QA section
-        // was hidden in the simpler essentials-only layout.
-        if(uiSections.Count>3&&!uiSections[3].Expanded)
-        {
-            uiSections[3].Expanded=true;
-            var orthoTab=tabs.TabPages.Cast<TabPage>()
-                .First(p=>p.Name=="ortho");
-            ReflowSections(orthoTab);
-        }
+        settingsPages.TabPages["results"]!.Text="Results ("+outputHistory.Count+")";
     }
 
     // Selection-only read; no mutation of a DWG, source file, project
@@ -1494,7 +1005,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             .Select(v=>v.ToString() ?? "").Where(v=>v.Length>0).ToArray();
         var selectedMode=SelectedOutputMode();
         int d=SupportDrawingPaperScale39.Resolve(
-            scale.Text,(int)customScale.Value);
+            scale.SelectedValue,(int)customScale.Value);
         bool eligible=SupportDrawingOutputMode76.Eligible(
             selectedMode,chosen.Length,d,batch.Checked);
         preview.Text =
@@ -1503,15 +1014,15 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             "1. VIEWS: "+chosen.Length+" / 10 | "+
                 string.Join(", ",chosen)+"\r\n"+
             "2. SCALE: "+SupportDrawingPaperScale39.Display(d)+"\r\n"+
-            "3. OUTPUT: "+outputMode.Text+"\r\n"+
+            "3. OUTPUT: "+outputMode.SelectedValue+"\r\n"+
             "4. SEED: "+(autoSeed.Checked?
                 "Automatic registered empty Ortho seed":seed.Text)+"\r\n"+
             "5. ANNOTATIONS: Line="+line.Checked+
                 " | BOP="+bop.Checked+" | TOS="+tos.Checked+
                 " | Description="+description.Checked+
                 " | XREF Names="+xrefNames.Checked+"\r\n"+
-            "6. HIDDEN LINES: "+hiddenLineMode.Text+"\r\n"+
-            "7. INSULATION: "+insulationMode.Text+"\r\n"+
+            "6. HIDDEN LINES: "+hiddenLineMode.SelectedValue+"\r\n"+
+            "7. INSULATION: "+insulationMode.SelectedValue+"\r\n"+
             "   Each view uses the selected appearance during generation. " +
             "Plant shares the Ortho insulation setting across views.\r\n" +
             "8. DIMENSIONS: "+(autoDimLinear.Checked?
@@ -1564,7 +1075,7 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             try
             {
                 denominator=SupportDrawingPaperScale39.Resolve(
-                    scale.Text,(int)customScale.Value);
+                    scale.SelectedValue,(int)customScale.Value);
             }
             catch(ArgumentException ex)
             {
@@ -1595,8 +1106,8 @@ internal sealed class SupportDrawingManagerForm35 : WinForms.UserControl
             autoDimLinear.Checked,referenceDimensions.Checked,
             SupportDrawingOutputMode76.BypassOneSheetLimit(chosenOutput),
             SupportDrawingOutputMode76.AllowDraftOverflow(chosenOutput),
-            NativeOrthoAppearance83.ValidateHidden(hiddenLineMode.Text),
-            NativeOrthoAppearance83.ValidateInsulation(insulationMode.Text));
+            NativeOrthoAppearance83.ValidateHidden(hiddenLineMode.SelectedValue),
+            NativeOrthoAppearance83.ValidateInsulation(insulationMode.SelectedValue));
         // Modeless palette remains open; dispatch in a fresh AutoCAD
         // command context rather than accessing Editor from this UI callback.
         RunRequested?.Invoke(Settings);
