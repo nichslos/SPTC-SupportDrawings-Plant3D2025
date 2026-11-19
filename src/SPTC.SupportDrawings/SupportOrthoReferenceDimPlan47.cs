@@ -362,6 +362,7 @@ public static class SupportOrthoReferenceDimPlan47
             // together at the END of this view. Horizontal profiles
             // must not greedily block the equally valid vertical ones.
             var profileGroups=new List<SupportOrthoCoordinatedLayout60.Group>();
+            var profileRequests=new Dictionary<string,Request>();
             var profileOptions=new Dictionary<int,(
                 SupportOrthoDimLinearPlan41.Dimension D,
                 Placed P,bool Exact,bool NativeAxis,
@@ -1110,8 +1111,9 @@ public static class SupportOrthoReferenceDimPlan47
                     // group, but do NOT commit a specific line or text
                     // coordinate before both view axes are considered.
                     measuredLocalSpans.Add(length);
-                    profileGroups.Add(new(
-                        (horizontal?"H":"V")+":"+member.Member.Key,
+                    string groupKey=(horizontal?"H":"V")+":"+member.Member.Key;
+                    profileRequests.Add(groupKey,localReq);
+                    profileGroups.Add(new(groupKey,
                         physical!=null?60:verifiedMidpoint?40:20,
                         alternatives));
                 }
@@ -1210,6 +1212,64 @@ public static class SupportOrthoReferenceDimPlan47
                 var coordinated=SupportOrthoCoordinatedLayout60.Solve(
                     profileGroups,Compatible);
                 coordinatedComparisons+=coordinated.CandidateComparisons;
+                if(coordinated.Omitted.Count>0&&profileRequests.Count>0)
+                {
+                    // Two widths may each fit the preferred side yet cross
+                    // one another's extension lines. Retry the opposite face
+                    // with exactly the same two native witnesses.
+                    var original=coordinated.Chosen.ToDictionary(c=>c.Key,c=>c.AlternativeId);
+                    var leaderLegs=callouts?.SelectMany(c=>LeaderLegs(c,labelAdvance)).ToArray()
+                        ??Array.Empty<SupportOrthoDimIntersections58.Segment>();
+                    bool CrossesLeader(Placed p)=>p.Geometry.Witnesses.Any(w=>
+                        leaderLegs.Any(leg=>SupportOrthoDimIntersections58.PerpendicularInteriorCrossing(w,leg)));
+                    var retryGroups=new List<SupportOrthoCoordinatedLayout60.Group>();
+                    foreach(var group in profileGroups)
+                    {
+                        bool retained=original.TryGetValue(group.Key,out int originalId);
+                        var choices=retained
+                            ? new List<SupportOrthoCoordinatedLayout60.Alternative>{new(originalId,0)}
+                            : group.Alternatives.Where(a=>!CrossesLeader(profileOptions[a.Id].P))
+                                .Select(a=>a with {PaperCost=a.PaperCost/100}).ToList();
+                        if(profileRequests.TryGetValue(group.Key,out var request))
+                        {
+                            int basisId=retained?originalId:group.Alternatives[0].Id;
+                            var basis=profileOptions[basisId];
+                            var bounds=request.LocalBounds!.Value;
+                            double middle=request.Horizontal?(bounds.B+bounds.T)/2:(bounds.L+bounds.R)/2;
+                            double previousLine=request.Horizontal?basis.D.LineY:basis.D.LineX;
+                            double sign=previousLine>middle?-1:1;
+                            var alternate=request with {
+                                MidpointWitness=request.Horizontal?basis.D.Ay:basis.D.Ax,
+                                CompactLocalLabel=true,AdaptiveShortLocalLabel=true,OutwardLocalLabel=true
+                            };
+                            var seen=new HashSet<SupportOrthoDimLinearPlan41.Dimension>();
+                            for(int tier=0;tier<4&&seen.Count<8;tier++)
+                            foreach(double offset in SupportOrthoReferenceLayout51.CompactLocalMemberLaneOffsets())
+                            {
+                                if(seen.Count>=8)break;
+                                var candidate=Candidate(camera,assembly,ResolveWitness,alternate,sign,offset,tier);
+                                if(candidate is not {} next||!InnerThanReservedOverall(next.P)||CrossesLeader(next.P)||
+                                   !Fits(next.P,blocks,paper,placed,projected)||
+                                   projected.Any(b=>b!=bounds&&next.P.Line.Intersects(b,.20))||
+                                   placed.Any(p=>p.Horizontal==request.Horizontal&&next.P.Line.Intersects(p.Line,.35))||
+                                   !seen.Add(next.D))continue;
+                                int id=optionId++;
+                                profileOptions.Add(id,(next.D,next.P,basis.Exact,basis.NativeAxis,
+                                    true,true,basis.AxisStation));
+                                if(supplementaryOptionIds.Contains(basisId))supplementaryOptionIds.Add(id);
+                                // Prefer leaving an existing profile in place over any
+                                // combination of smaller paper offsets for the new ones.
+                                double moveCost=retained?2*profileGroups.Count:1;
+                                choices.Add(new(id,moveCost+(offset+tier)/100));
+                            }
+                        }
+                        retryGroups.Add(group with {Alternatives=choices});
+                    }
+                    var retry=SupportOrthoCoordinatedLayout60.Solve(retryGroups,Compatible);
+                    coordinatedComparisons+=retry.CandidateComparisons;
+                    if(retry.Chosen.Count>original.Count&&retry.Omitted.All(key=>!original.ContainsKey(key)))
+                        coordinated=retry;
+                }
                 coordinatedOmitted+=coordinated.Omitted.Count;
                 foreach(var choice in coordinated.Chosen)
                 {
@@ -1741,18 +1801,19 @@ public static class SupportOrthoReferenceDimPlan47
                 c.LabelX-1,c.LabelTop-c.LabelHeight-1,
                 c.LabelX+c.LabelWidth+1,c.LabelTop+1),
                 "ANNOTATION_TEXT_"+kind));
-            double land=c.LabelTop-labelAdvance*.5;
-            zones.Add(new Obstacle(
-                LineZone(c.AnchorX,c.AnchorY,c.LaneX,c.AnchorY),
-                "LEADER_"+kind));
-            zones.Add(new Obstacle(
-                LineZone(c.LaneX,c.AnchorY,c.LaneX,land),
-                "LEADER_"+kind));
-            zones.Add(new Obstacle(
-                LineZone(c.LaneX,land,c.LabelX-1,land),
-                "LEADER_"+kind));
+            foreach(var leg in LeaderLegs(c,labelAdvance))
+                zones.Add(new Obstacle(LineZone(leg.Ax,leg.Ay,leg.Bx,leg.By),"LEADER_"+kind));
         }
         return zones;
+    }
+
+    private static IEnumerable<SupportOrthoDimIntersections58.Segment> LeaderLegs(
+        SupportOrthoMemberCalloutPlan27.Callout c,double labelAdvance)
+    {
+        double land=c.LabelTop-labelAdvance*.5;
+        yield return new(c.AnchorX,c.AnchorY,c.LaneX,c.AnchorY);
+        yield return new(c.LaneX,c.AnchorY,c.LaneX,land);
+        yield return new(c.LaneX,land,c.LabelX-1,land);
     }
 
     private static SupportOrthoSmartDimPlan46.Rect LineZone(

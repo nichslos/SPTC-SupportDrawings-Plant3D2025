@@ -152,6 +152,7 @@ Assert(twinPlan.Dimensions.Count==1 &&
     "identical vertical overall-height dimensions remain compact");
 Rev89MemberProjectionTests.Run();
 UnequalMemberSpanTests.Run();
+CrossingMemberProfileTests.Run();
 Rev244AllViewTests.Run();
 Rev246SmartLayoutTests.Run();
 Rev247ReferenceStyleTests.Run();
