@@ -33,6 +33,9 @@ public static class SupportOrthoDrawingQualityAudit61
         int WrittenCountMismatches,IReadOnlyList<Issue> Issues)
     {
         public int ReviewIssues => Issues.Count;
+        public int ExpectedEndpointComponents {get;init;}
+        public int CoveredEndpointComponents {get;init;}
+        public IReadOnlyList<string> EndOnViews {get;init;}=Array.Empty<string>();
     }
 
     public static Result Review(
@@ -42,7 +45,8 @@ public static class SupportOrthoDrawingQualityAudit61
         IReadOnlyList<string>? plannerSkipped,
         double unitsToMm,bool referenceStyle=true,
         int? writtenCount=null,
-        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeEdges=null)
+        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeEdges=null,
+        IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? sources=null)
     {
         if(cameras==null||members==null||dimensions==null||
            !double.IsFinite(unitsToMm)||unitsToMm<=0||
@@ -85,20 +89,50 @@ public static class SupportOrthoDrawingQualityAudit61
             Flag("NO_NATIVE_MEMBER_EVIDENCE","SHEET",
                 "No selected host-DWG structural/support member.");
 
+        int endpointExpected=0,endpointCovered=0;
+        var endOn=new List<string>();
+        var inspected=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var unresolved=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var measurable=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // Use the same projected native structure envelope and
         // viewport visibility boundary as the REV22.47 planner.
         // Do not count unseen members or XREFs toward a required
         // overall dimension.
         foreach(var c in validCameras)
         {
-            var visible=eligible.Where(m=>FiniteMember(m))
-                .Select(m=>Project(c,m))
-                .Where(r=>r.IsFinite&&
-                    r.L>=c.X-c.W*.5+1.4-.05&&
-                    r.R<=c.X+c.W*.5-1.4+.05&&
-                    r.B>=c.Y-c.H*.5+1.4-.05&&
-                    r.T<=c.Y+c.H*.5-1.4+.05)
+            var visibleMembers=eligible.Where(FiniteMember).Select(m=>(Member:m,Bounds:Project(c,m)))
+                .Where(p=>p.Bounds.IsFinite&&
+                    p.Bounds.L>=c.X-c.W*.5+1.4-.05&&p.Bounds.R<=c.X+c.W*.5-1.4+.05&&
+                    p.Bounds.B>=c.Y-c.H*.5+1.4-.05&&p.Bounds.T<=c.Y+c.H*.5-1.4+.05)
                 .ToArray();
+            var visible=visibleMembers.Select(p=>p.Bounds).ToArray();
+            if(sources!=null)
+            {
+                var axes=SupportOrthoProjectedAxis.InView(c,sources,visibleMembers);
+                var inView=dimensions.Where(d=>d.View.Equals(c.Name,StringComparison.OrdinalIgnoreCase)).ToArray();
+                foreach(var member in visibleMembers.Where(p=>p.Member.Kind=="STRUCTURE"))
+                {
+                    string key=member.Member.Key;
+                    inspected.Add(key);
+                    if(!axes.TryGetValue(key,out var axis))
+                    {
+                        if(unresolved.Add(key))Flag("MEMBER_ENDPOINTS_UNVERIFIED",c.Name,key);
+                        continue;
+                    }
+                    bool any=false;
+                    foreach(bool h in new[]{true,false})
+                    {
+                        if(!axis.HasComponent(h,unitsToMm/c.Scale))continue;
+                        any=true;
+                        endpointExpected++;
+                        if(inView.Any(d=>axis.Along(h).ShownBy(d,h)))endpointCovered++;
+                        else Flag("MISSING_MEMBER_LENGTH",c.Name,c.Name+"/"+key+
+                            SupportOrthoProjectedAxis.UnplacedLength+(h?"H":"V"));
+                    }
+                    if(any)measurable.Add(key);
+                    else endOn.Add(c.Name+"/"+key);
+                }
+            }
             if(visible.Length==0)
             {
                 Flag("NO_VISIBLE_VERIFIED_NATIVE_MEMBER",c.Name,
@@ -158,6 +192,13 @@ public static class SupportOrthoDrawingQualityAudit61
             }
         }
 
+        if(sources!=null&&validCameras.Length>0)
+            foreach(var m in eligible.Where(m=>m.Kind=="STRUCTURE"))
+            {
+                if(!inspected.Contains(m.Key))Flag("MEMBER_OUTSIDE_SELECTED_VIEWS","SHEET",m.Key);
+                else if(!measurable.Contains(m.Key)&&!unresolved.Contains(m.Key))
+                    Flag("MEMBER_END_ON_IN_ALL_SELECTED_VIEWS","SHEET",m.Key);
+            }
         var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var examined=new List<(SupportOrthoDimLinearPlan41.Dimension D,
             SupportOrthoDimIntersections58.Shape Geometry)>();
@@ -279,7 +320,8 @@ public static class SupportOrthoDrawingQualityAudit61
         }
         var omissions=plannerSkipped??Array.Empty<string>();
         foreach(string omission in omissions.Where(s=>
-            s.Contains(SupportOrthoProjectedAxis.UnplacedLength,StringComparison.Ordinal)))
+            s.Contains(SupportOrthoProjectedAxis.UnplacedLength,StringComparison.Ordinal)&&
+            !issues.Any(i=>i.Code=="MISSING_MEMBER_LENGTH"&&i.Description==s)))
             Flag("MISSING_MEMBER_LENGTH",omission.Split('/')[0],omission);
         int optional=omissions
             .Count(s=>s.Contains(
@@ -298,7 +340,9 @@ public static class SupportOrthoDrawingQualityAudit61
         // integrity are. No page-wide throw for a missing optional 50.
         return new Result(issues.Count==0?"PASS":"REVIEW",
             expected,present,missing,duplicates,incorrect,
-            unverified,intersections,optional,writeMismatch,issues);
+            unverified,intersections,optional,writeMismatch,issues) {
+            ExpectedEndpointComponents=endpointExpected,CoveredEndpointComponents=endpointCovered,
+            EndOnViews=endOn};
     }
 
     private static SupportOrthoSmartDimPlan46.Rect TextBox(

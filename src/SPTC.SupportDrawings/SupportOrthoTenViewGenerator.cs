@@ -2632,7 +2632,7 @@ public sealed class SupportOrthoTenViewGenerator
                     Log("REV22_48_NATIVE_MEMBER_DIMENSION_SOURCES="+
                         nativeDimensionMembers.Length);
                     Log("REV22_48_NATIVE_ENDPOINT_DIMENSION_SOURCES="+
-                        nativeDimensionSegments.Length);
+                        nativeDimensionSegments.Count(s=>SupportOrthoNativeDimensionPolicy48.VerifiedEndpoints(s.Provenance)));
                     var verifiedSegments=nativeDimensionSegments
                         .Select(segment=>new SupportOrthoDimLinearPlan41.Segment(
                             segment.Key,segment.Kind,
@@ -2936,7 +2936,7 @@ public sealed class SupportOrthoTenViewGenerator
                         dimCameras,nativeDimensionMembers,
                         dimensionPlan.Dimensions,dimensionPlan.Skipped,
                         units,options.ReferenceDetailDimensions,
-                        nativeEdges:nativeEdges59.Edges);
+                        nativeEdges:nativeEdges59.Edges,sources:verifiedSegments);
                     // REV62: four ISO camera presets are geometrically valid
                     // but have no independent H/V DIMLINEAR obligations.
                     // Audit still requires native member evidence, valid
@@ -2947,6 +2947,10 @@ public sealed class SupportOrthoTenViewGenerator
                         (isoOnly62?"ISO_ONLY_NO_HV_AXES":
                             "ORTHOGRAPHIC_HV_REQUIRED"));
                     Log("REV22_61_QA_PREWRITE="+qaBefore.Status);
+                    Log("MEMBER_ENDPOINT_COMPONENTS="+qaBefore.CoveredEndpointComponents+
+                        "/"+qaBefore.ExpectedEndpointComponents);
+                    foreach(string projection in qaBefore.EndOnViews)
+                        Log("MEMBER_ENDPOINTS_END_ON="+projection);
                     Log("REV22_61_EXPECTED_HV_OVERALLS="+
                         qaBefore.ExpectedOverallAxes);
                     Log("REV22_61_PRESENT_HV_OVERALLS="+
@@ -2976,7 +2980,7 @@ public sealed class SupportOrthoTenViewGenerator
                         dimCameras,nativeDimensionMembers,
                         dimensionPlan.Dimensions,dimensionPlan.Skipped,
                         units,options.ReferenceDetailDimensions,
-                        writtenCount:created,nativeEdges:nativeEdges59.Edges);
+                        writtenCount:created,nativeEdges:nativeEdges59.Edges,sources:verifiedSegments);
                     Log("REV22_61_QA_STATUS="+qaWritten.Status);
                     Log("REV22_61_QA_TOTAL_ISSUES="+
                         qaWritten.ReviewIssues);
@@ -3041,8 +3045,8 @@ public sealed class SupportOrthoTenViewGenerator
                             " TEXT="+dimension.Measurement+
                             " MM PROVENANCE="+dimension.Provenance+
                             " VERIFIED_ENDPOINTS="+
-                                (dimension.Provenance==
-                                    "EXPLICIT_MEMBER_ENDPOINTS"));
+                                (SupportOrthoNativeDimensionPolicy48.VerifiedEndpoints(dimension.Provenance)||
+                                dimension.Provenance==SupportOrthoProjectedAxis.Provenance));
                     Log("REV22_41_DIMENSION_RESULT="+
                         (created==dimensionPlan.Dimensions.Count?
                             "PASS":"PARTIAL"));

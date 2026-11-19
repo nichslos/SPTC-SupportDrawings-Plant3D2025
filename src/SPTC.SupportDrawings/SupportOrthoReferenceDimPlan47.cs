@@ -75,7 +75,8 @@ public static class SupportOrthoReferenceDimPlan47
         bool AdaptiveShortLocalLabel=false,
         bool OutwardLocalLabel=false,
         bool PlateEnvelope=false,
-        SupportOrthoProjectedAxis.Span? AxisSpan=null);
+        SupportOrthoProjectedAxis.Span? AxisSpan=null,
+        SupportOrthoProjectedAxis.Span? SharedWitness=null);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text,
@@ -217,15 +218,34 @@ public static class SupportOrthoReferenceDimPlan47
             bool ObliqueStructure(SupportOrthoAllViewDimPlan44.Member member) =>
                 member.Kind=="STRUCTURE"&&nativeAxisMidpoints.TryGetValue(
                     member.Key,out var axis)&&axis.IsOblique;
-            var axialMembers=projectedMembers.Where(m=>m.Member.Kind=="STRUCTURE"&&
-                    nativeAxisMidpoints.TryGetValue(m.Member.Key,out var a)&&!a.IsOblique)
-                .Select(m=>
-                {
-                    var a=nativeAxisMidpoints[m.Member.Key];
-                    bool horizontal=Math.Abs(a.Dx)>Math.Abs(a.Dy);
-                    return (m.Member.Key,m.Bounds,Horizontal:horizontal,Span:a.Along(horizontal));
-                }).Where(m=>m.Span.To-m.Span.From>=.25)
-                .OrderBy(m=>m.Key,StringComparer.OrdinalIgnoreCase).ToArray();
+            // Record requirements by member, axis and both projected points.
+            // Members with coincident projections can share one witness pair.
+            var requiredSpans=projectedMembers.Where(m=>m.Member.Kind=="STRUCTURE"&&
+                    nativeAxisMidpoints.ContainsKey(m.Member.Key))
+                .OrderBy(m=>m.Member.Key,StringComparer.OrdinalIgnoreCase)
+                .SelectMany(m=>new[]{true,false}
+                    .Where(h=>nativeAxisMidpoints[m.Member.Key].HasComponent(h,unitsToMm/camera.Scale))
+                    .Select(h=>(m.Member.Key,m.Bounds,Horizontal:h,
+                        Span:nativeAxisMidpoints[m.Member.Key].Along(h)))).ToArray();
+            // An oblique member has its own two projected components.
+            // Mixing their stations with a second, detached brace would
+            // create a chain between unrelated ends and consume its lanes.
+            var chainWitnessPoints=projectedMembers.Where(p=>!ObliqueStructure(p.Member)&&
+                    nativeAxisMidpoints.ContainsKey(p.Member.Key)).Select(p=>nativeAxisMidpoints[p.Member.Key])
+                .SelectMany(p=>new[]{p.Start,p.End}).ToArray();
+            var axialMembers=requiredSpans.Where(m=>!nativeAxisMidpoints[m.Key].IsOblique).ToArray();
+
+            // When an overall or a chain measures precisely these stations,
+            // attach its two extension lines to a single real member if possible.
+            Request AttachSharedWitness(Request request,double sign)
+            {
+                var match=requiredSpans.Where(m=>m.Horizontal==request.Horizontal&&
+                        Math.Abs(m.Span.From-request.From)<1e-7&&
+                        Math.Abs(m.Span.To-request.To)<1e-7)
+                    .OrderByDescending(m=>sign*(m.Span.FirstWitness+m.Span.LastWitness))
+                    .Select(m=>(SupportOrthoProjectedAxis.Span?)m.Span).FirstOrDefault();
+                return request with {SharedWitness=match};
+            }
             var deferredRemainders=new List<Request>();
 
             // Actual points on sloping members can attain different ends of
@@ -301,6 +321,7 @@ public static class SupportOrthoReferenceDimPlan47
                 foreach(double sign in PreferredSigns(camera.Name,horizontal))
                 {
                     if(found)break;
+                    var anchored=AttachSharedWitness(request,sign);
                     // A second 4.2 mm empty lane is NOT required when
                     // no chain occupies it. On RIGHT the LEFT VIEW
                     // annotation gutter ends just before this band,
@@ -316,7 +337,7 @@ public static class SupportOrthoReferenceDimPlan47
                         for(int tier=0;tier<20;tier++)
                         {
                             var candidate=Candidate(camera,assembly,ResolveWitness,
-                                request,sign,offset,tier);
+                                anchored,sign,offset,tier);
                             string? cause=candidate==null?
                                 "NATIVE_WITNESS_UNRESOLVED":
                                 RejectionReason(candidate.Value.P,
@@ -381,7 +402,7 @@ public static class SupportOrthoReferenceDimPlan47
                 }
                 // Verified endpoints only; the bounding-box side
                 // is never sufficient evidence for an internal chain.
-                var stationCandidates=verifiedWitnessPoints
+                var stationCandidates=chainWitnessPoints
                     .Select(p=>horizontal?p.X:p.Y)
                     .Where(at=>at>min+.35&&at<max-.35)
                     .Select(at=>new Station(at,4)).ToList();
@@ -506,10 +527,11 @@ public static class SupportOrthoReferenceDimPlan47
                             // following 300 mm text even on a clear lane.
                             (SupportOrthoDimLinearPlan41.Dimension D,
                                 Placed P)? candidate=null;
+                            var anchored=AttachSharedWitness(step,sign);
                             for(int tier=0;tier<8;tier++)
                             {
                                 var attempt=Candidate(camera,assembly,ResolveWitness,
-                                    step,sign,offset,tier);
+                                    anchored,sign,offset,tier);
                                 if(attempt!=null&&
                                    !InnerThanReservedOverall(attempt.Value.P))
                                 {
@@ -578,6 +600,7 @@ public static class SupportOrthoReferenceDimPlan47
                 foreach(double sign in PreferredSigns(camera.Name,horizontal))
                 {
                 if(overallPlaced)break;
+                var anchored=AttachSharedWitness(big,sign);
                 foreach(double offset in SupportOrthoReferenceLayout51.LaneOffsets())
                 {
                     double extra=steps.Count>1&&chainPlaced==steps.Count
@@ -592,7 +615,7 @@ public static class SupportOrthoReferenceDimPlan47
                     for(int textTier=0;textTier<10;textTier++)
                     {
                         var candidate=Candidate(camera,assembly,ResolveWitness,
-                            big,sign,offset+extra,textTier);
+                            anchored,sign,offset+extra,textTier);
                         if(candidate==null||
                            !Fits(candidate.Value.P,blocks,paper,placed,
                                 projected))
@@ -1118,35 +1141,137 @@ public static class SupportOrthoReferenceDimPlan47
                         alternatives));
                 }
             }
-            // Add optional dimensions after reserving overall and chain lanes.
-            // A plate contributes its envelope. A sloping member contributes
-            // the two components of its verified Start/End vector in this view.
-            foreach(var item in projectedMembers
-                .Where(m=>m.Member.Kind=="PLATE"||ObliqueStructure(m.Member))
-                .OrderByDescending(m=>m.Member.Kind=="PLATE")
-                .ThenBy(m=>m.Member.Key,StringComparer.OrdinalIgnoreCase))
+            // Reserve space for verified endpoint components before optional
+            // profile widths. There is no limit on the number of member requests.
+            (SupportOrthoDimLinearPlan41.Dimension D,Placed P)? FindClearDetail(
+                Request request,IEnumerable<double> offsets,Placed[]? protectedProfiles=null)
+            {
+                bool horizontal=request.Horizontal;
+                double preferred=SupportOrthoReferenceLayout51.PreferredSide(camera.Name,horizontal);
+                foreach(double offset in offsets)
+                foreach(double sign in new[]{preferred,-preferred})
+                for(int tier=0;tier<5;tier++)
+                {
+                    var candidate=Candidate(camera,assembly,ResolveWitness,request,sign,offset,tier);
+                    if(candidate is not {} c||!InnerThanReservedOverall(c.P)||
+                        projected.Any(b=>c.P.Line.Intersects(b,.2))||
+                        placed.Any(p=>p.Horizontal==horizontal&&p.Line.Intersects(c.P.Line,.35))||
+                        !Fits(c.P,blocks,paper,placed,projected))continue;
+                    if(protectedProfiles!=null&&
+                        (protectedProfiles.Any(p=>p.Horizontal==horizontal&&p.Line.Intersects(c.P.Line,.35))||
+                         !Fits(c.P,Array.Empty<Obstacle>(),paper,protectedProfiles,projected)))continue;
+                    return c;
+                }
+                return null;
+            }
+            bool Compatible(int first,int second)
+            {
+                var a=profileOptions[first].P;
+                var b=profileOptions[second].P;
+                if(a.Horizontal==b.Horizontal&&
+                   a.Line.Intersects(b.Line,.35))
+                    return false;
+                return RejectionReason(a,Array.Empty<Obstacle>(),
+                    paper,new[]{b},projected)==null;
+            }
+            var preferredProfiles=profileGroups.Count>0&&requiredSpans.Any(m=>
+                !dimensions.Skip(dimensionsAtViewStart).Any(d=>m.Span.ShownBy(d,m.Horizontal)))
+                ?SupportOrthoCoordinatedLayout60.Solve(profileGroups,Compatible).Chosen
+                    .Select(choice=>profileOptions[choice.AlternativeId].P).ToArray()
+                :Array.Empty<Placed>();
+            int endpointStart=placed.Count;
+            foreach(var item in requiredSpans.OrderBy(m=>m.Span.To-m.Span.From))
+            {
+                if(dimensions.Skip(dimensionsAtViewStart).Any(d=>item.Span.ShownBy(d,item.Horizontal)))
+                    continue;
+                requested++;
+                var request=MakeRequest(item.Horizontal,item.Span.From,item.Span.To,false,0,
+                    camera.Scale,unitsToMm) with {SourceKey=item.Key,LocalBounds=item.Bounds,
+                    AxisSpan=item.Span,CompactLocalLabel=true};
+                coordinatedGroups++;
+                var offsets=SupportOrthoReferenceLayout51.LocalMemberLaneOffsets()
+                    .Concat(SupportOrthoReferenceLayout51.AdaptiveLocalMemberLaneOffsets()).Distinct();
+                var matchWithProfiles=preferredProfiles.Length==0?null:
+                    FindClearDetail(request,offsets,preferredProfiles);
+                if((matchWithProfiles??FindClearDetail(request,offsets)) is {} match)
+                {
+                    dimensions.Add(match.D);
+                    placed.Add(match.P);
+                    localCount++;
+                    coordinatedPlaced++;
+                }
+                else coordinatedOmitted++;
+            }
+            if(placed.Count>endpointStart)
+            {
+                var newGeometry=placed.Skip(endpointStart).ToArray();
+                for(int i=profileGroups.Count-1;i>=0;i--)
+                {
+                    var group=profileGroups[i];
+                    var available=group.Alternatives.Where(opt=>{
+                        var p=profileOptions[opt.Id].P;
+                        return !newGeometry.Any(q=>q.Horizontal==p.Horizontal&&q.Line.Intersects(p.Line,.35))&&
+                            Fits(p,Array.Empty<Obstacle>(),paper,newGeometry,projected);
+                    }).ToList();
+                    if(available.Count==0&&profileRequests.TryGetValue(group.Key,out var profile))
+                    {
+                        // A width outside both ends can cross one of the new
+                        // length witnesses on either side. Draw it at its actual
+                        // cross-section with the text beyond the section edge.
+                        var basis=profileOptions[group.Alternatives[0].Id];
+                        var rect=profile.LocalBounds!.Value;
+                        bool h=profile.Horizontal;
+                        double witness=h?basis.D.Ay:basis.D.Ax;
+                        double minimum=h?rect.B:rect.L,maximum=h?rect.T:rect.R;
+                        var request=profile with {MidpointWitness=witness,CompactLocalLabel=true,
+                            AdaptiveShortLocalLabel=true,OutwardLocalLabel=true};
+                        foreach(double sign in new[]{1d,-1d})
+                        foreach(double inset in new[]{0d,1d,2d})
+                        {
+                            double line=witness+sign*inset;
+                            if(line<minimum||line>maximum)continue;
+                            double offset=sign>0?line-maximum:minimum-line;
+                            for(int tier=0;tier<4;tier++)
+                            {
+                                if(Candidate(camera,assembly,ResolveWitness,request,sign,offset,tier) is not {} option||
+                                    !InnerThanReservedOverall(option.P)||
+                                    !Fits(option.P,blocks,paper,placed,projected)||
+                                    placed.Any(q=>q.Horizontal==h&&q.Line.Intersects(option.P.Line,.35))||
+                                    projectedMembers.Any(m=>m.Member.Key!=profile.SourceKey&&
+                                        option.P.Line.Intersects(m.Bounds,.20)))continue;
+                                int id=optionId++;
+                                profileOptions.Add(id,(option.D,option.P,basis.Exact,basis.NativeAxis,true,true,basis.AxisStation));
+                                if(supplementaryOptionIds.Contains(group.Alternatives[0].Id))supplementaryOptionIds.Add(id);
+                                available.Add(new(id,inset+tier));
+                            }
+                        }
+                    }
+                    if(available.Count>0)profileGroups[i]=group with {Alternatives=available};
+                    else
+                    {
+                        profileGroups.RemoveAt(i);
+                        coordinatedGroups++;
+                        coordinatedOmitted++;
+                        skipped.Add(camera.Name+"/"+group.Key+":REV22_60_OPTIONAL_PROFILE_NO_COMPATIBLE_LAYOUT");
+                    }
+                }
+            }
+
+            // Plates use separate transverse envelope dimensions.
+            foreach(var item in projectedMembers.Where(m=>m.Member.Kind=="PLATE")
+                .OrderBy(m=>m.Member.Key,StringComparer.OrdinalIgnoreCase))
             foreach(bool horizontal in new[]{true,false})
             {
-                bool plate=item.Member.Kind=="PLATE";
                 string direction=horizontal?"H":"V";
-                string detail=plate?"PLATE82":"MEMBER_AXIS";
-                SupportOrthoProjectedAxis.Span? endpoints=plate?null:
-                    nativeAxisMidpoints[item.Member.Key].Along(horizontal);
-                double from=endpoints?.From??(horizontal?item.Bounds.L:item.Bounds.B);
-                double to=endpoints?.To??(horizontal?item.Bounds.R:item.Bounds.T);
+                const string detail="PLATE82";
+                double from=horizontal?item.Bounds.L:item.Bounds.B;
+                double to=horizontal?item.Bounds.R:item.Bounds.T;
                 if(to-from<.25)
                 {
                     skipped.Add(camera.Name+"/"+item.Member.Key+":"+detail+
                         "_"+direction+"_PROJECTED_SPAN_TOO_SMALL");
                     continue;
                 }
-                if(endpoints is {} span&&dimensions.Skip(dimensionsAtViewStart).Any(
-                    d=>d.Horizontal==horizontal&&
-                    Math.Abs((horizontal?d.Ax:d.Ay)-from)<1e-7&&
-                    Math.Abs((horizontal?d.Bx:d.By)-to)<1e-7&&
-                    Math.Abs((horizontal?d.Ay:d.Ax)-span.FirstWitness)<1e-7&&
-                    Math.Abs((horizontal?d.By:d.Bx)-span.LastWitness)<1e-7))
-                    continue;
                 if(profileGroups.Count>=24)
                 {
                     skipped.Add(camera.Name+"/"+item.Member.Key+":"+detail+
@@ -1156,7 +1281,7 @@ public static class SupportOrthoReferenceDimPlan47
                 var localRequest=MakeRequest(horizontal,from,to,false,0,
                     camera.Scale,unitsToMm) with {
                     SourceKey=item.Member.Key,LocalBounds=item.Bounds,
-                    PlateEnvelope=plate,AxisSpan=endpoints,CompactLocalLabel=true
+                    PlateEnvelope=true,CompactLocalLabel=true
                 };
                 var optionsForSpan=new List<
                     SupportOrthoCoordinatedLayout60.Alternative>();
@@ -1180,7 +1305,7 @@ public static class SupportOrthoReferenceDimPlan47
                         int id=optionId++;
                         profileOptions.Add(id,(
                             candidate.Value.D,candidate.Value.P,
-                            false,!plate,true,false,false));
+                            false,false,true,false,false));
                         optionsForSpan.Add(new(
                             id,Math.Min(90,lane*.65+tier*.18+
                                 (sign==preferred?0:15))));
@@ -1194,21 +1319,11 @@ public static class SupportOrthoReferenceDimPlan47
                     continue;
                 }
                 profileGroups.Add(new(direction+":"+detail+":"+item.Member.Key,
-                    plate?75:80,optionsForSpan));
+                    75,optionsForSpan));
             }
             if(profileGroups.Count>0)
             {
                 coordinatedGroups+=profileGroups.Count;
-                bool Compatible(int first,int second)
-                {
-                    var a=profileOptions[first].P;
-                    var b=profileOptions[second].P;
-                    if(a.Horizontal==b.Horizontal&&
-                       a.Line.Intersects(b.Line,.35))
-                        return false;
-                    return RejectionReason(a,Array.Empty<Obstacle>(),
-                        paper,new[]{b},projected)==null;
-                }
                 var coordinated=SupportOrthoCoordinatedLayout60.Solve(
                     profileGroups,Compatible);
                 coordinatedComparisons+=coordinated.CandidateComparisons;
@@ -1349,45 +1464,6 @@ public static class SupportOrthoReferenceDimPlan47
             // A nonzero number here means essential dimensions still
             // collide; the existing writer guard MUST stop generation.
             acceptedIntersections+=audit.RemainingConflicts;
-            // Check the two stations of an axial member against the dimensions
-            // actually accepted in this view. Reserve the existing overall,
-            // chain and profile geometry before looking for a local length.
-            (SupportOrthoDimLinearPlan41.Dimension D,Placed P)? FindClearDetail(
-                Request request,IEnumerable<double> offsets)
-            {
-                bool horizontal=request.Horizontal;
-                double preferred=SupportOrthoReferenceLayout51.PreferredSide(camera.Name,horizontal);
-                foreach(double offset in offsets)
-                foreach(double sign in new[]{preferred,-preferred})
-                for(int tier=0;tier<5;tier++)
-                {
-                    var candidate=Candidate(camera,assembly,ResolveWitness,request,sign,offset,tier);
-                    if(candidate is not {} c||!InnerThanReservedOverall(c.P)||
-                        projected.Any(b=>c.P.Line.Intersects(b,.2))||
-                        placed.Any(p=>p.Horizontal==horizontal&&p.Line.Intersects(c.P.Line,.35))||
-                        !Fits(c.P,blocks,paper,placed,projected))continue;
-                    return c;
-                }
-                return null;
-            }
-            foreach(var item in axialMembers)
-            {
-                if(dimensions.Skip(dimensionsAtViewStart).Any(d=>item.Span.ShownBy(d,item.Horizontal)))
-                    continue;
-                requested++;
-                var request=MakeRequest(item.Horizontal,item.Span.From,item.Span.To,false,0,
-                    camera.Scale,unitsToMm) with {SourceKey=item.Key,LocalBounds=item.Bounds,
-                    AxisSpan=item.Span,CompactLocalLabel=true};
-                coordinatedGroups++;
-                if(FindClearDetail(request,SupportOrthoReferenceLayout51.LocalMemberLaneOffsets()) is {} match)
-                {
-                    dimensions.Add(match.D);
-                    placed.Add(match.P);
-                    localCount++;
-                    coordinatedPlaced++;
-                }
-                else coordinatedOmitted++;
-            }
             foreach(var remainder in deferredRemainders)
             {
                 var offsets=remainder.Horizontal?SupportOrthoReferenceLayout51.LocalChainLaneOffsets():
@@ -1403,7 +1479,7 @@ public static class SupportOrthoReferenceDimPlan47
                     ":TERMINAL_REMAINDER_NO_CLEAR_LANE");
             }
 
-            foreach(var length in axialMembers)
+            foreach(var length in requiredSpans)
                 if(!dimensions.Skip(dimensionsAtViewStart).Any(d=>
                     length.Span.ShownBy(d,length.Horizontal)))
                     skipped.Add(camera.Name+"/"+length.Key+
@@ -1538,13 +1614,14 @@ public static class SupportOrthoReferenceDimPlan47
         // Local member cross-section dimensions must terminate on that
         // particular native member's projected faces, not on the
         // unrelated outer envelope of the whole support assembly.
-        double? startWitness=request.AxisSpan?.FirstWitness??(request.LocalBounds.HasValue?
+        var witnesses=request.AxisSpan??request.SharedWitness;
+        double? startWitness=witnesses?.FirstWitness??(request.LocalBounds.HasValue?
             request.MidpointWitness??(request.Horizontal?
                 (layoutBox.B+layoutBox.T)*.5:
                 (layoutBox.L+layoutBox.R)*.5):
             resolveWitness(request.Horizontal,request.From,sign,
                 !request.Overall&&!request.TerminalRemainder));
-        double? endWitness=request.AxisSpan?.LastWitness??(request.LocalBounds.HasValue?
+        double? endWitness=witnesses?.LastWitness??(request.LocalBounds.HasValue?
             startWitness:resolveWitness(request.Horizontal,request.To,sign,
                 !request.Overall&&!request.TerminalRemainder));
         if(!startWitness.HasValue||!endWitness.HasValue)
