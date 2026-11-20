@@ -71,6 +71,7 @@ internal static class Program
         TestRev78GuidedSetup();
         TestRev79ResponsiveUx();
         TestVisiblePreferencesRoundTrip();
+        TestFullSizeOneDwg();
         Rev83OrthoAppearanceTests.Run();
         Rev88OutputAppearanceTests.Run();
         TestBatchProgressReporting();
@@ -361,6 +362,38 @@ internal static class Program
         Check(run.Enabled&&selected.CheckedItems.Count==10&&paper.SelectedValue=="1:10",
             "changing the palette width preserves the scale and views");
         Console.WriteLine("Responsive palette, live summary and direct Fix setting navigation PASS");
+    }
+
+    private static void TestFullSizeOneDwg()
+    {
+        string root=Path.Combine(Path.GetTempPath(),"SPTC_FULL_SIZE_"+Guid.NewGuid().ToString("N"));
+        string saved=SupportDrawingUiPreferences.StoragePath(root);
+        try
+        {
+            using(var ui=new SupportDrawingManagerForm35(Path.Combine(root,"model.dwg"),root,root))
+            {
+                ui.CreateControl();
+                SelectPage(ui,"setup");
+                var scales=Choice(ui,"SPTC_PAPER_SCALE");
+                var fullSize=scales.Controls.OfType<RadioButton>().Single(c=>c.Text=="1:1");
+                fullSize.PerformClick();
+                Check(scales.SelectedValue=="1:1","full-size radio button selects the exact scale");
+                var project=SelectPage(ui,"project");
+                AllControls(project).OfType<Button>().Single(b=>b.Text=="Save settings").PerformClick();
+            }
+            using var reopened=new SupportDrawingManagerForm35(Path.Combine(root,"model.dwg"),root,root);
+            reopened.CreateControl();
+            Check(Choice(reopened,"SPTC_PAPER_SCALE").SelectedValue=="1:1","saved full-size scale reopens");
+            SelectPage(reopened,"output");
+            AllControls(reopened).OfType<Button>().Single(b=>b.Name=="SPTC_QUICK_DRAFT_78").PerformClick();
+            SupportDrawingUiOptions? queued=null;
+            reopened.RunRequested+=options=>queued=options;
+            AllControls(reopened).OfType<Button>().Single(b=>b.Text=="Run selected").PerformClick();
+            Check(queued?.ScaleDenominator==1&&queued.AllowDraftOverflow&&!queued.BypassOneSheetLimit&&
+                !queued.BatchOrtho&&queued.Views.SequenceEqual(SupportDrawingUiPreferences.AllViews),
+                "1:1 and One DWG reach the generator with all ten views");
+        }
+        finally {if(File.Exists(saved))File.Delete(saved);}
     }
 
     private static void TestVisiblePreferencesRoundTrip()

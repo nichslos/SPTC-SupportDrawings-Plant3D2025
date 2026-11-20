@@ -17,7 +17,9 @@ internal static class NativeOrthoExactScalePlacement61
 {
     internal sealed class DoesNotFitException:InvalidOperationException
     {
-        internal DoesNotFitException(string message):base(message) {}
+        internal double RequiredExpansion {get;}
+        internal DoesNotFitException(string message,double requiredExpansion=1)
+            :base(message) => RequiredExpansion=requiredExpansion;
     }
 
     internal const double ModelFrameMargin=1.05;
@@ -37,8 +39,16 @@ internal static class NativeOrthoExactScalePlacement61
         IReadOnlyList<string> selectedViews,
         double paperWidth,double paperHeight,
         bool bypassTitleBlock=false,
+        double mandatoryAnnotationHeightMm=0) =>
+        Build(plan,selectedViews,NativeOrthoEffectivePaper59.FromMedia(
+            paperWidth,paperHeight,0),bypassTitleBlock,mandatoryAnnotationHeightMm);
+
+    internal static NativeOrthoTenViewAutoPlacement26.Result Build(
+        NativeOrthoTenViewPlan.Plan plan,IReadOnlyList<string> selectedViews,
+        NativeOrthoEffectivePaper59.Sheet sheet,bool bypassTitleBlock=false,
         double mandatoryAnnotationHeightMm=0)
     {
+        double paperWidth=sheet.WidthMm,paperHeight=sheet.HeightMm;
         if(bypassTitleBlock&&!NativeOrthoTitleBlockBypass69.Eligible(
             paperWidth,paperHeight,plan?.Denominator??0,
             selectedViews?.Count??0))
@@ -107,6 +117,7 @@ internal static class NativeOrthoExactScalePlacement61
         var uniqueOrders=new HashSet<string>(StringComparer.Ordinal);
         string nearest="";
         double bestShortfall=double.PositiveInfinity;
+        double requiredExpansion=double.PositiveInfinity;
         string firstTitleCollision="";
         // Use exactly the existing grid-column preferences to preserve
         // the tested 2-column layout wherever it already passes.
@@ -133,6 +144,8 @@ internal static class NativeOrthoExactScalePlacement61
             }
             double totalWidth=colWidths.Sum()+columnGap*(cols-1);
             double totalHeight=rowHeights.Sum()+rowGap*(rows-1);
+            requiredExpansion=Math.Min(requiredExpansion,Math.Max(
+                (totalWidth+2)/availableWidth,(totalHeight+2)/availableHeight));
             double shortageW=Math.Max(0,totalWidth-(availableWidth-2));
             double shortageH=Math.Max(0,totalHeight-(availableHeight-2));
             double normalShortfall=shortageW/Math.Max(1,availableWidth)+
@@ -191,10 +204,8 @@ internal static class NativeOrthoExactScalePlacement61
                     paperWidth,paperHeight,
                     allowSubset:views.Length!=10,
                     bypassTitleBlock:bypassTitleBlock);
-                var paper=NativeOrthoEffectivePaper59.FromMedia(
-                    paperWidth,paperHeight,0);
                 NativeOrthoEffectivePaper59.RequireInsideUsableArea(
-                    paper,frames.Select(v=>
+                    sheet,frames.Select(v=>
                         new NativeOrthoEffectivePaper59.ViewFrame(
                             v.Name,v.CenterX,v.CenterY,
                             v.PaperFrameWidth,v.PaperFrameHeight)).ToArray(),
@@ -265,6 +276,6 @@ internal static class NativeOrthoExactScalePlacement61
             "REV65 closest layout: "+nearest+
             (firstTitleCollision.Length>0?
                 "; physical size fits but native title/frame validation "+
-                "failed: "+firstTitleCollision:""));
+                "failed: "+firstTitleCollision:""),requiredExpansion);
     }
 }

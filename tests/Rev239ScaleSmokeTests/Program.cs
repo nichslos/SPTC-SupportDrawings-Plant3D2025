@@ -10,7 +10,7 @@ Assert(SupportDrawingPaperScale39.Resolve("Automatic",25)==0,
     "Automatic must retain unchanged autofit");
 foreach(var preset in new Dictionary<string,int>
 {
-    ["1:10"]=10,["1:20"]=20,["1:30"]=30,["1:40"]=40,
+    ["1:1"]=1,["1:10"]=10,["1:20"]=20,["1:30"]=30,["1:40"]=40,
     ["1:50"]=50,["1:75"]=75,["1:100"]=100,["1:150"]=150,
     ["1:200"]=200,["1:250"]=250,["1:500"]=500
 })
