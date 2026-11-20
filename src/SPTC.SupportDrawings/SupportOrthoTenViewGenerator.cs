@@ -2376,7 +2376,7 @@ public sealed class SupportOrthoTenViewGenerator
                                 paperWidth,paperHeight,units,
                                 layoutNativeSegments,proposed,titles,
                                 nativeEdges:nativeEdges59.Edges,
-                                bypassTitleBlock:bypassTitleBlock69);
+                                bypassTitleBlock:bypassTitleBlock69,includeEndpointDetails:false);
                         int trialBudget=SupportOrthoPaperTypography66.
                             ExtraDimTrials(paperWidth,paperHeight);
                         var coordinated64=
@@ -2615,7 +2615,7 @@ public sealed class SupportOrthoTenViewGenerator
                             paperWidth,paperHeight,units,verifiedSegments,
                             dimensionCollisionCallouts,titles,
                             nativeEdges:nativeEdges59.Edges,
-                            bypassTitleBlock:bypassTitleBlock69);
+                            bypassTitleBlock:bypassTitleBlock69,includeEndpointDetails:false);
                         // Stable, revision-independent drawing optimizer:
                         // try alternate native paper-space lane ranks only
                         // when a verified optional dimension is missing or
@@ -2630,8 +2630,14 @@ public sealed class SupportOrthoTenViewGenerator
                                     verifiedSegments,dimensionCollisionCallouts,
                                     titles,nativeEdges:nativeEdges59.Edges,
                                     lanePreferences:preferences,
-                                    bypassTitleBlock:bypassTitleBlock69));
-                        detailPlan=optimized.Plan;
+                                    bypassTitleBlock:bypassTitleBlock69,includeEndpointDetails:false));
+                        // Fit point locations and retry still-missing lengths once, against the
+                        // final leaders and primary dimensions selected by both layout optimizers.
+                        detailPlan=SupportOrthoReferenceDimPlan47.CompleteEndpoints(optimized.Plan,
+                            dimCameras,nativeDimensionMembers,verifiedSegments,units,paperWidth,paperHeight,
+                            dimensionCollisionCallouts,titles,null,bypassTitleBlock69,
+                            nativeEdges:nativeEdges59.Edges,primaryPreferences:optimized.Preferences);
+                        Log("DIM_ENDPOINT_VIEWS_REFLOWED="+detailPlan.EndpointViewsReflowed);
                         Log("DIM_LAYOUT_TRIALS="+optimized.AlternativesTested);
                         Log("DIM_LAYOUT_REPOSITIONED_VIEWS="+
                             optimized.ChangedViews);
@@ -2912,6 +2918,8 @@ public sealed class SupportOrthoTenViewGenerator
                     Log("REV22_61_QA_PREWRITE="+qaBefore.Status);
                     Log("MEMBER_ENDPOINT_COMPONENTS="+qaBefore.CoveredEndpointComponents+
                         "/"+qaBefore.ExpectedEndpointComponents);
+                    Log("MEMBER_ENDPOINT_LOCATIONS="+qaBefore.CoveredEndpointLocations+
+                        "/"+qaBefore.ExpectedEndpointLocations);
                     Log("MEMBER_ELEVATION_DIMENSIONS="+qaBefore.CoveredMemberElevations+
                         "/"+qaBefore.ExpectedMemberElevations);
                     foreach(string projection in qaBefore.EndOnViews)
@@ -3011,7 +3019,8 @@ public sealed class SupportOrthoTenViewGenerator
                             " MM PROVENANCE="+dimension.Provenance+
                             " VERIFIED_ENDPOINTS="+
                                 (SupportOrthoNativeDimensionPolicy48.VerifiedEndpoints(dimension.Provenance)||
-                                dimension.Provenance==SupportOrthoProjectedAxis.Provenance));
+                                dimension.Provenance==SupportOrthoProjectedAxis.Provenance||
+                                dimension.Provenance==SupportOrthoEndpointVisibility.Locator));
                     Log("REV22_41_DIMENSION_RESULT="+
                         (created==dimensionPlan.Dimensions.Count?
                             "PASS":"PARTIAL"));

@@ -35,6 +35,8 @@ public static class SupportOrthoDrawingQualityAudit61
         public int ReviewIssues => Issues.Count;
         public int ExpectedEndpointComponents {get;init;}
         public int CoveredEndpointComponents {get;init;}
+        public int ExpectedEndpointLocations {get;init;}
+        public int CoveredEndpointLocations {get;init;}
         public int ExpectedMemberElevations {get;init;}
         public int CoveredMemberElevations {get;init;}
         public IReadOnlyList<string> EndOnViews {get;init;}=Array.Empty<string>();
@@ -92,6 +94,7 @@ public static class SupportOrthoDrawingQualityAudit61
                 "No selected host-DWG structural/support member.");
 
         int endpointExpected=0,endpointCovered=0,elevationsExpected=0,elevationsCovered=0;
+        int locationExpected=0,locationCovered=0;
         var endOn=new List<string>();
         var inspected=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unresolved=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -108,6 +111,7 @@ public static class SupportOrthoDrawingQualityAudit61
                     p.Bounds.B>=c.Y-c.H*.5+1.4-.05&&p.Bounds.T<=c.Y+c.H*.5-1.4+.05)
                 .ToArray();
             var visible=visibleMembers.Select(p=>p.Bounds).ToArray();
+            var endpointView=SupportOrthoEndpointVisibility.Inspect(c,eligible,sources,unitsToMm);
             if(sources!=null)
             {
                 var axes=SupportOrthoProjectedAxis.InView(c,sources,visibleMembers);
@@ -123,28 +127,45 @@ public static class SupportOrthoDrawingQualityAudit61
                 {
                     string key=member.Member.Key;
                     inspected.Add(key);
-                    if(!axes.TryGetValue(key,out var axis))
+                    if(!axes.ContainsKey(key))
                     {
-                        if(unresolved.Add(key))Flag("MEMBER_ENDPOINTS_UNVERIFIED",c.Name,key);
-                        continue;
+                        unresolved.Add(key);
+                        Flag("MEMBER_ENDPOINTS_UNVERIFIED",c.Name,key);
                     }
-                    bool any=false;
-                    foreach(bool h in new[]{true,false})
-                    {
-                        if(!axis.HasComponent(h,unitsToMm/c.Scale))continue;
-                        any=true;
-                        endpointExpected++;
-                        if(inView.Any(d=>axis.Along(h).ShownBy(d,h)))endpointCovered++;
-                        else Flag("MISSING_MEMBER_LENGTH",c.Name,c.Name+"/"+key+
-                            SupportOrthoProjectedAxis.UnplacedLength+(h?"H":"V"));
-                    }
-                    if(any)measurable.Add(key);
-                    else endOn.Add(c.Name+"/"+key);
                 }
+                inspected.UnionWith(endpointView.VisibleMembers);
+                endOn.AddRange(endpointView.EndOnMembers.Select(key=>c.Name+"/"+key));
+                measurable.UnionWith(endpointView.VisibleMembers.Except(endpointView.EndOnMembers));
+                foreach(var target in endpointView.Required)
+                {
+                    bool shown=inView.Any(target.Matches);
+                    if(target.Datum==null)
+                    {
+                        endpointExpected++;
+                        if(shown)endpointCovered++;
+                        else Flag("MISSING_MEMBER_LENGTH",c.Name,c.Name+"/"+target.Missing);
+                    }
+                    else
+                    {
+                        locationExpected++;
+                        if(shown)locationCovered++;
+                        else Flag("MISSING_MEMBER_ENDPOINT_LOCATION",c.Name,c.Name+"/"+target.Missing);
+                    }
+                }
+                foreach(var d in inView.Where(d=>d.Provenance==SupportOrthoEndpointVisibility.Locator))
+                    if(!endpointView.Required.Any(r=>r.Datum!=null&&r.Identifies(d)))
+                    {
+                        unverified++;
+                        Flag("ENDPOINT_DATUM_MISMATCH",c.Name,d.Source);
+                    }
+                foreach(var note in endpointView.Notes.Where(s=>
+                    s.Contains(":ENDPOINT_NO_DISTINCT_VISIBLE_DATUM_",StringComparison.Ordinal)&&
+                    !s.EndsWith("_BOTH",StringComparison.Ordinal)))
+                    Flag("MEMBER_ENDPOINT_NO_VISIBLE_DATUM",c.Name,note);
             }
             if(visible.Length==0)
             {
-                Flag("NO_VISIBLE_VERIFIED_NATIVE_MEMBER",c.Name,
+                if(endpointView.VisibleMembers.Count==0)Flag("NO_VISIBLE_VERIFIED_NATIVE_MEMBER",c.Name,
                     "No native member has a verified projection in this viewport.");
                 continue;
             }
@@ -307,7 +328,7 @@ public static class SupportOrthoDrawingQualityAudit61
                 d.PaperTextY.HasValue)
             {
                 var geom=SupportOrthoDimIntersections58.Project(d,
-                    TextBox(d));
+                    SupportOrthoDimIntersections58.TextBox(d));
                 foreach(var prior in examined)
                 {
                     if(!prior.D.View.Equals(d.View,
@@ -355,21 +376,9 @@ public static class SupportOrthoDrawingQualityAudit61
             expected,present,missing,duplicates,incorrect,
             unverified,intersections,optional,writeMismatch,issues) {
             ExpectedEndpointComponents=endpointExpected,CoveredEndpointComponents=endpointCovered,
+            ExpectedEndpointLocations=locationExpected,CoveredEndpointLocations=locationCovered,
             ExpectedMemberElevations=elevationsExpected,CoveredMemberElevations=elevationsCovered,
             EndOnViews=endOn};
-    }
-
-    private static SupportOrthoSmartDimPlan46.Rect TextBox(
-        SupportOrthoDimLinearPlan41.Dimension d)
-    {
-        double printedWidth=Math.Max(7,d.Measurement.Length*1.85+3);
-        double x=d.PaperTextX!.Value,y=d.PaperTextY!.Value;
-        return d.Horizontal?
-            new SupportOrthoSmartDimPlan46.Rect(
-                x-printedWidth*.5-1,y-1.3,x+printedWidth*.5+1,y+1.3):
-            new SupportOrthoSmartDimPlan46.Rect(
-                x-1.3,y-printedWidth*.5-1,
-                x+1.3,y+printedWidth*.5+1);
     }
 
     private static bool FiniteMember(

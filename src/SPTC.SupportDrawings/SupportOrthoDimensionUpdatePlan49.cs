@@ -17,7 +17,7 @@ public static class SupportOrthoDimensionUpdatePlan49
     public const string ManifestKey="SPTC_DIM_REFRESH49";
     public const string OwnerApp="SPTC_DIM_OWNER49";
     public const int ManifestVersion=1;
-    public const int EndpointSchema=2;
+    public const int EndpointSchema=3;
 
     public static bool NeedsEndpointUpgrade(Manifest saved)=>
         saved.NativeEndpointSchema<EndpointSchema&&saved.Members.Any(m=>m.Kind=="STRUCTURE");

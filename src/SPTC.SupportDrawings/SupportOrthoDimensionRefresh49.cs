@@ -692,7 +692,9 @@ internal static class SupportOrthoDimensionRefresh49
         {
             var referencePlan=SupportOrthoReferenceDimPlan47.Build(
                 cameras,native,paperW,paperH,original.UnitsToMm,
-                segments,null,null,keepouts,edges);
+                segments,null,null,keepouts,edges,includeEndpointDetails:false);
+            referencePlan=SupportOrthoReferenceDimPlan47.CompleteEndpoints(referencePlan,
+                cameras,native,segments,original.UnitsToMm,paperW,paperH,null,null,keepouts,nativeEdges:edges);
             dimensions=referencePlan.Dimensions;
             plannerSkipped=referencePlan.Skipped;
         }
@@ -719,8 +721,12 @@ internal static class SupportOrthoDimensionRefresh49
             " REVIEW_ISSUES="+qaBefore.ReviewIssues);
         Message(target,"MEMBER_ENDPOINT_COMPONENTS="+qaBefore.CoveredEndpointComponents+
             "/"+qaBefore.ExpectedEndpointComponents);
+        Message(target,"MEMBER_ENDPOINT_LOCATIONS="+qaBefore.CoveredEndpointLocations+
+            "/"+qaBefore.ExpectedEndpointLocations);
         Message(target,"MEMBER_ELEVATION_DIMENSIONS="+qaBefore.CoveredMemberElevations+
             "/"+qaBefore.ExpectedMemberElevations);
+        foreach(var reason in plannerSkipped.Where(s=>s.Contains(":ENDPOINT_",StringComparison.Ordinal)))
+            Message(target,reason);
         foreach(var issue in qaBefore.Issues.Where(i=>i.Code.Contains("MEMBER",StringComparison.Ordinal)))
             Message(target,issue.Code+" "+issue.View+" "+issue.Description);
         if(dimensions.Count==0)

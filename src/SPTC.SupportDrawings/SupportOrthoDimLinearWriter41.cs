@@ -130,7 +130,8 @@ internal static class SupportOrthoDimLinearWriter41
                 // These are paper-space sizes in millimetres.
                 if(item.Provenance.StartsWith("REFERENCE_PROJECTED_",
                     StringComparison.Ordinal)||
-                    (item.Provenance==SupportOrthoProjectedAxis.Provenance&&
+                    ((item.Provenance==SupportOrthoProjectedAxis.Provenance||
+                        item.Provenance==SupportOrthoEndpointVisibility.Locator)&&
                         item.Source.StartsWith("DETAIL:",StringComparison.Ordinal)))
                 {
                     dim.Dimtxt=2.0;
@@ -160,8 +161,30 @@ internal static class SupportOrthoDimLinearWriter41
                         SupportOrthoDimensionUpdatePlan49.OwnerApp),
                     new TypedValue((int)DxfCode.ExtendedDataAsciiString,
                         item.View));
-                paper.AppendEntity(dim);
+                var id=paper.AppendEntity(dim);
                 tr.AddNewlyCreatedDBObject(dim,true);
+                if(item.Provenance==SupportOrthoProjectedAxis.Provenance||
+                    item.Provenance==SupportOrthoEndpointVisibility.Locator)
+                {
+                    // Validate the database-resident entity before counting it. A
+                    // failed replacement rolls back the whole refresh transaction.
+                    try
+                    {
+                        var saved=(RotatedDimension)tr.GetObject(id,OpenMode.ForRead);
+                        var observed=item with {Ax=saved.XLine1Point.X,Ay=saved.XLine1Point.Y,
+                            Bx=saved.XLine2Point.X,By=saved.XLine2Point.Y,PaperToModelMm=saved.Dimlfac};
+                        if(first.DistanceTo(saved.XLine1Point)>1e-7||second.DistanceTo(saved.XLine2Point)>1e-7||
+                            Math.Abs(Math.Sin(saved.Rotation-rotation))>1e-9||
+                            (!string.IsNullOrEmpty(saved.DimensionText)&&saved.DimensionText!="<>")||
+                            !SupportOrthoDynamicDimension492.MatchesDiagnostic(observed))
+                            throw new InvalidOperationException("Native endpoint dimension readback differs from plan.");
+                    }
+                    catch
+                    {
+                        dim.Erase();
+                        throw;
+                    }
+                }
                 created++;
             }
             catch(System.Exception ex)

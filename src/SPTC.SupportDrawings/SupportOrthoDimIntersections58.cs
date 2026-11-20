@@ -36,12 +36,25 @@ public static class SupportOrthoDimIntersections58
         bool Overall=false,
         bool TerminalRemainder=false,
         bool AssemblyDatum=false,
-        bool EndpointSpan=false,bool DatumChain=false)
+        bool EndpointSpan=false,bool DatumChain=false,bool EndpointLocation=false)
     {
         public IEnumerable<Segment> Witnesses
         {
             get { yield return WitnessA;yield return WitnessB; }
         }
+    }
+
+    internal static SupportOrthoSmartDimPlan46.Rect TextBox(
+        SupportOrthoDimLinearPlan41.Dimension d)
+    {
+        double printedWidth=Math.Max(7,d.Measurement.Length*1.85+3);
+        double x=d.PaperTextX??d.LineX,y=d.PaperTextY??d.LineY;
+        return d.Horizontal?
+            new SupportOrthoSmartDimPlan46.Rect(
+                x-printedWidth*.5-1,y-1.3,x+printedWidth*.5+1,y+1.3):
+            new SupportOrthoSmartDimPlan46.Rect(
+                x-1.3,y-printedWidth*.5-1,
+                x+1.3,y+printedWidth*.5+1);
     }
 
     public static Shape Project(
@@ -62,7 +75,8 @@ public static class SupportOrthoDimIntersections58
                     StringComparison.Ordinal),
                 dimension.Provenance==SupportOrthoMemberElevation.OffsetProvenance,
                 dimension.Provenance==SupportOrthoProjectedAxis.Provenance,
-                dimension.Provenance=="REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH");
+                dimension.Provenance=="REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH",
+                dimension.Provenance==SupportOrthoEndpointVisibility.Locator);
         return new Shape(
             new Segment(dimension.LineX,dimension.Ay,
                 dimension.LineX,dimension.By),
@@ -76,7 +90,8 @@ public static class SupportOrthoDimIntersections58
                 StringComparison.Ordinal),
             dimension.Provenance==SupportOrthoMemberElevation.OffsetProvenance,
             dimension.Provenance==SupportOrthoProjectedAxis.Provenance,
-            dimension.Provenance=="REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH");
+            dimension.Provenance=="REFERENCE_PROJECTED_DATUM_CHAIN_NOT_BOLT_PITCH",
+                dimension.Provenance==SupportOrthoEndpointVisibility.Locator);
     }
 
     /// <summary>Null when clear; otherwise a precise rejection cause.
@@ -118,6 +133,8 @@ public static class SupportOrthoDimIntersections58
         if(!(proposed.Overall||earlier.Overall||
              proposed.TerminalRemainder||earlier.TerminalRemainder||
              proposed.AssemblyDatum||earlier.AssemblyDatum||
+             (proposed.EndpointLocation&&earlier.EndpointLocation&&
+                proposed.Baseline.Horizontal!=earlier.Baseline.Horizontal&&SameDefinitionPair(proposed,earlier))||
              (proposed.EndpointSpan&&earlier.DatumChain||earlier.EndpointSpan&&proposed.DatumChain)&&
                 SharesDefinitionPoint(proposed,earlier)))
             foreach(var a in proposed.Witnesses)
@@ -129,6 +146,15 @@ public static class SupportOrthoDimIntersections58
 
     // Orthogonal components at a shared native endpoint form one dimension
     // chain. Their extensions may cross on the way out of a joined profile.
+    private static bool SameDefinitionPair(Shape a,Shape b)
+    {
+        // Orthogonal spacings between the same two physical points share a
+        // construction corner. Text and baseline interiors are checked above.
+        static bool Same(Segment x,Segment y)=>Math.Abs(x.Ax-y.Ax)<1e-7&&Math.Abs(x.Ay-y.Ay)<1e-7;
+        return Same(a.WitnessA,b.WitnessA)&&Same(a.WitnessB,b.WitnessB)||
+            Same(a.WitnessA,b.WitnessB)&&Same(a.WitnessB,b.WitnessA);
+    }
+
     private static bool SharesDefinitionPoint(Shape a,Shape b) =>
         a.Witnesses.Any(x=>b.Witnesses.Any(y=>
             Math.Abs(x.Ax-y.Ax)<1e-7&&Math.Abs(x.Ay-y.Ay)<1e-7));

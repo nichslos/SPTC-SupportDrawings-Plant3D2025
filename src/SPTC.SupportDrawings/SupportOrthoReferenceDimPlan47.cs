@@ -44,7 +44,7 @@ public static class SupportOrthoReferenceDimPlan47
         int Rev68SupplementaryGeometryCandidatesTested=0,
         int Rev68SupplementaryGeometryDimensionsRecovered=0,
         int PostAuditOptionalDetailsOmitted=0,
-        IReadOnlyList<string>? FinalCollisionDiagnostics=null);
+        IReadOnlyList<string>? FinalCollisionDiagnostics=null,int EndpointViewsReflowed=0);
 
     // Revision-independent paper-space search policy. Rank indices
     // reorder existing candidate lanes; they never prescribe geometry,
@@ -77,7 +77,8 @@ public static class SupportOrthoReferenceDimPlan47
         bool PlateEnvelope=false,
         SupportOrthoProjectedAxis.Span? AxisSpan=null,
         SupportOrthoProjectedAxis.Span? SharedWitness=null,
-        SupportOrthoMemberElevation.Measure? Elevation=null);
+        SupportOrthoMemberElevation.Measure? Elevation=null,
+        SupportOrthoEndpointVisibility.Requirement? EndpointLocation=null);
     private sealed record Placed(bool Horizontal,
         SupportOrthoSmartDimPlan46.Rect Line,
         SupportOrthoSmartDimPlan46.Rect Text,
@@ -101,7 +102,7 @@ public static class SupportOrthoReferenceDimPlan47
         IReadOnlyList<SupportOrthoSmartDimPlan46.Rect>? additionalKeepouts=null,
         IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeEdges=null,
         IReadOnlyDictionary<string,PlacementPreference>? lanePreferences=null,
-        bool bypassTitleBlock=false)
+        bool bypassTitleBlock=false,bool includeEndpointDetails=true)
     {
         if(cameras==null||members==null||!double.IsFinite(paperW)||
            !double.IsFinite(paperH)||!double.IsFinite(unitsToMm)||
@@ -124,12 +125,7 @@ public static class SupportOrthoReferenceDimPlan47
             verifiedStationTested=0,verifiedStationRecovered=0,
             supplementaryGeometryTested=0,supplementaryGeometryRecovered=0,
             rejected=0,requested=0;
-        var paper=new SupportOrthoSmartDimPlan46.Rect(
-            2,NativeOrthoTitleBlockBypass69.Bottom(
-                paperH,bypassTitleBlock)+2,
-            (bypassTitleBlock?
-                NativeOrthoTitleBlockBypass69.Right(paperW,true):
-                paperW*.78)-2,paperH*.94-2);
+        var paper=UsablePaper(paperW,paperH,bypassTitleBlock);
 
         foreach(var camera in cameras)
         {
@@ -1508,7 +1504,7 @@ public static class SupportOrthoReferenceDimPlan47
                     skipped.Add(camera.Name+"/"+length.Key+
                         SupportOrthoProjectedAxis.UnplacedLength+(length.Horizontal?"H":"V"));
         }
-        return new Result(dimensions,skipped,views,chain,overall,rejected,
+        var plan=new Result(dimensions,skipped,views,chain,overall,rejected,
             requested,localCount,priorityOverallCount,
             midpointNative,midpointBounds,terminalRemainders,
             redundantChains,hierarchyRejected,manualViewSuppressed,
@@ -1520,6 +1516,234 @@ public static class SupportOrthoReferenceDimPlan47
             verifiedStationTested,verifiedStationRecovered,
             supplementaryGeometryTested,supplementaryGeometryRecovered,
             omittedAfterAudit,collisionDiagnostics);
+        return includeEndpointDetails?CompleteEndpoints(plan,cameras,members,sources,unitsToMm,
+            paperW,paperH,callouts,titles,additionalKeepouts,bypassTitleBlock,retryFullSpans:false):plan;
+    }
+
+    private static SupportOrthoSmartDimPlan46.Rect UsablePaper(double paperW,double paperH,bool bypassTitleBlock)=>
+        new(
+            2,NativeOrthoTitleBlockBypass69.Bottom(
+                paperH,bypassTitleBlock)+2,
+            (bypassTitleBlock?
+                NativeOrthoTitleBlockBypass69.Right(paperW,true):
+                paperW*.78)-2,paperH*.94-2);
+
+    internal static Result CompleteEndpoints(Result plan,
+        IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
+        IReadOnlyList<SupportOrthoAllViewDimPlan44.Member> members,
+        IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? sources,double unitsToMm,
+        double paperW,double paperH,IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts,
+        IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles,IReadOnlyList<SupportOrthoSmartDimPlan46.Rect>? keepouts,
+        bool bypassTitleBlock=false,bool retryFullSpans=true,
+        IReadOnlyList<SupportOrthoNativeEdgeGeometry59.Edge>? nativeEdges=null,
+        IReadOnlyDictionary<string,PlacementPreference>? primaryPreferences=null)
+    {
+        if(sources==null||sources.Count==0)return plan;
+        var paper=UsablePaper(paperW,paperH,bypassTitleBlock);
+        Result Place(Result primary)
+        {
+            var dimensions=primary.Dimensions.ToList();
+            var skipped=primary.Skipped.ToList();
+            int requests=AddEndpointDetails(cameras,members,sources,unitsToMm,paperW,paperH,
+                paper,callouts,titles,keepouts,dimensions,skipped,retryFullSpans:retryFullSpans);
+            return primary with {Dimensions=dimensions,Skipped=skipped,
+                RequestedDimensions=primary.RequestedDimensions+requests,
+                LocalMemberDimensions=primary.LocalMemberDimensions+dimensions.Count-primary.Dimensions.Count};
+        }
+
+        var fitted=Place(plan);
+        if(!retryFullSpans||plan.Dimensions.Count==0||
+            !fitted.Skipped.Any(SupportOrthoDimensionReflow.IsEndpointOmission))return fitted;
+        // A successful chain can block the only clear path to another native end.
+        // Try adjacent paper lanes only for those views, retaining prior measured points.
+        var recovered=SupportOrthoDimensionReflow.Improve(cameras,fitted,changes=>
+        {
+            var lanes=primaryPreferences==null?new Dictionary<string,PlacementPreference>(StringComparer.OrdinalIgnoreCase):
+                new Dictionary<string,PlacementPreference>(primaryPreferences,StringComparer.OrdinalIgnoreCase);
+            foreach(var change in changes)lanes[change.Key]=change.Value;
+            return Place(Build(cameras,members,paperW,paperH,unitsToMm,sources,callouts,titles,
+                keepouts,nativeEdges,lanes,bypassTitleBlock,includeEndpointDetails:false));
+        },maxAttemptsPerView:6,endpointsOnly:true);
+        return recovered.Plan with {EndpointViewsReflowed=recovered.ChangedViews};
+    }
+
+    internal static int AddEndpointDetails(
+        IReadOnlyList<SupportOrthoMemberCalloutPlan17.Camera> cameras,
+        IReadOnlyList<SupportOrthoAllViewDimPlan44.Member> members,
+        IReadOnlyList<SupportOrthoDimLinearPlan41.Segment>? sources,double unitsToMm,
+        double paperW,double paperH,SupportOrthoSmartDimPlan46.Rect paper,
+        IReadOnlyList<SupportOrthoMemberCalloutPlan27.Callout>? callouts,
+        IReadOnlyList<NativeOrthoViewTitlePlan.Title>? titles,
+        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect>? keepouts,
+        List<SupportOrthoDimLinearPlan41.Dimension> dimensions,List<string> skipped,
+        List<SupportOrthoSmartDimPlan46.Placement>? smartPlacements=null,bool retryFullSpans=true)
+    {
+        if(sources==null||sources.Count==0)return 0;
+        int requested=0;
+        foreach(var c in cameras.Where(c=>Ortho.Contains(c.Name)&&double.IsFinite(c.Scale)&&
+            c.Scale>0&&double.IsFinite(c.W)&&double.IsFinite(c.H)&&c.W>0&&c.H>0))
+        {
+            var model=SupportOrthoEndpointVisibility.Inspect(c,members,sources,unitsToMm);
+            skipped.AddRange(model.Notes.Select(note=>c.Name+"/"+note));
+            var inView=dimensions.Where(d=>d.View==c.Name).ToList();
+            foreach(var covered in model.Required.Where(r=>r.Datum==null&&inView.Any(r.Matches)))
+                skipped.Remove(c.Name+"/"+covered.Missing);
+            var missing=model.Required.Where(r=>(retryFullSpans||!r.FullyInLayout)&&!inView.Any(r.Matches)).ToArray();
+            if(missing.Length==0)continue;
+            var obstacles=FixedZones(c,cameras,callouts,titles,
+                SupportOrthoPaperTypography66.LineAdvance(paperW,paperH));
+            if(keepouts!=null)obstacles.AddRange(keepouts.Where(r=>r.IsFinite)
+                .Select(r=>new Obstacle(r,"RESERVED_PAPER_AREA")));
+            var placed=dimensions.Select(d=>{
+                var text=SupportOrthoDimIntersections58.TextBox(d);
+                var geometry=SupportOrthoDimIntersections58.Project(d,text);
+                return new Placed(d.Horizontal,geometry.Baseline.Bounds(),text,geometry);
+            }).ToList();
+
+            var blocked=new Dictionary<SupportOrthoEndpointVisibility.Requirement,string>();
+            foreach(var group in missing.GroupBy(r=>(r.Key,r.Ends)))
+            {
+                var pending=group.Where(r=>!inView.Any(r.Matches)).ToArray();
+                if(pending.Length==0)continue;
+                requested+=pending.Length;
+                var causes=pending.Select(_=>new HashSet<string>(StringComparer.Ordinal)).ToArray();
+                var alternatives=pending.Select((r,i)=>EndpointOptions(c,r,model.Footprints,
+                    obstacles,paper,placed,unitsToMm,causes[i])).ToArray();
+                // Try other actual visible endpoints if the preferred member/point
+                // is obstructed. Keep the identity of the datum actually used.
+                var nextDatum=new int[pending.Length];
+                bool TryNextDatum(int i)
+                {
+                    var target=pending[i];
+                    while(nextDatum[i]<target.AlternateDatums.Count)
+                    {
+                        var choice=target.AlternateDatums[nextDatum[i]++];
+                        var extra=EndpointOptions(c,choice,model.Footprints,obstacles,paper,
+                            placed,unitsToMm,causes[i]);
+                        if(extra.Count==0)continue;
+                        alternatives[i].AddRange(extra);
+                        return true;
+                    }
+                    return false;
+                }
+                for(int i=0;i<pending.Length;i++)
+                    if(alternatives[i].Count==0)TryNextDatum(i);
+                // The two components of a point are a pair. Choose compatible
+                // baselines before reserving either of them on the sheet.
+                void Accept((SupportOrthoDimLinearPlan41.Dimension D,Placed P) item)
+                {
+                    dimensions.Add(item.D);
+                    inView.Add(item.D);
+                    placed.Add(item.P);
+                    smartPlacements?.Add(new(c.Name,item.D.Source,item.P.Line,item.P.Text,
+                        item.P.Geometry.WitnessA.Bounds(),item.P.Geometry.WitnessB.Bounds()));
+                }
+                bool TryPair()
+                {
+                    foreach(var a in alternatives[0])
+                    foreach(var b in alternatives[1])
+                    {
+                        if(!Fits(b.P,Array.Empty<Obstacle>(),paper,new[]{a.P},model.Footprints)||
+                           !Fits(a.P,Array.Empty<Obstacle>(),paper,new[]{b.P},model.Footprints))continue;
+                        Accept(a);Accept(b);
+                        return true;
+                    }
+                    return false;
+                }
+                bool paired=false;
+                if(alternatives.Length==2&&alternatives.All(a=>a.Count>0))
+                {
+                    do {paired=TryPair();}
+                    while(!paired&&(TryNextDatum(0)||TryNextDatum(1)));
+                    if(!paired)
+                        foreach(var reason in causes)reason.Add("CROSSING_ENDPOINT_DIMENSIONS");
+                }
+                if(!paired)
+                {
+                    var clear=alternatives.FirstOrDefault(a=>a.Count>0);
+                    if(clear!=null)Accept(clear[0]);
+                }
+                for(int i=0;i<pending.Length;i++)
+                    blocked[pending[i]]=string.Join(",",causes[i].OrderBy(x=>x));
+            }
+            foreach(var target in missing)
+            {
+                string message=c.Name+"/"+target.Missing;
+                if(inView.Any(target.Matches))
+                {
+                    skipped.RemoveAll(s=>s==message);
+                    continue;
+                }
+                if(!skipped.Contains(message))skipped.Add(message);
+                if(blocked.TryGetValue(target,out string? reasons))
+                    skipped.Add(c.Name+"/"+target.Key+":ENDPOINT_PLACEMENT_DETAIL_"+target.AxisName+
+                        " ENDS="+target.Ends+" REASONS="+reasons);
+            }
+        }
+        return requested;
+    }
+
+    private static List<(SupportOrthoDimLinearPlan41.Dimension D,Placed P)> EndpointOptions(
+        SupportOrthoMemberCalloutPlan17.Camera camera,SupportOrthoEndpointVisibility.Requirement target,
+        IReadOnlyList<SupportOrthoSmartDimPlan46.Rect> footprints,List<Obstacle> obstacles,
+        SupportOrthoSmartDimPlan46.Rect paper,List<Placed> placed,double unitsToMm,HashSet<string> reasons)
+    {
+        var choices=new List<(SupportOrthoDimLinearPlan41.Dimension D,Placed P)>();
+        bool h=target.Horizontal;
+        var span=target.Span;
+        var bounds=target.Bounds;
+        var request=MakeRequest(h,span.From,span.To,false,0,camera.Scale,unitsToMm) with {
+            SourceKey=target.Key,LocalBounds=bounds,AxisSpan=span,
+            EndpointLocation=target.Datum!=null?target:null,
+            CompactLocalLabel=true,AdaptiveShortLocalLabel=true};
+        double textWidth=Math.Max(7,request.Measurement.Length*1.85+3);
+        // Only nearby obstacle edges can define useful lanes for this pair. Every
+        // accepted alternative is still checked against all views and annotations.
+        var occupied=obstacles.Select(b=>b.Area).Concat(footprints)
+            .Concat(placed.Select(p=>p.Text)).Concat(placed.Select(p=>p.Line))
+            .Where(r=>h?r.R>=span.From-textWidth&&r.L<=span.To+textWidth:
+                r.T>=span.From-textWidth&&r.B<=span.To+textWidth);
+        var levels=occupied.SelectMany(r=>h?new[]{r.B,r.T}:new[]{r.L,r.R})
+            .Append(span.FirstWitness).Append(span.LastWitness).Distinct().OrderBy(x=>x).ToArray();
+        var gaps=levels.Zip(levels.Skip(1),(lo,hi)=>(lo+hi)*.5).ToArray();
+        double preferred=SupportOrthoReferenceLayout51.PreferredSide(camera.Name,h);
+        foreach(double side in new[]{preferred,-preferred})
+        {
+            double Edge(SupportOrthoSmartDimPlan46.Rect r)=>h?(side>0?r.T:r.B):(side>0?r.R:r.L);
+            double origin=Edge(bounds);
+            var offsets=SupportOrthoReferenceLayout51.LocalMemberLaneOffsets()
+                .Concat(levels.Select(x=>side*(x-origin)+3.5))
+                .Concat(gaps.Select(x=>side*(x-origin)))
+                .Where(x=>x<side*(Edge(paper)-origin)&&x>=-(h?bounds.T-bounds.B:bounds.R-bounds.L))
+                .Distinct().OrderBy(Math.Abs);
+            int lanes=0;
+            foreach(double offset in offsets)
+            {
+                bool clear=false;
+                foreach(bool outward in new[]{false,true})
+                {
+                    for(int tier=0;tier<5;tier++)
+                    {
+                        var req=request with {OutwardLocalLabel=outward};
+                        if(Candidate(camera,bounds,(_,_,_,_)=>null,req,side,offset,tier) is not {} item)continue;
+                        string? why=footprints.Any(b=>BlocksDimensionLine(item.P,req,b,true))
+                            ?"LINE_OVER_NATIVE_MEMBER":RejectionReason(item.P,obstacles,paper,placed,footprints);
+                        if(why==null)
+                        {
+                            choices.Add(item);
+                            clear=true;
+                            break;
+                        }
+                        reasons.Add(why);
+                        // Changing the text tier cannot move a baseline or a witness.
+                        if(why=="LINE_OVER_NATIVE_MEMBER"||why.StartsWith("LINE_OVER_",StringComparison.Ordinal)||
+                           why.StartsWith("WITNESS_",StringComparison.Ordinal)||why=="DIM_LINE_OUTSIDE_SHEET")break;
+                    }
+                }
+                if(clear&&++lanes>=6)break;
+            }
+        }
+        return choices;
     }
 
     internal static int AddSmartElevations(SupportOrthoMemberCalloutPlan17.Camera camera,
@@ -1827,7 +2051,8 @@ public static class SupportOrthoReferenceDimPlan47
                 tx+1.3,ty+printedWidth*.5+1);
         string axis=request.Horizontal?"H":"V";
         string source="DETAIL:"+c.Name+"/"+axis+"/"+
-            (request.Elevation is {} elevation?elevation.Role+elevation.Key:
+            (request.EndpointLocation is {} location?location.Role:
+             request.Elevation is {} elevation?elevation.Role+elevation.Key:
              request.AxisSpan.HasValue?"AXIS_"+request.SourceKey:
              request.PlateEnvelope?"PLATE_"+request.SourceKey:
              request.Overall?"OVERALL":
@@ -1836,7 +2061,8 @@ public static class SupportOrthoReferenceDimPlan47
                 request.LocalBounds.HasValue?
                     "MEMBER_"+request.SourceKey:
                     "CHAIN_"+request.Index);
-        string provenance=request.Elevation?.Provenance??(request.AxisSpan.HasValue?SupportOrthoProjectedAxis.Provenance:
+        string provenance=request.EndpointLocation!=null?SupportOrthoEndpointVisibility.Locator:
+            request.Elevation?.Provenance??(request.AxisSpan.HasValue?SupportOrthoProjectedAxis.Provenance:
             request.PlateEnvelope?
             "NATIVE_STRUCTURE_PLATE_PROJECTED_ENVELOPE_NOT_CUT_LENGTH":
             request.Overall?
@@ -2014,7 +2240,7 @@ public static class SupportOrthoReferenceDimPlan47
         new(Math.Min(ax,bx)-.35,Math.Min(ay,by)-.35,
             Math.Max(ax,bx)+.35,Math.Max(ay,by)+.35);
 
-    private static bool ValidMember(
+    internal static bool ValidMember(
         SupportOrthoAllViewDimPlan44.Member m)=>
         !string.IsNullOrWhiteSpace(m.Key)&&
         (m.Kind=="STRUCTURE"||m.Kind=="SUPPORT"||
@@ -2023,7 +2249,7 @@ public static class SupportOrthoReferenceDimPlan47
             .All(double.IsFinite)&&
         m.MinX<=m.MaxX&&m.MinY<=m.MaxY&&m.MinZ<=m.MaxZ;
 
-    private static SupportOrthoSmartDimPlan46.Rect Project(
+    internal static SupportOrthoSmartDimPlan46.Rect Project(
         SupportOrthoMemberCalloutPlan17.Camera c,
         SupportOrthoAllViewDimPlan44.Member m)
     {

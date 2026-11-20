@@ -48,6 +48,18 @@ internal static class MemberEndpointCoverageTests
                 edges.Any(e=>e.Straight&&e.A==solid.Value.Start&&e.B==solid.Value.End)&&
                 Math.Abs((solid.Value.End-solid.Value.Start).Length/factor-312)<1e-6,
                 "one real longitudinal rail with both physical ends");
+            // Imported BReps can split every longitudinal edge at several seams.
+            var split=edges.SelectMany((edge,i)=>{
+                if(i%3!=2)return new[]{edge};
+                var mid=edge.A+(edge.B-edge.A)*.41;
+                return new[]{new Edge(mid,edge.A,true),new Edge(edge.B,mid,true)};
+            }).Reverse().ToArray();
+            var stitched=Ends.Resolve(split,axis,grips,out why);
+            Check(stitched.HasValue&&why==SupportOrthoNativeDimensionPolicy48.EndGrips&&
+                (stitched.Value.Start-grips[2]).Length<1e-7&&
+                (stitched.Value.End-grips[0]).Length<1e-7,"split rails retain physical end grips");
+            Check(Ends.Resolve(split.Append(new Edge(split[0].A,At(17,29,31),true)).ToArray(),
+                axis,Array.Empty<Point>(),out _)==null,"a branch at a seam cannot be joined into a member axis");
             var unguided=Ends.Resolve(edges,null,Array.Empty<Point>(),out why);
             Check(profile==channel?unguided.HasValue:unguided==null&&why=="AMBIGUOUS_SOLID_AXIS",
                 "distinguish a unique channel extrusion from a box with three plausible axes");
@@ -126,6 +138,7 @@ internal static class MemberEndpointCoverageTests
             new[]{new SupportOrthoDimensionUpdatePlan49.View("TOP","A1",100,100,90,90)},"");
         Check(SupportOrthoDimensionUpdatePlan49.NeedsEndpointUpgrade(saved)&&
             SupportOrthoDimensionUpdatePlan49.NeedsEndpointUpgrade(saved with {NativeEndpointSchema=1})&&
+            SupportOrthoDimensionUpdatePlan49.NeedsEndpointUpgrade(saved with {NativeEndpointSchema=2})&&
             !SupportOrthoDimensionUpdatePlan49.NeedsEndpointUpgrade(saved with {
                 NativeEndpointSchema=SupportOrthoDimensionUpdatePlan49.EndpointSchema}),"old snapshot migration");
         Console.WriteLine("Physical member endpoints, equal members at different stations, both planners and independent coverage PASS");
