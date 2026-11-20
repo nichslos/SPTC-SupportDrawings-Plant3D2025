@@ -177,6 +177,7 @@ public static class SupportOrthoLeaderDimensionLayout64
         p.Skipped.Count(IsLocalOmission);
 
     private static bool IsLocalOmission(string text) =>
+        text.Contains(SupportOrthoEndpointVisibility.Unplaced,StringComparison.Ordinal)||
         text.Contains(SupportOrthoProjectedAxis.UnplacedLength,StringComparison.Ordinal)||
         text.Contains(SupportOrthoMemberElevation.Unplaced,StringComparison.Ordinal)||
         text.Contains("_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE",

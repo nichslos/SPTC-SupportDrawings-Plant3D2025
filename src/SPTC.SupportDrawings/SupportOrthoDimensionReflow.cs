@@ -33,7 +33,7 @@ public static class SupportOrthoDimensionReflow
         Func<IReadOnlyDictionary<string,
             SupportOrthoReferenceDimPlan47.PlacementPreference>,
             SupportOrthoReferenceDimPlan47.Result> rebuild,
-        int maxAttemptsPerView=48)
+        int maxAttemptsPerView=48,bool endpointsOnly=false)
     {
         if(cameras==null||baseline==null||rebuild==null||
            maxAttemptsPerView<1||maxAttemptsPerView>48)
@@ -44,6 +44,10 @@ public static class SupportOrthoDimensionReflow
                 StringComparer.OrdinalIgnoreCase);
         var current=baseline;
         int tried=0,changed=0;
+        bool Needed(string s)=>endpointsOnly?IsEndpointOmission(s):IsLocalOmission(s);
+        int Missing(SupportOrthoReferenceDimPlan47.Result p)=>p.Skipped.Count(Needed);
+        int MissingInView(SupportOrthoReferenceDimPlan47.Result p,string view)=>p.Skipped.Count(s=>
+            s.StartsWith(view+"/",StringComparison.OrdinalIgnoreCase)&&Needed(s));
         int originalMissing=Missing(baseline);
         int originalHierarchy=HierarchyErrors(baseline);
         var rejections=new SortedDictionary<string,int>(
@@ -70,29 +74,27 @@ public static class SupportOrthoDimensionReflow
         // length, handle, view coordinate, nominal member section
         // or fabricated dimension. Prioritize wider outer-overall
         // offsets, then progressively varying inner-chain lanes.
-        var trials=Enumerable.Range(0,
+        var ranks=Enumerable.Range(0,
                 Math.Min(overallRanks.Length,10))
             .SelectMany(o=>Enumerable.Range(0,
                 Math.Min(chainRanks.Length,6))
                 .Where(c=>o!=0||c!=0)
                 .Select(c=>new SupportOrthoReferenceDimPlan47
-                    .PlacementPreference(o,c)))
-            .OrderBy(p=>p.ChainLaneRank)
-            .ThenByDescending(p=>overallRanks[p.OverallLaneRank])
-            .ToArray();
+                    .PlacementPreference(o,c)));
+        var trials=(endpointsOnly
+            ?ranks.OrderBy(p=>p.OverallLaneRank+p.ChainLaneRank).ThenBy(p=>p.OverallLaneRank)
+            :ranks.OrderBy(p=>p.ChainLaneRank).ThenByDescending(p=>overallRanks[p.OverallLaneRank])).ToArray();
 
         foreach(var camera in cameras)
         {
             string view=camera.Name;
             if(!Views.Contains(view))continue;
-            bool issue=current.Skipped.Any(s=>
-                s.StartsWith(view+"/",StringComparison.OrdinalIgnoreCase)&&
-                IsLocalOmission(s))||
+            bool issue=MissingInView(current,view)>0||!endpointsOnly&&(
                 HierarchyErrors(current,view)>0||
                 current.UnintendedAcceptedWitnessIntersections>0&&
                 (current.FinalCollisionDiagnostics?.Any(x=>
                     x.StartsWith(view+":CAUSE=",
-                        StringComparison.OrdinalIgnoreCase))??false);
+                        StringComparison.OrdinalIgnoreCase))??false));
             if(!issue)continue;
             int attemptsForView=0;
             SupportOrthoReferenceDimPlan47.Result best=current;
@@ -121,7 +123,8 @@ public static class SupportOrthoDimensionReflow
                     Reject(view,"WITNESS_INTERSECTION");
                     continue;
                 }
-                if(!PreservesSourceGeometry(baseline,candidate))
+                if(!PreservesSourceGeometry(baseline,candidate)||endpointsOnly&&
+                    !ReferenceEquals(current,baseline)&&!PreservesSourceGeometry(current,candidate))
                 {
                     Reject(view,"SOURCE_OR_MEASUREMENT_CHANGED");
                     continue;
@@ -140,7 +143,9 @@ public static class SupportOrthoDimensionReflow
                     best.UnintendedAcceptedWitnessIntersections;
                 // No loss of accepted local detail or drafting order
                 // is permitted to obtain a different profile width.
-                if(missing>bestMissing||hierarchy>bestHierarchy)
+                if(missing>bestMissing||hierarchy>bestHierarchy||endpointsOnly&&
+                    (MissingInView(candidate,view)>=MissingInView(best,view)||
+                     candidate.Skipped.Count(IsLocalOmission)>best.Skipped.Count(IsLocalOmission)))
                 {
                     Reject(view,"COMPLETENESS_OR_HIERARCHY_REGRESSION");
                     continue;
@@ -156,7 +161,7 @@ public static class SupportOrthoDimensionReflow
                 bestPref=pref;
                 // No later move can improve a zero-omission,
                 // fully correct drafting hierarchy.
-                if(missing==0&&hierarchy==0&&
+                if(endpointsOnly&&MissingInView(best,view)==0||missing==0&&hierarchy==0&&
                    candidate.UnintendedAcceptedWitnessIntersections==0)
                     break;
             }
@@ -172,8 +177,12 @@ public static class SupportOrthoDimensionReflow
             preferences);
     }
 
+    internal static bool IsEndpointOmission(string text) =>
+        text.Contains(SupportOrthoEndpointVisibility.Unplaced,StringComparison.Ordinal)||
+        text.Contains(SupportOrthoProjectedAxis.UnplacedLength,StringComparison.Ordinal);
+
     private static bool IsLocalOmission(string text) =>
-        text.Contains(SupportOrthoProjectedAxis.UnplacedLength,StringComparison.Ordinal)||
+        IsEndpointOmission(text)||
         text.Contains(SupportOrthoMemberElevation.Unplaced,StringComparison.Ordinal)||
         text.Contains("_LOCAL_MEMBER_WIDTH_NO_CLEAR_LANE",
             StringComparison.Ordinal)||
@@ -181,9 +190,6 @@ public static class SupportOrthoDimensionReflow
             StringComparison.Ordinal)||
         text.Contains("POST_AUDIT_OPTIONAL_PROFILE_COLLISION_OMITTED",
             StringComparison.Ordinal);
-
-    private static int Missing(SupportOrthoReferenceDimPlan47.Result result) =>
-        result.Skipped.Count(IsLocalOmission);
 
     // The chain must be closer to the actual support than its
     // overall dimension. Use the actual plotted paper-space

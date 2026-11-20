@@ -68,6 +68,51 @@ internal static class SupportOrthoSolidEndStations
     internal static Pair? Resolve(IReadOnlyList<Edge> edges,Pair? declared,
         IReadOnlyList<Point> grips,out string reason)
     {
+        var pair=ResolveProfiles(edges,declared,grips,out reason);
+        if(pair.HasValue||reason=="AMBIGUOUS_SOLID_AXIS")return pair;
+        // A BRep seam can split a straight physical edge into multiple records.
+        // Reconnect only straight, collinear edges at a degree-two vertex.
+        // Junctions, trims, curved edges and disconnected pieces stay distinct.
+        var adjacency=new Dictionary<Point,List<int>>();
+        for(int i=0;i<edges.Count;i++)
+            foreach(var p in new[]{edges[i].A,edges[i].B})
+            {
+                if(!p.Finite)return null;
+                if(!adjacency.TryGetValue(p,out var ids))adjacency[p]=ids=new();
+                ids.Add(i);
+            }
+        var used=new bool[edges.Count];
+        var joined=new List<Edge>(edges.Count);
+        Point Extend(Point tip,Point previous)
+        {
+            while(adjacency[tip].Count==2)
+            {
+                var ids=adjacency[tip];
+                int index=used[ids[0]]?ids[1]:ids[0];
+                if(used[index]||!edges[index].Straight)break;
+                var next=edges[index].A==tip?edges[index].B:edges[index].A;
+                var a=tip-previous;var b=next-tip;
+                double la=a.Length,lb=b.Length;
+                if(la==0||lb==0||(a*(1/la)-b*(1/lb)).Length>1e-9)break;
+                used[index]=true;
+                previous=tip;
+                tip=next;
+            }
+            return tip;
+        }
+        for(int i=0;i<edges.Count;i++)
+        {
+            if(used[i])continue;
+            used[i]=true;
+            var edge=edges[i];
+            joined.Add(edge.Straight?new(Extend(edge.A,edge.B),Extend(edge.B,edge.A),true):edge);
+        }
+        return joined.Count==edges.Count?null:ResolveProfiles(joined,declared,grips,out reason);
+    }
+
+    private static Pair? ResolveProfiles(IReadOnlyList<Edge> edges,Pair? declared,
+        IReadOnlyList<Point> grips,out string reason)
+    {
         reason="NO_VERIFIED_END_STATIONS";
         if(edges.Count==0||edges.Any(e=>!e.A.Finite||!e.B.Finite))return null;
         var points=edges.SelectMany(e=>new[]{e.A,e.B}).Distinct().ToArray();
@@ -139,7 +184,7 @@ internal static class SupportOrthoSolidEndStations
             }
         }
         if(guided&&!result.HasValue)
-            return Resolve(edges,null,grips,out reason);
+            return ResolveProfiles(edges,null,grips,out reason);
         return result;
     }
 }

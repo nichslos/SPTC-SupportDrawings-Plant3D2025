@@ -292,6 +292,9 @@ public static class SupportOrthoSmartDimPlan46
                 envelopes.Select(e=>(e.Member,e.Bounds)).ToArray(),axes,unitsToMm,paper,fixedZones,
                 dims,placements,viewStart,skips,nativeEdges);
         }
+        elevationRequests+=SupportOrthoReferenceDimPlan47.AddEndpointDetails(cameras,members,
+            sources,unitsToMm,paperW,paperH,paper,callouts,titles,additionalKeepouts,
+            dims,skips,placements);
         return new Result(dims,skips,placements,members.Count,viewCount,
             members.Count*viewCount*2+elevationRequests,repositioned,rejected);
     }
