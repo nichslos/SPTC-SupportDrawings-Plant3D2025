@@ -1,44 +1,45 @@
 using System;
+using System.Collections.Generic;
 
 namespace SPTC.SupportDrawings;
 
-/// <summary>
-/// REV75. Draft-only virtual paper canvas for native 10-view layouts.
-/// This expands PLANNING space, never changes the actual registered seed,
-/// its plot configuration or the original view scale. Every resulting
-/// viewport/caption still passes the existing virtual non-overlap guards.
-/// Actual physical media is reported as NOT PRINTABLE if it is exceeded.
-/// </summary>
 internal static class NativeOrthoDraftOverflow75
 {
-    internal sealed record Canvas(double WidthMm,double HeightMm,
-        int Enlargements,bool ExceedsActualMedia);
-
-    internal static Canvas Choose(double physicalWidthMm,
-        double physicalHeightMm,Func<double,double,bool> allTenFit)
+    // Only the working area grows. Keep the seed's registered media and
+    // rotation available to the generator for plotting and diagnostics.
+    internal static NativeOrthoEffectivePaper59.Sheet Choose(
+        NativeOrthoEffectivePaper59.Sheet physical,NativeOrthoLayout.Plan layout,
+        IReadOnlyList<SupportOrthoMemberCalloutPlan27.Member> annotations,
+        IReadOnlyList<string> views,int denominator)
     {
-        if(!double.IsFinite(physicalWidthMm)||
-           !double.IsFinite(physicalHeightMm)||
-           physicalWidthMm<=0||physicalHeightMm<=0)
-            throw new ArgumentOutOfRangeException(nameof(physicalWidthMm));
-        if(allTenFit==null)throw new ArgumentNullException(nameof(allTenFit));
-        double width=physicalWidthMm,height=physicalHeightMm;
-        // 5000 mm is the existing maximum supported by
-        // NativeOrthoEffectivePaper59.FromMedia, not a project dimension.
-        const double maxPlanningMm=5000.0;
-        for(int step=0;step<=20;step++)
+        if(denominator<=0||views.Count!=10)
+            throw new ArgumentException(
+                "One DWG draft overflow requires ten views and an explicit scale.");
+        var plan=NativeOrthoTenViewPlan.Build(layout,physical.WidthMm,physical.HeightMm)
+            with {Denominator=denominator,Scale=1.0/denominator};
+        var canvas=physical;
+        for(int attempt=0;;attempt++)
         {
-            if(width>maxPlanningMm||height>maxPlanningMm)
-                break;
-            if(allTenFit(width,height))
-                return new Canvas(width,height,step,step>0);
-            // Dimensionless multiplicative expansion depends ONLY on
-            // the caller's actual paper and geometry-fit predicate.
-            width*=1.15;
-            height*=1.15;
+            double labelHeight=SupportOrthoAnnotationCapacity71.RequiredHeight(
+                annotations,canvas.WidthMm,canvas.HeightMm);
+            try
+            {
+                NativeOrthoExactScalePlacement61.Build(plan,views,canvas,
+                    mandatoryAnnotationHeightMm:labelHeight);
+                return canvas;
+            }
+            catch(NativeOrthoExactScalePlacement61.DoesNotFitException ex)
+            {
+                // Grid widths/heights give the minimum expansion in one step.
+                // Additional clearance can be needed for titles and callouts.
+                double factor=Math.Max(1.15,ex.RequiredExpansion);
+                double width=canvas.WidthMm*factor,height=canvas.HeightMm*factor;
+                if(attempt>=20||!double.IsFinite(width)||!double.IsFinite(height))
+                    throw new InvalidOperationException(
+                        "Unable to place ten views and their annotations in one draft at 1:"+
+                        denominator+". "+ex.Message,ex);
+                canvas=canvas with {WidthMm=width,HeightMm=height};
+            }
         }
-        throw new InvalidOperationException(
-            "REV75 cannot form a collision-free ten-view virtual draft "+
-            "within the native paper planner's supported numeric range.");
     }
 }

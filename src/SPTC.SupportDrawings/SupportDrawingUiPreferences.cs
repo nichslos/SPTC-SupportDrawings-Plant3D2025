@@ -19,7 +19,7 @@ internal static class SupportDrawingUiPreferences
     internal static readonly string[] AllViews =
         {"TOP","BOTTOM","LEFT","RIGHT","FRONT","BACK","NW","NE","SW","SE"};
     internal static readonly string[] ScaleChoices =
-        {SupportDrawingPaperScale39.Automatic,"1:10","1:20","1:30",
+        {SupportDrawingPaperScale39.Automatic,"1:1","1:10","1:20","1:30",
          "1:40","1:50","1:75","1:100","1:150","1:200",
          "1:250","1:500",SupportDrawingPaperScale39.Custom};
 

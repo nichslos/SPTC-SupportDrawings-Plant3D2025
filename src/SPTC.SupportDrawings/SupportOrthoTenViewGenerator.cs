@@ -424,38 +424,6 @@ public sealed class SupportOrthoTenViewGenerator
         }
     }
 
-    // REV75: derive a draft-only virtual paper from CURRENT source
-    // geometry, real source member labels and the original exact scale.
-    // The real registered paper media and plot settings remain untouched.
-    private static NativeOrthoDraftOverflow75.Canvas DraftCanvas75(
-        NativeOrthoLayout.Plan layout,
-        IReadOnlyList<SupportOrthoMemberCalloutPlan27.Member> annotations,
-        IReadOnlyList<string> views,int denominator,
-        double actualWidthMm,double actualHeightMm)
-    {
-        if(denominator<=0||views.Count!=10)
-            throw new ArgumentException(
-                "REV75 virtual canvas requires exactly ten views and explicit 1:N.");
-        return NativeOrthoDraftOverflow75.Choose(
-            actualWidthMm,actualHeightMm,(width,height)=>{
-                var plan=NativeOrthoTenViewPlan.Build(layout,width,height)
-                    with{Denominator=denominator,Scale=1.0/denominator};
-                double height71=SupportOrthoAnnotationCapacity71.RequiredHeight(
-                    annotations,width,height);
-                try
-                {
-                    _=NativeOrthoExactScalePlacement61.Build(
-                        plan,views,width,height,
-                        mandatoryAnnotationHeightMm:height71);
-                    return true;
-                }
-                catch(NativeOrthoExactScalePlacement61.DoesNotFitException)
-                {
-                    return false;
-                }
-            });
-    }
-
     private async Task<bool> GenerateOne(Document sourceDoc,
         ObjectId[]? selectedOverride,SupportDrawingUiOptions options,
         SupportDrawingProgressForm35 progress,
@@ -1159,12 +1127,10 @@ public sealed class SupportOrthoTenViewGenerator
                 var previewArea=previewSheet;
                 if(draftOverflow75)
                 {
-                    var virtualCanvas=DraftCanvas75(
-                        layout,sourceAnnotations,options.Views,
-                        options.ScaleDenominator,w,h);
-                    w=virtualCanvas.WidthMm;
-                    h=virtualCanvas.HeightMm;
-                    previewArea=NativeOrthoEffectivePaper59.FromMedia(w,h,0);
+                    previewArea=NativeOrthoDraftOverflow75.Choose(previewSheet,
+                        layout,sourceAnnotations,options.Views,options.ScaleDenominator);
+                    w=previewArea.WidthMm;
+                    h=previewArea.HeightMm;
                     ed.WriteMessage("\nSPTC REV75: Actual native media "+
                         previewSheet.WidthMm.ToString("0.###",CultureInfo.InvariantCulture)+
                         "x"+previewSheet.HeightMm.ToString("0.###",CultureInfo.InvariantCulture)+
@@ -1195,7 +1161,7 @@ public sealed class SupportOrthoTenViewGenerator
                     try
                     {
                         proof=NativeOrthoExactScalePlacement61.Build(
-                            fit,options.Views,w,h,
+                            fit,options.Views,previewArea,
                             mandatoryAnnotationHeightMm:mandatoryHeight71);
                         // The strict planner passed, so all older
                         // successful drawings on ANY project paper remain identical.
@@ -1208,7 +1174,7 @@ public sealed class SupportOrthoTenViewGenerator
                                 options.Views.Count))
                     {
                         proof=NativeOrthoExactScalePlacement61.Build(
-                            fit,options.Views,w,h,bypassTitleBlock:true,
+                            fit,options.Views,previewArea,bypassTitleBlock:true,
                             mandatoryAnnotationHeightMm:mandatoryHeight71);
                         bypassTitleBlock69=true;
                         ed.WriteMessage("\nSPTC REV70: Existing registered "+
@@ -1557,13 +1523,10 @@ public sealed class SupportOrthoTenViewGenerator
                 (effectiveSheet.WidthMm,effectiveSheet.HeightMm);
             if(draftOverflow75)
             {
-                var virtualCanvas=DraftCanvas75(layout,sourceAnnotations,
-                    options.Views,options.ScaleDenominator,
-                    physicalSheet.WidthMm,physicalSheet.HeightMm);
-                paperWidth=virtualCanvas.WidthMm;
-                paperHeight=virtualCanvas.HeightMm;
-                effectiveSheet=NativeOrthoEffectivePaper59.FromMedia(
-                    paperWidth,paperHeight,0);
+                effectiveSheet=NativeOrthoDraftOverflow75.Choose(physicalSheet,
+                    layout,sourceAnnotations,options.Views,options.ScaleDenominator);
+                paperWidth=effectiveSheet.WidthMm;
+                paperHeight=effectiveSheet.HeightMm;
             }
             NativeOrthoTenViewPlan.Plan candidate =
                 NativeOrthoTenViewPlan.Build(layout, paperWidth, paperHeight);
@@ -1844,7 +1807,7 @@ public sealed class SupportOrthoTenViewGenerator
                     CultureInfo.InvariantCulture));
             var autoPlacement=exactReflow61?
                 NativeOrthoExactScalePlacement61.Build(
-                    candidate,options.Views,paperWidth,paperHeight,
+                    candidate,options.Views,effectiveSheet,
                     bypassTitleBlock:bypassTitleBlock69,
                     mandatoryAnnotationHeightMm:mandatoryHeight71):
                 NativeOrthoTenViewAutoPlacement26.Build(
